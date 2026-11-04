@@ -1,0 +1,148 @@
+diff --git a/cmd/ate-setup/internal/config/config.go b/cmd/ate-setup/internal/config/config.go
+index 412896cf..ae5ea2c1 100644
+--- a/cmd/ate-setup/internal/config/config.go
++++ b/cmd/ate-setup/internal/config/config.go
+@@ -306,7 +306,7 @@ func (c *Config) TransferServiceAccount() string {
+ // exchange impersonates the account and refuses to start without one.
+ // ate-setup installs GCS everywhere but kind, which uses S3.
+ func (c *Config) RequireTransferServiceAccount() error {
+-	if c.Kind {
++	if c.Kind || os.Getenv("ATE_INSTALL_STORAGE_BACKEND") == "s3" {
+ 		return nil
+ 	}
+ 	if c.TransferGSAName == "" {
+diff --git a/cmd/ate-setup/internal/steps/microvm.go b/cmd/ate-setup/internal/steps/microvm.go
+index 7819a26f..82e97254 100644
+--- a/cmd/ate-setup/internal/steps/microvm.go
++++ b/cmd/ate-setup/internal/steps/microvm.go
+@@ -171,7 +171,12 @@ func (e *Env) prepareMicroVMDeps(ctx context.Context) (*microVMPrepared, error)
+ 		}
+ 	}
+ 
+-	if !e.Cfg.Kind {
++	if !e.Cfg.Kind && assetStoreS3() {
++		log.Infof("Uploading assets to s3://%s/%s/ ...", bucket, microvmAssetsPrefix)
++		if err := e.stageMicroVMAssetsToS3(ctx, bucket, digests); err != nil {
++			return nil, err
++		}
++	} else if !e.Cfg.Kind {
+ 		log.Infof("Uploading assets to gs://%s/%s/ ...", bucket, microvmAssetsPrefix)
+ 		if err := e.stageMicroVMAssetsToGCS(ctx, bucket, digests); err != nil {
+ 			return nil, err
+@@ -278,6 +283,10 @@ func (e *Env) checkMicroVMDeps() (string, error) {
+ 		if _, err := exec.LookPath("docker"); err != nil {
+ 			return "", fmt.Errorf("'docker' is required to run the S3 client but was not found in PATH: %w", err)
+ 		}
++	} else if assetStoreS3() {
++		if _, err := exec.LookPath("aws"); err != nil {
++			return "", fmt.Errorf("'aws' is required to upload microVM assets to S3 but was not found in PATH: %w", err)
++		}
+ 	} else {
+ 		if _, err := exec.LookPath("gcloud"); err != nil {
+ 			return "", fmt.Errorf("'gcloud' is required to upload microVM assets to GCS but was not found in PATH: %w", err)
+@@ -296,6 +305,9 @@ func (e *Env) microVMBucket() (string, error) {
+ 		}
+ 		return defaultKindMicroVMBucket, nil
+ 	}
++	if b := os.Getenv("ATE_ASSET_BUCKET"); b != "" {
++		return b, nil
++	}
+ 	if e.Cfg.BucketName == "" {
+ 		return "", fmt.Errorf("BUCKET_NAME (--storage-bucket-name or config.storage.bucketName) must be set to stage microVM assets on non-Kind clusters, or pass --sandbox-classes=gvisor")
+ 	}
+@@ -309,7 +321,7 @@ func (e *Env) microVMBucket() (string, error) {
+ // microVMBucketScheme returns the URL scheme for the node's object-store
+ // plugin: s3 on Kind (rustfs) and gs on GKE.
+ func (e *Env) microVMBucketScheme() string {
+-	if e.Cfg.Kind {
++	if e.Cfg.Kind || assetStoreS3() {
+ 		return "s3"
+ 	}
+ 	return "gs"
+@@ -765,3 +777,25 @@ func (e *Env) runCmdOutput(ctx context.Context, name string, args ...string) (st
+ 	err := cmd.Run()
+ 	return out.String(), err
+ }
++
++// assetStoreS3 reports whether a non-Kind install stages microVM assets in S3
++// (ATE_INSTALL_STORAGE_BACKEND=s3) with the aws CLI and its ambient credentials.
++func assetStoreS3() bool { return os.Getenv("ATE_INSTALL_STORAGE_BACKEND") == "s3" }
++
++func (e *Env) stageMicroVMAssetsToS3(ctx context.Context, bucket string, digests map[string]map[string]string) error {
++	for _, arch := range e.microVMArches() {
++		outDir := e.Cfg.Path("bin", microvmAssetsPrefix, arch)
++		for _, f := range microvmAssets {
++			key := fmt.Sprintf("%s/%s/%s", microvmAssetsPrefix, arch, digests[arch][f])
++			if _, err := e.runCmdOutput(ctx, "aws", "s3api", "head-object", "--bucket", bucket, "--key", key); err == nil {
++				log.Infof("   %s/%s already in s3://%s; skipping.", arch, f, bucket)
++				continue
++			}
++			log.Infof("   %s/%s -> s3://%s/%s", arch, f, bucket, key)
++			if err := e.runCmd(ctx, nil, "aws", "s3", "cp", "--only-show-errors", filepath.Join(outDir, f), "s3://"+bucket+"/"+key); err != nil {
++				return fmt.Errorf("while uploading %s/%s to S3: %w", arch, f, err)
++			}
++		}
++	}
++	return nil
++}
+diff --git a/manifests/ate-install/base/kustomization.yaml b/manifests/ate-install/base/kustomization.yaml
+index 765aaf93..3f1dd65a 100644
+--- a/manifests/ate-install/base/kustomization.yaml
++++ b/manifests/ate-install/base/kustomization.yaml
+@@ -32,6 +32,55 @@ resources:
+   - ../ate-controller.yaml
+   - ../atelet.yaml
+   - ../atenet-router.yaml
+-  - ../atenet-router-monitoring.yaml
++  # EKS: atenet-router-monitoring.yaml is a GKE Managed Prometheus
++  # PodMonitoring, a CRD EKS does not have.
+   - ../ate-otel-config.yaml
+   - ../ate-system-networkpolicies.yaml
++
++# EKS: the objectstore-plugin sidecars use S3 with EKS Pod Identity
++# credentials (no static keys; the AWS SDK default chain reads the Pod
++# Identity endpoint), and atelet uses the EKS AL2023 kubelet's image
++# credential provider (ecr-credential-provider). REPLACE_WITH_AWS_REGION is
++# filled in by the installer.
++patches:
++  - patch: |-
++      apiVersion: apps/v1
++      kind: Deployment
++      metadata:
++        name: ate-api-server
++        namespace: ate-system
++      spec:
++        template:
++          spec:
++            initContainers:
++            - name: objectstore-plugin
++              env:
++              - name: ATE_STORAGE_BACKEND
++                value: s3
++              - name: AWS_REGION
++                value: REPLACE_WITH_AWS_REGION
++  - patch: |-
++      apiVersion: apps/v1
++      kind: DaemonSet
++      metadata:
++        name: atelet
++        namespace: ate-system
++      spec:
++        template:
++          spec:
++            initContainers:
++            - name: objectstore-plugin
++              env:
++              - name: ATE_STORAGE_BACKEND
++                value: s3
++              - name: AWS_REGION
++                value: REPLACE_WITH_AWS_REGION
++            volumes:
++            - name: image-credential-provider-bin
++              hostPath:
++                path: /etc/eks/image-credential-provider
++                type: Directory
++            - name: image-credential-provider-config
++              hostPath:
++                path: /etc/eks/image-credential-provider/config.json
++                type: File

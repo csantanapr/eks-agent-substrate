@@ -1,0 +1,30 @@
+# Local settings and generated state
+config.local.env
+.work/
+
+# Local only, not part of the repository
+tmp/
+bin/
+video/
+substrate-rc2/
+
+# Credentials and cluster access: never commit
+*.pem
+*.key
+.env
+.env.*
+kubeconfig*
+*.kubeconfig
+
+# Agent settings that belong to one user (the shared skills are tracked)
+.claude/settings.local.json
+.kiro/settings/
+
+# Logs, caches, editors, OS
+*.log
+__pycache__/
+node_modules/
+.vscode/
+.idea/
+*.swp
+.DS_Store
