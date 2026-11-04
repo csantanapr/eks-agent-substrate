@@ -216,6 +216,27 @@ ensure_kubeconfig() {
   chmod 600 "$KUBECONFIG"
 }
 
+# ensure_pod_identity NAMESPACE KIND/NAME: EKS adds the Pod Identity
+# credentials (AWS_CONTAINER_CREDENTIALS_FULL_URI) to a pod only when it is
+# created, and a new association takes a few seconds to apply. Restart the
+# workload until every one of its pods has them.
+ensure_pod_identity() {
+  local ns="$1" obj="$2" sel missing
+  sel=$(kubectl -n "$ns" get "$obj" -o json | jq -r '.spec.selector.matchLabels | to_entries | map("\(.key)=\(.value)") | join(",")')
+  for attempt in 1 2 3 4; do
+    missing=$(kubectl -n "$ns" get pods -l "$sel" -o json | jq -r '.items[]
+      | select(.metadata.deletionTimestamp == null)
+      | select([.spec.containers[].env[]?.name] | index("AWS_CONTAINER_CREDENTIALS_FULL_URI") | not)
+      | .metadata.name')
+    [ -n "$missing" ] || { info "$ns/$obj has Pod Identity credentials"; return 0; }
+    [ "$attempt" -lt 4 ] || die "$ns/$obj pods still lack Pod Identity credentials: $missing"
+    info "$ns/$obj started before its Pod Identity association applied; restarting"
+    sleep 10
+    kubectl -n "$ns" rollout restart "$obj" >/dev/null
+    kubectl -n "$ns" rollout status "$obj" --timeout=5m >/dev/null
+  done
+}
+
 # role_for_sa NAMESPACE SERVICEACCOUNT POLICY_FILE: an IAM role that only EKS
 # Pod Identity for this cluster can assume, its inline policy, and the Pod
 # Identity association for the ServiceAccount, pointed at that role.

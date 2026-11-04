@@ -33,6 +33,7 @@ log "Deploy the gateway (ClusterIP only)"
 sed -e "s|REPLACE_WITH_AWS_REGION|$AWS_REGION|" -e "s|REPLACE_WITH_INFERENCE_PROFILE|$IP_ID|" \
   "$ROOT/llm-gateway/llm-gateway.yaml" | kubectl apply -f -
 kubectl -n llm-gateway rollout status deploy/llm-gateway --timeout=180s
+ensure_pod_identity llm-gateway deploy/llm-gateway
 
 log "Smoke test from inside the namespace (IAM can take a minute to settle)"
 body='{"model":"claude","max_tokens":40,"messages":[{"role":"user","content":"Reply with: ready"}]}'

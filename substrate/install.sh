@@ -50,4 +50,7 @@ cd "$SUBSTRATE_SRC"
   --rollout-timeout 5m \
   "$@"
 printf '%s' "$SUBSTRATE_TAG" > "$INSTALLED_TAG_FILE"
+# The objectstore sidecars and atelet's image pulls sign with Pod Identity.
+ensure_pod_identity ate-system deploy/ate-api-server
+ensure_pod_identity ate-system ds/atelet
 kubectl -n ate-system get pods
