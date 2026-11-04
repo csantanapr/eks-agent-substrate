@@ -48,6 +48,7 @@
   .notes { display: none; position: fixed; bottom: 0; left: 0; right: 0; max-height: 34vh; overflow: auto;
     background: #1d2733; border-top: 2px solid var(--accent); padding: 1rem 6vw; font-size: 1.05rem; color: var(--ink); }
   body.show-notes .slide.active .notes { display: block; }
+  body.show-notes .foot { display: none; }
   svg text { font-family: inherit; }
   .fill { flex: 1; display: flex; align-items: center; justify-content: center; }
   .fill svg { width: 100%; height: 100%; max-height: 70vh; }
@@ -775,7 +776,7 @@ curl localhost:8001     <span class="c"># resumes</span></code></pre>
 </section>
 
 </div>
-<div class="foot"><span>Running Agent Substrate in Production on EKS</span><span id="pageno"></span></div>
+<div class="foot"><span>Running Agent Substrate on EKS</span><span id="pageno"></span></div>
 <script>
   const slides = Array.from(document.querySelectorAll('section.slide'));
   let i = Math.max(0, Math.min(slides.length - 1, (parseInt(location.hash.slice(1), 10) || 1) - 1));
