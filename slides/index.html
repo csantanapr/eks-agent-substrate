@@ -44,6 +44,10 @@
   .pill { display: inline-block; padding: .25em .8em; border-radius: 999px; background: var(--panel);
     border: 1px solid var(--line); margin: .2em .3em .2em 0; font-size: 1.05rem; }
   .big { font-size: 1.8rem; line-height: 1.4; }
+  .installer { display: grid; grid-template-columns: 2.4fr 1fr; gap: 1.6rem; align-items: center; }
+  /* crop the PNG's backdrop to the terminal window (x 140-1780, y 70-1010 of 1920x1080) */
+  .installer .term { aspect-ratio: 1640 / 940; overflow: hidden; border-radius: 12px; }
+  .installer .term img { width: 117.07%; margin: -4.27% 0 0 -8.54%; display: block; }
   .thanks { display: grid; grid-template-columns: 1fr auto; gap: 3rem; align-items: center; }
   .speaker { display: flex; align-items: center; gap: 1.2rem; margin-top: 2.5rem; font-size: 1.4rem; }
   .speaker img { width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 3px solid #ff9900; }
@@ -1024,6 +1028,21 @@ curl localhost:8001     <span class="c"># resumes</span></code></pre>
     </ul></div>
   </div>
   <aside class="notes">Most rough edges on the last slide have a fix the project can take, and AWS can help with each one. Install: an EKS profile in ate-setup, with S3 asset staging, s3:// URLs, the AL2023 credential provider paths and no GCP-only checks, so you install on EKS with flags and no patches. A reference blueprint, in eksctl, Terraform or CDK, with the IAM and buckets from this talk, so a blank account gets to a running install in one command. A metrics overlay for Amazon Managed Service for Prometheus, for observability without the GKE CRD. Per-actor access: per-actor S3 credentials in the credential exchange, with STS session policies scoped to the actor's prefix or S3 Access Grants; that gives parity with the GCS per-actor tokens, so a compromised node can't read every snapshot. And an actor JWT to AWS token exchange with AssumeRoleWithWebIdentity, for per-actor AWS access when an actor really needs it. Plugins and drivers: the Secrets Manager credential provider is built as credprovider-aws-secret-manager; next is donating it to agent-substrate-plugins, for production actor secrets without Kubernetes Secrets. A password file for ate-api-server's database logins, re-read on each new connection, so Secrets Manager rotation needs no restart. And an EFS CSI controller endpoint Substrate can call, a TLS listener in the driver or an add-on option, so per-actor EFS and S3 Files volumes work with the add-on alone.</aside>
+</section>
+
+<!-- installer -->
+<section class="slide">
+  <h2>An interactive installer on top of the same scripts <span class="tag">proof of concept</span></h2>
+  <div class="installer">
+    <div class="term"><img src="installer-provision.png" alt="The installer's Provision screen: a checklist of install steps with times on the left, and the live script log on the right"></div>
+    <div class="card"><h3 class="accent">What it adds</h3><ul>
+      <li><b>Checks first:</b> tools, account, Region, vCPU quota, nested virtualization</li>
+      <li><b>Live checklist</b> from the scripts' own steps</li>
+      <li><b>Teardown</b> from the Done screen</li>
+      <li>Same <code>create-cluster.sh</code> and <code>deploy.sh</code> underneath</li>
+    </ul></div>
+  </div>
+  <aside class="notes">This is a proof of concept of an interactive installer, the same idea as the interactive installer for GKE. It is a small terminal UI written in Go, and it adds no install logic of its own: it runs create-cluster.sh and deploy.sh and reads their step lines. First it checks your setup: the tool versions, which account and role you are signed in as, the Region, whether the cluster name is free, that the instance type supports nested virtualization, and the EC2 vCPU quota. Then it shows a review of the settings, and while it installs it turns the scripts' steps into a live checklist with times, next to the log. The Done screen prints how to reach the cluster and has a Teardown action that runs clean.sh and delete-cluster.sh. A full install took about 28 minutes. It lives in the installer folder of the talk repo. The scripted path stays the supported one.</aside>
 </section>
 
 <!-- 18 -->
