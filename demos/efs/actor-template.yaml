@@ -1,0 +1,37 @@
+# The counter-efs actor template: the counter demo with its data volume on
+# Amazon EFS. demos/efs/deploy.sh fills it in and creates it once in each
+# counter atespace (gvisor and microvm), with kubectl ate --preview create
+# actor-template. It is a Substrate ActorTemplate, not a Kubernetes object, so
+# it has no apiVersion or kind. Templates are immutable, so the script skips
+# one that exists.
+#   volumes        data asks StorageClass SC for a new 1 GiB volume per actor
+#                  (external.template): each actor gets its own access point
+#   volumeMounts   the counter sees that volume at /home/counter and writes
+#                  its file counter there, so the count lives on EFS, not in
+#                  the snapshot
+#
+# Placeholders, filled in by render_yaml (lib/common.sh):
+#   atespace, workload   ate-demo-counter and counter (gvisor), or
+#                        ate-demo-counter-microvm and counter-microvm
+#   COUNTER_IMAGE        the counter image in private ECR, pinned by digest
+#   SC                   the StorageClass name, efs-ate
+# Inside { }, an unquoted placeholder has no braces (a dollar sign and the
+# name), so this file parses as YAML before it is filled in too.
+#
+# Learn more:
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/guides/csi-volumes.md
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/reference/kubectl-ate.md
+
+metadata: { atespace: $atespace, name: counter-efs }
+workerSelector: { matchLabels: { workload: $workload } }
+containers:
+- name: counter
+  image: ${COUNTER_IMAGE}
+  command: [/ko-app/counter]
+  wakeupProbe: { httpGet: { path: /readyz, port: 80 } }
+  volumeMounts: [{ name: data, mountPath: /home/counter }]
+resources: { limits: { cpuMillicores: 1000, memoryBytes: 536870912 } }
+snapshotConfig: { preferredFidelity: SNAPSHOT_FIDELITY_MEMORY }
+volumes:
+- name: data
+  external: { template: { capacityBytes: 1073741824, storageClassName: $SC } }

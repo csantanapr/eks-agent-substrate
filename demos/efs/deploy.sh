@@ -168,29 +168,18 @@ render_yaml "$ROOT/demos/efs/storage.yaml" SVC NS SC fs EFS_UID EFS_GID | kubect
 log "Counter templates with the data volume on EFS"
 digest=$(aws_ ecr describe-images --repository-name "$ECR_PREFIX/counter" \
   --image-ids "imageTag=$SUBSTRATE_TAG" --query 'imageDetails[0].imageDigest' --output text)
+# shellcheck disable=SC2034  # render_yaml reads COUNTER_IMAGE and workload by name
 COUNTER_IMAGE="$ECR_REGISTRY/$ECR_PREFIX/counter@$digest"
 # The external volume template asks StorageClass $SC for a new volume per
-# actor, mounted at /home/counter.
+# actor, mounted at /home/counter (actor-template.yaml).
 for class in gvisor microvm; do
   atespace=ate-demo-counter workload=counter
+  # shellcheck disable=SC2034
   [ "$class" = microvm ] && { atespace=ate-demo-counter-microvm; workload=counter-microvm; }
   if kubectl ate get actor-template counter-efs -a "$atespace" >/dev/null 2>&1; then
     info "$atespace/counter-efs exists"; continue
   fi
-  cat <<EOF | kubectl ate --preview create actor-template -f -
-metadata: { atespace: $atespace, name: counter-efs }
-workerSelector: { matchLabels: { workload: $workload } }
-containers:
-- name: counter
-  image: $COUNTER_IMAGE
-  command: [/ko-app/counter]
-  wakeupProbe: { httpGet: { path: /readyz, port: 80 } }
-  volumeMounts: [{ name: data, mountPath: /home/counter }]
-resources: { limits: { cpuMillicores: 1000, memoryBytes: 536870912 } }
-snapshotConfig: { preferredFidelity: SNAPSHOT_FIDELITY_MEMORY }
-volumes:
-- name: data
-  external: { template: { capacityBytes: 1073741824, storageClassName: $SC } }
-EOF
+  render_yaml "$ROOT/demos/efs/actor-template.yaml" atespace workload COUNTER_IMAGE SC \
+    | kubectl ate --preview create actor-template -f -
 done
 info "next: demos/efs/verify.sh"
