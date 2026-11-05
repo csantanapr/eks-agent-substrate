@@ -45,8 +45,9 @@ fresh_actor() {
     kubectl ate delete actor "$name" -a "$ns" >/dev/null
   fi
   kubectl ate create actor "$name" -a "$ns" --template "$CP_TEMPLATE" >/dev/null
-  # Created before the first request, so the actor starts with it.
-  if kubectl ate get egress-policy "$name" -a "$ns" >/dev/null 2>&1; then
+  # Created before the first request, so the actor starts with it. `get
+  # egress-policy` exits 0 when there is none and prints nothing on stdout.
+  if [ -n "$(kubectl ate get egress-policy "$name" -a "$ns" -o json 2>/dev/null)" ]; then
     kubectl ate delete egress-policy "$name" -a "$ns" >/dev/null
   fi
   kubectl ate create egress-policy "$name" -a "$ns" -f - <<<"$policy" >/dev/null
