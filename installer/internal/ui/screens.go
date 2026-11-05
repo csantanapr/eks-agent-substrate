@@ -306,7 +306,7 @@ func (m Model) settingsView(w, h int) string {
 			section = f.section
 			left = append(left, "", "  "+sSection.Render(section))
 			if section == "Node groups" {
-				left = append(left, "    "+sMuted.Render(pad("group", 12)+pad("instance type", 24)+"nodes"))
+				left = append(left, "    "+sMuted.Render(pad("group", 13)+pad("instance type", 24)+" nodes"))
 			}
 		}
 		if f.group != "" {
@@ -666,14 +666,16 @@ func (m Model) done(w, h int) string {
 		kv("Amazon S3", c+"-snap-"+acct+"-"+r),
 		kv("", c+"-assets-"+acct+"-"+r),
 		kv("Amazon RDS", c+"-pg, PostgreSQL, private"),
-		kv("Secrets", c+"/ate-owner, …/ate-readwrite"),
+		kv("Secrets", c+"/ate-owner"),
+		kv("", c+"/ate-readwrite"),
 		kv("Amazon ECR", c+"/counter"),
 		kv("IAM roles", "ate-api-server, atelet, llm-gateway"),
 		kv("Demo", "counter actors on gVisor and microVM"),
 		"",
 		"  " + sSection.Render("Reach it"),
 		"    " + sCode.Render("cd "+m.opt.Repo.Dir),
-		"    " + sCode.Render("export KUBECONFIG=$PWD/.work/kubeconfig PATH=$PWD/.work/bin:$PATH"),
+		"    " + sCode.Render("export KUBECONFIG=$PWD/.work/kubeconfig"),
+		"    " + sCode.Render("export PATH=$PWD/.work/bin:$PATH"),
 		"    " + sCode.Render("kubectl get nodes -L ate.dev/pool"),
 		"    " + sCode.Render("kubectl ate get actors -A"),
 		"",
@@ -700,8 +702,8 @@ func (m Model) done(w, h int) string {
 		"  "+sSection.Render("Teardown")+"  "+sMuted.Render("press t, then type the cluster name"),
 		"    "+sCode.Render("./clean.sh --yes")+sMuted.Render("  then  ")+sCode.Render("./delete-cluster.sh --yes"),
 	)
-	cols := hjoin(2, fit(strings.Join(left, "\n"), leftW, h-2), fit(strings.Join(right, "\n"), rightW, h-2))
-	return "\n" + pad(title, w) + "\n" + cols
+	cols := hjoin(2, fit(strings.Join(left, "\n"), leftW, h-3), fit(strings.Join(right, "\n"), rightW, h-3))
+	return "\n" + pad(title, w) + "\n\n" + cols
 }
 
 func (m Model) teardownView(w, h int) string {

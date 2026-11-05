@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 	_ "time/tzdata"
@@ -51,6 +52,7 @@ func main() {
 	redact := flag.Bool("redact", false, "mask the AWS account id on screen and in snapshots")
 	size := flag.String("snapshot-size", "126x33", "snapshot size in cells, WxH")
 	html := flag.String("html", "", "rewrite the HTML page of every NAME.ansi snapshot in this directory, then exit")
+	last := flag.Bool("done", false, "open on the Done screen of the checkout's last install (its summary and Teardown)")
 	flag.Parse()
 
 	if *html != "" {
@@ -90,7 +92,8 @@ func main() {
 			fail(fmt.Errorf("record: %w", err))
 		}
 		opt.DryRun = true
-		opt.Replay = &run.Replay{Events: evs, Speed: *speed, MaxGap: 1500 * time.Millisecond}
+		// The replay keeps the recorded wall clock, so its times are the run's.
+		opt.Replay = &run.Replay{Events: evs, Speed: *speed, MaxGap: 1500 * time.Millisecond, Clock: h.Started}
 		h.Values = merge(h.Values, map[string]string{"CLUSTER_NAME": h.Cluster, "AWS_REGION": h.Region})
 		for k, v := range h.Values {
 			if opt.Seed[k] == "" {
@@ -105,6 +108,18 @@ func main() {
 			opt.Checks = []preflight.Result{}
 		}
 	}
+	if *last {
+		l, err := lastRun(dir)
+		if err != nil {
+			fail(err)
+		}
+		opt.Last = l
+		for k, v := range l.Header.Values {
+			if opt.Seed[k] == "" {
+				opt.Seed[k] = v
+			}
+		}
+	}
 	if opt.SnapshotDir != "" {
 		// Snapshots carry full color whatever the terminal is.
 		lipgloss.SetColorProfile(termenv.TrueColor)
@@ -114,6 +129,21 @@ func main() {
 	if _, err := p.Run(); err != nil {
 		fail(err)
 	}
+}
+
+// lastRun loads the newest install record in DIR/.work/installer/.
+func lastRun(dir string) (*ui.LastRun, error) {
+	recs, _ := filepath.Glob(filepath.Join(dir, ".work", "installer", "install-*.jsonl"))
+	if len(recs) == 0 {
+		return nil, fmt.Errorf("no install record in %s; run an install first", filepath.Join(dir, ".work", "installer"))
+	}
+	sort.Strings(recs) // install-YYYYMMDD-HHMMSS.jsonl sorts by time
+	rec := recs[len(recs)-1]
+	h, evs, err := run.LoadRecord(rec)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", rec, err)
+	}
+	return &ui.LastRun{Header: h, Events: evs, LogPath: strings.TrimSuffix(rec, ".jsonl") + ".log"}, nil
 }
 
 // findRepo returns dir, or the current directory, or its parent (go run .

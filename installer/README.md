@@ -49,6 +49,7 @@ directory's `.work/`, so a second checkout drives a second cluster.
 | `--record FILE` | built in | the record `--dry-run` replays (default `testdata/install.jsonl`) |
 | `--speed N` | 60 | `--dry-run` replays N times faster (long gaps are capped at 1.5 s) |
 | `--auto` | off | walk the screens on their own; with `--dry-run`, a hands-off demo that quits at Done. It never starts a teardown |
+| `--done` | off | open on the Done screen of the checkout's last install (read from `.work/installer/`), with its summary and Teardown |
 | `--redact` | off | mask the AWS account id on screen and in snapshots (`1357xxxx4534`) |
 | `--snapshot-size WxH` | `126x33` | the size snapshots are drawn at |
 | `--html DIR` | | rewrite `NAME.html` from every `NAME.ansi` in DIR, then exit |
@@ -76,7 +77,18 @@ go run . --dry-run --auto       # the same, hands off
 ```
 
 `testdata/install.jsonl` is the record of the live run that created the
-`substrate-tui` cluster, with the account id replaced by `111122223333`.
+`substrate-tui` cluster on 2026-11-05, with the account id replaced by
+`111122223333` and three unused cloud-specific lines of ate-setup's
+settings dump left out. In that run the counter check was held for 28 minutes before
+it started, so that it would not share 127.0.0.1:8001 and 8002 with another
+checkout's counter check on the same host; its 38:54 on the Done screen
+includes the hold (the check itself took about 10 minutes).
+
+To come back to a finished install later (its summary, or Teardown):
+
+```bash
+./installer --repo /path/to/checkout --done
+```
 
 ## Screenshots
 
@@ -91,7 +103,8 @@ first shows it (`01-welcome`, `02-check`, `03-settings`, `04-review`, one
 `s`), as `NAME.ansi` and as `NAME.html`: a 1920x1080 page with the screen in
 a terminal window. `docs/render.mjs` turns the pages into PNGs with headless
 Chromium (Playwright from the talk-video-record skill). The PNGs in `docs/`
-come from the live install of `substrate-tui`:
+come from the live install of `substrate-tui` (`--redact`); `done.png` was
+drawn by `--done` from that install's record, after a layout fix:
 
 | File | Screen |
 |---|---|
@@ -153,4 +166,7 @@ reach it before relying on these hashes.
 - The Secrets Manager credential provider demo (account-wide secret names)
   and the OpenClaw demo (needs `OPENCLAW_DIR`) are listed but not offered.
 - The cost estimate knows m8i on-demand prices in us-west-2 only.
-- No upgrade track, no `curl | bash` launcher, Linux and macOS only.
+- `demos/counter/verify.sh` binds 127.0.0.1:8001 and 8002, so two checkouts
+  on one host must not run it at the same time; the installer does not
+  check for that yet.
+- No upgrade track, no one-line web launcher, Linux and macOS only.

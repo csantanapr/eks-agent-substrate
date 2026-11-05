@@ -218,6 +218,44 @@ func TestSettingsEditAndValidate(t *testing.T) {
 	}
 }
 
+// --done reopens a finished install on its Done screen, with the same
+// checklist the run ended with, and Teardown offered.
+func TestReopenLastRun(t *testing.T) {
+	repo, err := config.LoadRepo(filepath.Join("..", "..", ".."))
+	if err != nil {
+		t.Skip(err)
+	}
+	h, evs, err := run.LoadRecord(filepath.Join("..", "..", "testdata", "install.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := New(Options{Repo: repo, Seed: h.Values, Last: &LastRun{Header: h, Events: evs, LogPath: "x.log"}})
+	if m.screen != sDone || m.exitCode != 0 || m.running {
+		t.Fatalf("screen %v exit %d running %v", m.screen, m.exitCode, m.running)
+	}
+	if len(m.groups) != 3 || m.groups[1].Total == 0 || m.account != "111122223333" {
+		t.Errorf("%d groups, deploy total %d, account %q", len(m.groups), m.groups[1].Total, m.account)
+	}
+	if d := m.runEnd.Sub(m.runStart); d < 30*time.Minute {
+		t.Errorf("run took %v by the record", d)
+	}
+	v := m.render(126, 33)
+	checkSize(t, "done", v, 126, 33)
+	for _, want := range []string{"Agent Substrate is running on substrate-tui", "./clean.sh --yes", "export PATH=$PWD/.work/bin:$PATH"} {
+		if !strings.Contains(plan.StripANSI(v), want) {
+			t.Errorf("done screen lacks %q", want)
+		}
+	}
+	m = press(t, m, "t")
+	if m.screen != sTeardown {
+		t.Errorf("t opens the teardown confirm, screen %v", m.screen)
+	}
+	m = press(t, m, "esc")
+	if m.screen != sDone {
+		t.Errorf("esc goes back, screen %v", m.screen)
+	}
+}
+
 func TestRedact(t *testing.T) {
 	m := Model{opt: Options{Redact: true}}
 	if got := m.redact("substrate-tui-snap-135728714534-us-west-2"); got != "substrate-tui-snap-1357xxxx4534-us-west-2" {

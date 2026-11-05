@@ -63,6 +63,17 @@ type Options struct {
 	Redact bool
 	// Now is the clock (tests); default time.Now.
 	Now func() time.Time
+	// Last, when set, opens on the Done screen of that finished run (the
+	// record of a real install in the checkout's .work/installer/), so the
+	// summary and Teardown are there again after the installer was closed.
+	Last *LastRun
+}
+
+// LastRun is a recorded install to reopen.
+type LastRun struct {
+	Header  run.Header
+	Events  []run.Event
+	LogPath string
 }
 
 // Model is the Bubble Tea model.
@@ -79,6 +90,8 @@ type Model struct {
 	input  textinput.Model
 	errs   map[string]string
 	msg    string
+	// msgUntil, when set, clears msg after that time (short notices).
+	msgUntil time.Time
 
 	checks  []preflight.Result
 	pending int
@@ -145,7 +158,46 @@ func New(opt Options) Model {
 		Frames: []string{"⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"}, FPS: time.Second / 10}), spinner.WithStyle(sOrange))
 	m.snaps = snap.Writer{Dir: opt.SnapshotDir, Title: "eks-talk installer — " + filepath.Base(opt.Repo.Dir)}
 	m.w, m.h = opt.SnapW, opt.SnapH
+	if opt.Last != nil {
+		m.loadLast(*opt.Last)
+	}
 	return m
+}
+
+// loadLast rebuilds the checklist of a recorded run and shows its end.
+func (m *Model) loadLast(l LastRun) {
+	_ = json.Unmarshal(l.Header.Checks, &m.checks)
+	for _, c := range m.checks {
+		if c.ID == "identity" {
+			if f := strings.Fields(c.Detail); len(f) > 1 {
+				m.account = strings.TrimSuffix(f[1], ",")
+			}
+		}
+	}
+	m.groups, m.byID = nil, map[string]int{}
+	m.runStart, m.logPath = l.Header.Started, l.LogPath
+	m.runEnd = m.runStart
+	for _, ev := range l.Events {
+		t := l.Header.Started.Add(time.Duration(ev.Ms) * time.Millisecond)
+		m.runEnd, m.lastEvent = t, t
+		g := m.group(ev.ID)
+		switch ev.Kind {
+		case run.Start:
+			g.Begin(t)
+			m.addLog("$ " + ev.Display)
+		case run.Line:
+			g.Line(t, ev.Text)
+			m.addLog(plan.StripANSI(ev.Text))
+		case run.Exit:
+			g.Exit(t, ev.Code)
+		case run.End:
+			m.exitCode = ev.Code
+		}
+	}
+	m.screen = sDone
+	if m.exitCode != 0 {
+		m.screen = sProvision
+	}
 }
 
 func (m Model) now() time.Time {
@@ -169,6 +221,9 @@ func tick() tea.Cmd {
 
 // Init implements tea.Model.
 func (m Model) Init() tea.Cmd {
+	if m.opt.Last != nil {
+		return tea.Batch(m.spin.Tick, tick(), m.snapLater("06-done"))
+	}
 	return tea.Batch(m.spin.Tick, tick(), m.snapLater("01-welcome"))
 }
 
@@ -202,6 +257,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spin, c = m.spin.Update(msg)
 		return m, c
 	case tickMsg:
+		if m.msg != "" && !m.msgUntil.IsZero() && m.opt.Now().After(m.msgUntil) {
+			m.msg, m.msgUntil = "", time.Time{}
+		}
 		if m.opt.Auto {
 			return m.auto()
 		}
@@ -250,9 +308,10 @@ func (m Model) onKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.opt.SnapshotDir == "" {
 			m.msg = "set INSTALLER_SNAPSHOT_DIR to save snapshots"
 		}
+		m.msgUntil = m.opt.Now().Add(3 * time.Second)
 		return m, nil
 	}
-	m.msg = ""
+	m.msg, m.msgUntil = "", time.Time{}
 	switch m.screen {
 	case sWelcome:
 		switch key {
