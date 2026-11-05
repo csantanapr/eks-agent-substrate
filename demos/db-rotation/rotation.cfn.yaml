@@ -4,6 +4,16 @@
 # on the one not in use, so the login running pods hold keeps working until
 # the next rotation. The functions run in the cluster's private subnets and
 # reach RDS through their own security group.
+#
+# demos/db-rotation/deploy.sh deploys it with aws cloudformation deploy. The
+# Transform line runs before the stack is made: it turns each
+# HostedRotationLambda into a rotation function AWS maintains.
+#
+# Learn more:
+#   https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/transform-aws-secretsmanager.html
+#   https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-properties-secretsmanager-rotationschedule-hostedrotationlambda.html
+#   https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/transform-section-structure.html
+#   https://docs.aws.amazon.com/secretsmanager/latest/userguide/rotation-strategy.html
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::SecretsManager-2024-09-16
 Parameters:
@@ -14,6 +24,8 @@ Parameters:
   SecurityGroupId: { Type: String }
   NamePrefix: { Type: String }
   Schedule: { Type: String, Default: "rate(30 days)" }
+# One rotation schedule per login. Each function signs in with the master
+# secret to set the other user's password.
 Resources:
   OwnerRotation:
     Type: AWS::SecretsManager::RotationSchedule

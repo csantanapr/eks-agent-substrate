@@ -19,9 +19,22 @@
 #            to the cluster security group, master password managed by RDS in
 #            Secrets Manager
 #   Secrets  the owner and readwrite logins Substrate uses
+#
+# The first step of deploy.sh. It needs the cluster: the VPC, the private
+# subnets and the cluster security group are read from EKS.
+#
+# Learn more:
+#   https://docs.aws.amazon.com/AmazonS3/latest/userguide/access-control-block-public-access.html
+#   https://docs.aws.amazon.com/eks/latest/userguide/pod-identities.html
+#   https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/rds-secrets-manager.html
+#   https://docs.aws.amazon.com/vpc/latest/userguide/vpc-security-groups.html
 set -euo pipefail
 . "$(dirname "$0")/../lib/common.sh"
 
+# EKS attaches the cluster security group to every node, so a rule that
+# admits it admits the cluster. The private subnets carry the
+# kubernetes.io/role/internal-elb tag.
+#   https://docs.aws.amazon.com/eks/latest/userguide/sec-group-reqs.html
 vpc=$(aws_ eks describe-cluster --name "$CLUSTER_NAME" --query cluster.resourcesVpcConfig.vpcId --output text)
 cluster_sg=$(aws_ eks describe-cluster --name "$CLUSTER_NAME" --query cluster.resourcesVpcConfig.clusterSecurityGroupId --output text)
 subnets=$(aws_ ec2 describe-subnets \
@@ -32,6 +45,11 @@ read -ra private_subnets <<<"$subnets"
 # shellcheck disable=SC2207
 TAG_ARGS=($(tags_cli))
 
+# BucketOwnerEnforced turns ACLs off, so only policies grant access. The
+# bucket policy denies every request made without TLS (aws:SecureTransport).
+#   https://docs.aws.amazon.com/AmazonS3/latest/userguide/about-object-ownership.html
+#   https://docs.aws.amazon.com/AmazonS3/latest/userguide/security-best-practices.html
+#   https://docs.aws.amazon.com/AmazonS3/latest/userguide/mpu-abort-incomplete-mpu-lifecycle-config.html
 log "S3 buckets"
 for b in "$SNAP_BUCKET" "$ASSET_BUCKET"; do
   if ! owned_bucket "$b"; then
@@ -61,6 +79,9 @@ EOF
   info "$b"
 done
 
+# Scan on push checks each pushed image for known vulnerabilities.
+#   https://docs.aws.amazon.com/AmazonECR/latest/userguide/Repositories.html
+#   https://docs.aws.amazon.com/AmazonECR/latest/userguide/image-scanning.html
 log "ECR repositories"
 for r in counter openclaw-gateway openclaw-actor openclaw-dashboard; do
   repo="$ECR_PREFIX/$r"
@@ -72,6 +93,10 @@ for r in counter openclaw-gateway openclaw-actor openclaw-dashboard; do
   info "$repo"
 done
 
+# role_for_sa (lib/common.sh) makes each role and its Pod Identity
+# association. A pod gets temporary credentials for the role from the Pod
+# Identity Agent on its node; no key is stored anywhere.
+#   https://docs.aws.amazon.com/eks/latest/userguide/pod-id-association.html
 log "IAM roles for EKS Pod Identity"
 cat > "$WORK/policy-ate-api-server.json" <<EOF
 {"Version":"2012-10-17","Statement":[
@@ -90,6 +115,9 @@ EOF
 role_for_sa ate-system ate-api-server "$WORK/policy-ate-api-server.json"
 role_for_sa ate-system atelet "$WORK/policy-atelet.json"
 
+# A DB subnet group names the subnets RDS may place the instance in. A
+# security group is a stateful firewall on the instance's network interface.
+#   https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_VPC.WorkingWithRDSInstanceinaVPC.html
 log "Amazon RDS for PostgreSQL (private)"
 if ! aws_exists rds describe-db-subnet-groups --db-subnet-group-name "$DB_ID"; then
   aws_ rds create-db-subnet-group --db-subnet-group-name "$DB_ID" \
@@ -105,7 +133,8 @@ if [[ "$db_sg" == "None" ]]; then
     --query GroupId --output text)
 fi
 # Ingress: 5432 from the cluster security group, and from the rotation
-# Lambda's group when demos/db-rotation added one. Nothing else.
+# Lambda's group when demos/db-rotation added one. Nothing else. Any other
+# rule stops the script, which never removes a rule.
 rotation_sg=$(aws_ ec2 describe-security-groups --filters "Name=vpc-id,Values=$vpc" "Name=group-name,Values=$ROTATION_SG_NAME" \
   --query 'SecurityGroups[0].GroupId' --output text)
 rules=$(aws_ ec2 describe-security-groups --group-ids "$db_sg" --output json \
@@ -122,6 +151,10 @@ print("other" if bad else "ok" if cluster in groups else "none")' "$cluster_sg" 
           --ip-permissions "IpProtocol=tcp,FromPort=5432,ToPort=5432,UserIdGroupPairs=[{GroupId=$cluster_sg}]" >/dev/null ;;
   *) die "security group $DB_ID ($db_sg) has ingress rules other than 5432 from $cluster_sg (and $ROTATION_SG_NAME): $rules" ;;
 esac
+# --manage-master-user-password: RDS makes the admin password and keeps it in
+# Secrets Manager. --ca-certificate-identifier picks the CA that signs the
+# server certificate clients verify.
+#   https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/UsingWithRDS.SSL.html
 if ! aws_exists rds describe-db-instances --db-instance-identifier "$DB_ID"; then
   multi_az=--no-multi-az; [ "$DB_MULTI_AZ" = true ] && multi_az=--multi-az
   protect=--no-deletion-protection; [ "${DB_DELETION_PROTECTION:-false}" = true ] && protect=--deletion-protection
@@ -161,5 +194,8 @@ for who in owner readwrite; do
   info "$name"
 done
 
+# The RDS CA bundle lets clients use sslmode=verify-full: TLS, a server
+# certificate that chains to this CA, and a host name that matches it.
+#   https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/PostgreSQL.Concepts.General.SSL.html
 curl -fsS -o "$WORK/rds-global-bundle.pem" https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
 info "RDS CA bundle: $WORK/rds-global-bundle.pem"

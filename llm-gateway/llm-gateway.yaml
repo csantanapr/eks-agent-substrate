@@ -6,6 +6,15 @@
 #   the llm-gateway namespace itself (for smoke tests).
 # - Actors speak the Anthropic Messages or OpenAI Chat Completions API and
 #   send model "claude"; the gateway pins the Bedrock model.
+#
+# llm-gateway/deploy.sh applies it after filling in the region and the
+# inference profile placeholders.
+#
+# Learn more:
+#   https://agentgateway.dev/docs/standalone/latest/integrations/llm/providers/bedrock/
+#   https://kubernetes.io/docs/concepts/services-networking/network-policies/
+#   https://kubernetes.io/docs/concepts/services-networking/service/
+#   https://docs.aws.amazon.com/eks/latest/userguide/pod-identities.html
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -17,6 +26,8 @@ metadata:
   name: llm-gateway
   namespace: llm-gateway
 ---
+# agentgateway config: one model named claude, served by Bedrock. runtimeOnly
+# always uses the Bedrock Runtime endpoint (the Converse API).
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -94,6 +105,8 @@ spec:
   ports:
   - { name: http, port: 80, targetPort: llm }
 ---
+# Once a NetworkPolicy selects a pod, only the traffic it lists gets in: here
+# atenet-egress in ate-system, and any pod in this namespace (podSelector {}).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

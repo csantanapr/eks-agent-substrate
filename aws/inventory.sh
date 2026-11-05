@@ -5,6 +5,13 @@
 #   aws/inventory.sh --all    that, plus the cluster and the launch template
 #
 # A failed AWS read stops the script instead of passing as "not found".
+#
+# clean.sh ends with it and delete-cluster.sh starts with it. When a script
+# gains a resource, add a check for it here too.
+#
+# Learn more:
+#   https://docs.aws.amazon.com/eks/latest/userguide/pod-id-association.html
+#   https://docs.aws.amazon.com/vpc/latest/userguide/vpc-security-groups.html
 set -euo pipefail
 . "$(dirname "$0")/../lib/common.sh"
 left=0
@@ -28,6 +35,7 @@ if cluster_exists; then
   fi
 fi
 
+# AWS resources outside the cluster: checked even when the cluster is gone.
 for sa in $POD_IDENTITY_SAS; do
   role="${IAM_PREFIX}-${sa#*/}"
   aws_exists iam get-role --role-name "$role" && found "IAM role $role"

@@ -6,6 +6,16 @@
 # tag with no patch of its own gets the newest patch that applies cleanly.
 # Idempotent: an existing clone with the patch applied is reused; each tag
 # has its own clone, so switching releases leaves the old one in place.
+#
+# deploy.sh calls it, and so does clean.sh, to get the installer of the
+# release the cluster runs. ate-setup installs and removes Substrate.
+# kubectl-ate is the kubectl plugin for actors (kubectl ate get, proxy,
+# suspend).
+#
+# Learn more:
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/get-started/quickstart.md
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/reference/kubectl-ate.md
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/guides/upgrade.md
 set -euo pipefail
 . "$(dirname "$0")/../lib/common.sh"
 need git; need go
@@ -57,6 +67,8 @@ if [ ! -f "$marker" ]; then
     || warn "no patch for $SUBSTRATE_TAG; $(basename "$PATCH") applies cleanly, using it. Check the install, then save it as patches/substrate-${SUBSTRATE_TAG}-eks.patch"
   log "Apply $(basename "$PATCH")"
   git -C "$SUBSTRATE_SRC" apply "$PATCH"
+  # The patch leaves a REPLACE_WITH_AWS_REGION placeholder in the install
+  # kustomization; write AWS_REGION in its place.
   kust="$SUBSTRATE_SRC/manifests/ate-install/base/kustomization.yaml"
   python3 - "$kust" "$AWS_REGION" <<'EOF'
 import sys
@@ -70,6 +82,8 @@ fi
 
 log "Build ate-setup and kubectl-ate ($(go version | awk '{print $3}'))"
 mkdir -p "$WORK/bin"
+# -mod=vendor builds from the modules vendored in the clone, so the build
+# downloads no Go modules.
 (
   cd "$SUBSTRATE_SRC"
   export GOFLAGS=-mod=vendor CGO_ENABLED=0

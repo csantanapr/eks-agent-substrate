@@ -12,6 +12,16 @@
 #               ~/.kube/config is never read or changed
 #   tags_*      the TAGS list, plus the owner tag, in each format the AWS CLI
 #               and eksctl want
+#
+# Every script sources this file first, so read it before the others. It
+# only defines settings and helpers; the scripts that call role_for_sa and
+# the tags_* helpers create the AWS resources.
+#
+# Learn more:
+#   https://docs.aws.amazon.com/eks/latest/userguide/pod-identities.html
+#   https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html
+#   https://docs.aws.amazon.com/eks/latest/userguide/create-kubeconfig.html
+#   https://docs.aws.amazon.com/IAM/latest/UserGuide/confused-deputy.html
 
 [ "${BASH_VERSINFO[0]}" -ge 4 ] || { echo "bash 4 or newer is required (macOS: brew install bash)" >&2; exit 1; }
 
@@ -75,6 +85,8 @@ aws_exists() {
   die "aws $1 $2 failed: $err"
 }
 
+# One STS call shows whose credentials these are. Its ARN also carries the
+# partition (aws, aws-cn, ...) and the account id that every ARN below needs.
 _caller_arn="$(aws_ sts get-caller-identity --query Arn --output text 2>/dev/null)" \
   || die "no AWS credentials: configure a profile and set AWS_PROFILE in config.local.env"
 PARTITION="$(cut -d: -f2 <<<"$_caller_arn")"
@@ -254,6 +266,9 @@ role_for_sa() {
   local TAG_ARGS=($(tags_cli))
   local ns="$1" sa="$2" policy="$3" role="${IAM_PREFIX}-$2" role_arn ids id current
   role_arn="arn:$PARTITION:iam::$ACCOUNT:role/$role"
+  # The trust policy lets only the EKS Pod Identity service principal assume
+  # the role. The aws:SourceAccount and aws:SourceArn conditions limit it to
+  # this cluster, which guards against the confused deputy problem.
   cat > "$WORK/pod-identity-trust.json" <<EOF
 {"Version":"2012-10-17","Statement":[{"Effect":"Allow",
  "Principal":{"Service":"pods.eks.amazonaws.com"},

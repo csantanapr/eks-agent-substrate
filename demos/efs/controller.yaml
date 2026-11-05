@@ -4,6 +4,16 @@
 # Substrate servicedns certificate and accepts only ate-api-server's SPIFFE ID.
 # The EKS add-on's own controller keeps serving PersistentVolumeClaims; this one
 # shares its ServiceAccount and Pod Identity role.
+#
+# demos/efs/deploy.sh fills in the image and config placeholders and applies
+# it. The certificates come from projected volumes: a podCertificate source
+# asks a signer for this pod's own certificate, and a clusterTrustBundle
+# source mounts the CA that ate-api-server's client certificate chains to.
+#
+# Learn more:
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/guides/csi-deployment.md
+#   https://github.com/kubernetes-sigs/aws-efs-csi-driver
+#   https://kubernetes.io/docs/concepts/storage/projected-volumes/
 apiVersion: v1
 kind: Service
 metadata:
@@ -18,6 +28,8 @@ spec:
     port: 50052
     targetPort: 10000
 ---
+# Envoy listens on port 10000 with mTLS and forwards the gRPC calls to the
+# driver's unix socket, /csi/csi.sock.
 apiVersion: v1
 kind: ConfigMap
 metadata:

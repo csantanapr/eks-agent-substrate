@@ -16,6 +16,16 @@
 # ate-api-server keeps both logins for its whole life (the owner one runs the
 # outbox maintenance every minute), so both rotate, and alternating users
 # keeps the old login valid while the rollout runs.
+#
+# clean.sh removes it. An ExternalSecret is a custom resource of External
+# Secrets Operator: it copies values from Secrets Manager into a Kubernetes
+# Secret, and refreshes them on a schedule.
+#
+# Learn more:
+#   https://docs.aws.amazon.com/secretsmanager/latest/userguide/rotation-strategy.html
+#   https://external-secrets.io/latest/provider/aws-secrets-manager/
+#   https://github.com/external-secrets/reloader
+#   https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/transform-aws-secretsmanager.html
 set -euo pipefail
 . "$(dirname "$0")/../../lib/common.sh"
 ensure_kubeconfig
@@ -38,6 +48,9 @@ db_sg=$(aws_ ec2 describe-security-groups --filters "Name=vpc-id,Values=$vpc" "N
 owner_arn=$(aws_ secretsmanager describe-secret --secret-id "$SECRET_PREFIX/ate-owner" --query ARN --output text)
 rw_arn=$(aws_ secretsmanager describe-secret --secret-id "$SECRET_PREFIX/ate-readwrite" --query ARN --output text)
 
+# The rotation functions run in the VPC with their own network interfaces,
+# so the RDS security group has to admit theirs.
+#   https://docs.aws.amazon.com/lambda/latest/dg/configuration-vpc.html
 log "Security group for the rotation functions; RDS admits it on 5432"
 rot_sg=$(aws_ ec2 describe-security-groups --filters "Name=vpc-id,Values=$vpc" "Name=group-name,Values=$ROTATION_SG_NAME" \
   --query 'SecurityGroups[0].GroupId' --output text)
@@ -52,6 +65,9 @@ grep -qw "$rot_sg" <<<"$(aws_ ec2 describe-security-groups --group-ids "$db_sg" 
     --ip-permissions "IpProtocol=tcp,FromPort=5432,ToPort=5432,UserIdGroupPairs=[{GroupId=$rot_sg}]" >/dev/null
 info "$rot_sg"
 
+# The rotation function reads engine, host, port, dbname and masterarn from
+# the secret's JSON.
+#   https://docs.aws.amazon.com/secretsmanager/latest/userguide/reference_secret_json_structure.html
 log "Connection fields on the login secrets (the rotation function needs them)"
 for arn in "$owner_arn" "$rw_arn"; do
   f="$(umask 077; mktemp "$WORK/secret.XXXXXX")"
@@ -94,6 +110,9 @@ nodeSelector: { ate.dev/pool: system }
 # Pod Identity only; never the node role.
 extraEnv: [{ name: AWS_EC2_METADATA_DISABLED, value: "true" }]
 EOF
+# helm upgrade --install installs the chart, or upgrades the release when it
+# exists.
+#   https://helm.sh/docs/helm/helm_upgrade/
 helm upgrade --install external-secrets external-secrets --repo https://charts.external-secrets.io \
   --version "$ESO_CHART_VERSION" --namespace "$ESO_NS" --create-namespace --wait --timeout 5m \
   --values "$WORK/external-secrets-values.yaml" >/dev/null
@@ -101,7 +120,10 @@ ensure_pod_identity "$ESO_NS" deploy/external-secrets
 
 log "SecretStore and ExternalSecret in ate-system"
 # Merge into the Secret ate-setup made: only the two connection strings are
-# written; ATE_API_POSTGRES_SCHEMA stays as it is.
+# written; ATE_API_POSTGRES_SCHEMA stays as it is. The template builds each
+# connection string from the secret fields.
+#   https://external-secrets.io/latest/api/externalsecret/
+#   https://external-secrets.io/latest/guides/templating/
 cat <<EOF | kubectl apply -f -
 apiVersion: external-secrets.io/v1
 kind: SecretStore
@@ -139,6 +161,7 @@ kubectl -n ate-system wait externalsecret ate-api-server-db --for=condition=Read
 info "ExternalSecret ate-api-server-db is Ready"
 
 log "ESO Reloader $RELOADER_VERSION"
+# The release bundle is pinned by sha256: a changed file stops the script.
 bundle="$WORK/reloader-bundle-$RELOADER_VERSION.yaml"
 [ -f "$bundle" ] || curl -fsSL -o "$bundle" \
   "https://github.com/external-secrets/reloader/releases/download/$RELOADER_VERSION/bundle.yaml"
@@ -171,6 +194,9 @@ bash "$ROOT/aws/db-bootstrap.sh" >/dev/null
 info "ate-owner and ate-readwrite: user and user_clone ready"
 
 log "Rotation functions and schedules (CloudFormation $ROTATION_STACK)"
+# The AWS::SecretsManager transform in the template turns each
+# HostedRotationLambda into a rotation function from AWS's templates.
+#   https://docs.aws.amazon.com/cli/latest/reference/cloudformation/deploy.html
 subnets=$(aws_ ec2 describe-subnets --filters "Name=vpc-id,Values=$vpc" Name=tag:kubernetes.io/role/internal-elb,Values=1 \
   --query 'Subnets[].SubnetId' --output text | tr '\t' ',')
 # shellcheck disable=SC2046

@@ -3,6 +3,14 @@
 # `kubectl ate proxy actor` (a localhost-only forward through atenet-router).
 # Checks that every counter continues after the resume, and lists the
 # actor's snapshot in S3. Exits non-zero on any failure.
+#
+# Run it after deploy.sh. A suspend saves the actor to a snapshot and frees
+# its worker; the next request resumes it from that snapshot, possibly on
+# another worker.
+#
+# Learn more:
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/concepts/architecture.md
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/reference/kubectl-ate.md
 set -euo pipefail
 . "$(dirname "$0")/../../lib/common.sh"
 PIDS=()

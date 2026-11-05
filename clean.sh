@@ -11,6 +11,14 @@
 # (no recovery window, so deploy.sh can recreate them at once), both S3
 # buckets with their contents, and the ECR repositories with their images.
 # Ends with aws/inventory.sh, and reports success only when nothing is left.
+#
+# The third entry point, the reverse of deploy.sh. A failed step logs a
+# warning and the rest still run, so one pass removes as much as it can; fix
+# the cause and run it again.
+#
+# Learn more:
+#   https://docs.aws.amazon.com/eks/latest/userguide/pod-id-association.html
+#   https://docs.aws.amazon.com/secretsmanager/latest/userguide/manage_delete-secret.html
 set -uo pipefail
 [ "${1:-}" = --yes ] && ASSUME_YES=1
 . "$(dirname "$0")/lib/common.sh"
@@ -75,6 +83,7 @@ fi
 phase "DB rotation demo"
 step bash "$ROOT/demos/db-rotation/clean.sh" --yes
 
+# IAM deletes a role only after its inline policies are gone.
 phase "IAM roles"
 log "IAM roles"
 for pair in $POD_IDENTITY_SAS; do
@@ -89,6 +98,8 @@ for pair in $POD_IDENTITY_SAS; do
   fi
 done
 
+# The subnet group and the security group stay in use until the instance is
+# gone, so wait for the delete first.
 phase "Amazon RDS delete"
 log "Amazon RDS"
 if aws_exists rds describe-db-instances --db-instance-identifier "$DB_ID"; then

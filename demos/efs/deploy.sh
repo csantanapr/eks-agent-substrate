@@ -18,6 +18,17 @@
 #              this file system only
 #   Substrate  reinstalled with --preview=ExternalVolumes; a CSIDriverConfig, a
 #              StorageClass, and counter templates whose data volume is on EFS
+#
+# demos/s3files/deploy.sh builds on this one, and clean.sh removes both. A CSI
+# (Container Storage Interface) driver is a plugin that creates and mounts
+# storage for Kubernetes, and here for Substrate too. An EFS access point is
+# an entry into the file system with its own root directory and POSIX user.
+#
+# Learn more:
+#   https://docs.aws.amazon.com/eks/latest/userguide/efs-csi.html
+#   https://docs.aws.amazon.com/efs/latest/ug/efs-access-points.html
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/guides/csi-volumes.md
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/guides/csi-deployment.md
 set -euo pipefail
 . "$(dirname "$0")/../../lib/common.sh"
 ensure_kubeconfig
@@ -44,6 +55,8 @@ for _ in $(seq 1 30); do
 done
 info "$fs"
 
+# EFS speaks NFS on TCP 2049; this group goes on the mount targets.
+#   https://docs.aws.amazon.com/efs/latest/ug/network-access.html
 log "Security group: NFS from the cluster security group only"
 efs_sg=$(aws_ ec2 describe-security-groups --filters "Name=vpc-id,Values=$vpc" "Name=group-name,Values=$EFS_SG_NAME" \
   --query 'SecurityGroups[0].GroupId' --output text)
@@ -60,6 +73,9 @@ if ! grep -qw "$cluster_sg" <<<"$has_rule"; then
 fi
 info "$efs_sg"
 
+# A mount target is the file system's network endpoint in one Availability
+# Zone; nodes mount through the one in their own zone.
+#   https://docs.aws.amazon.com/efs/latest/ug/accessing-fs.html
 log "Mount targets, one per Availability Zone"
 have_azs=$(aws_ efs describe-mount-targets --file-system-id "$fs" --query 'MountTargets[].AvailabilityZoneName' --output text)
 subnets=$(aws_ ec2 describe-subnets --filters "Name=vpc-id,Values=$vpc" Name=tag:kubernetes.io/role/internal-elb,Values=1 \
@@ -79,6 +95,8 @@ done
 
 log "IAM role for the EFS CSI controllers ($fs only)"
 fs_arn="arn:$PARTITION:elasticfilesystem:$AWS_REGION:$ACCOUNT:file-system/$fs"
+# Access points may be created only with the efs.csi.aws.com/cluster tag, and
+# deleted only when they carry it.
 cat > "$WORK/policy-efs-csi-controller.json" <<EOF
 {"Version":"2012-10-17","Statement":[
  {"Effect":"Allow","Action":["elasticfilesystem:DescribeAccessPoints","elasticfilesystem:DescribeFileSystems",
@@ -99,6 +117,7 @@ role_for_sa "$NS" efs-csi-controller-sa "$WORK/policy-efs-csi-controller.json"
 log "EKS add-on aws-efs-csi-driver"
 # The node plugin mounts each volume under /var/lib/ate, where atelet keeps
 # actor directories; Bidirectional makes the mount visible on the host.
+#   https://kubernetes.io/docs/concepts/storage/volumes/#mount-propagation
 addon_config=$(jq -cn '{node: {
   volumes: [{name: "ate-base", hostPath: {path: "/var/lib/ate", type: "DirectoryOrCreate"}}],
   volumeMounts: [{name: "ate-base", mountPath: "/var/lib/ate", mountPropagation: "Bidirectional"}]}}')
@@ -135,6 +154,8 @@ kubectl ate get actors -A -o json 2>/dev/null \
   | while read -r atespace actor; do
       kubectl ate suspend actor "$actor" -a "$atespace" >/dev/null && info "suspended $atespace/$actor"
     done
+# A preview gate turns on a feature that is off by default.
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/dev/preview-gates.md
 bash "$ROOT/substrate/install.sh" --preview=ExternalVolumes
 
 log "CSIDriverConfig and StorageClass $SC"
@@ -143,6 +164,9 @@ have_uid=$(kubectl get storageclass "$SC" -o jsonpath='{.parameters.uid}' 2>/dev
 if kubectl get storageclass "$SC" >/dev/null 2>&1 && [ "$have_uid" != "$EFS_UID" ]; then
   kubectl delete storageclass "$SC"
 fi
+# The CSIDriverConfig tells ate-api-server where the driver's controller
+# listens and to use TLS. provisioningMode efs-ap makes one access point per
+# volume, under basePath.
 cat <<EOF | kubectl apply -f -
 apiVersion: ate.dev/v1
 kind: CSIDriverConfig
@@ -176,6 +200,8 @@ log "Counter templates with the data volume on EFS"
 digest=$(aws_ ecr describe-images --repository-name "$ECR_PREFIX/counter" \
   --image-ids "imageTag=$SUBSTRATE_TAG" --query 'imageDetails[0].imageDigest' --output text)
 COUNTER_IMAGE="$ECR_REGISTRY/$ECR_PREFIX/counter@$digest"
+# The external volume template asks StorageClass $SC for a new volume per
+# actor, mounted at /home/counter.
 for class in gvisor microvm; do
   atespace=ate-demo-counter workload=counter
   [ "$class" = microvm ] && { atespace=ate-demo-counter-microvm; workload=counter-microvm; }

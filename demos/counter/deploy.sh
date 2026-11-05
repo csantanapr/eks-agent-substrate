@@ -6,6 +6,16 @@
 # ECR; the worker images are the published release images, pinned by digest.
 #
 #   demos/counter/deploy.sh [gvisor|microvm|both]
+#
+# deploy.sh calls it. An atespace is the isolation boundary an actor belongs
+# to (not a Kubernetes namespace). A WorkerPool keeps worker pods warm for
+# actors. An ActorTemplate names an actor's images; creating one captures a
+# golden snapshot, which new actors restore from instead of a cold boot.
+#
+# Learn more:
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/reference/glossary.md
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/reference/sandbox-classes.md
+#   https://docs.aws.amazon.com/AmazonECR/latest/userguide/registry_auth.html
 set -euo pipefail
 . "$(dirname "$0")/../../lib/common.sh"
 need docker
@@ -17,6 +27,7 @@ MICROVM_WORKER="$(pinned_image ateworker-microvm)" || die "cannot resolve atewor
 info "workers: ${GVISOR_WORKER##*/}, ${MICROVM_WORKER##*/}"
 REPO="$ECR_REGISTRY/$ECR_PREFIX/counter"
 
+# docker logs in to ECR with a 12-hour token from get-login-password.
 log "Build and push the counter image"
 build="$WORK/counter-image"
 mkdir -p "$build"

@@ -14,6 +14,16 @@
 #   S3 Files   the file system, NFS (2049) open only to the cluster security
 #              group, a mount target per private subnet AZ
 #   Substrate  StorageClass s3files-ate and counter-s3files templates
+#
+# clean.sh removes it, through demos/efs/clean.sh. S3 Files syncs changes
+# between the file system and the bucket in both directions, so an actor's
+# files show up as objects about a minute after they are written.
+#
+# Learn more:
+#   https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-files.html
+#   https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-files-prereq-policies.html
+#   https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-files-mounting-eks.html
+#   https://docs.aws.amazon.com/AmazonS3/latest/userguide/Versioning.html
 set -euo pipefail
 . "$(dirname "$0")/../../lib/common.sh"
 ensure_kubeconfig
@@ -56,6 +66,9 @@ info "$S3FILES_BUCKET"
 
 log "IAM role S3 Files assumes to sync the bucket"
 sync_role="${IAM_PREFIX}-s3files-sync"
+# S3 Files assumes the role as the elasticfilesystem.amazonaws.com service
+# principal; the conditions limit that to file systems in this account and
+# Region.
 cat > "$WORK/s3files-sync-trust.json" <<EOF
 {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"elasticfilesystem.amazonaws.com"},
  "Action":"sts:AssumeRole","Condition":{"StringEquals":{"aws:SourceAccount":"$ACCOUNT"},
@@ -163,6 +176,7 @@ ensure_pod_identity "$NS" ds/efs-csi-node
 log "StorageClass $SC"
 have_fs=$(kubectl get storageclass "$SC" -o jsonpath='{.parameters.fileSystemId}' 2>/dev/null || true)
 if kubectl get storageclass "$SC" >/dev/null 2>&1 && [ "$have_fs" != "$fs" ]; then kubectl delete storageclass "$SC"; fi
+# provisioningMode s3files-ap makes one S3 Files access point per volume.
 cat <<EOF | kubectl apply -f -
 apiVersion: storage.k8s.io/v1
 kind: StorageClass

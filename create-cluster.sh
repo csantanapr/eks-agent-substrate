@@ -21,10 +21,24 @@
 #
 # Rerunning it adds node groups or add-ons that are missing (after a failed
 # first run) and leaves the existing ones alone.
+#
+# The first of the four entry points: create-cluster.sh, deploy.sh, clean.sh,
+# delete-cluster.sh. It needs only config.env and AWS credentials, and it
+# writes .work/kubeconfig for the others. gVisor runs a pod's containers on a
+# user-space kernel. A microVM gives them their own guest kernel under a
+# hypervisor (Kata Containers with Cloud Hypervisor), which needs /dev/kvm.
+#
+# Learn more:
+#   https://docs.aws.amazon.com/eks/latest/eksctl/creating-and-managing-clusters.html
+#   https://docs.aws.amazon.com/eks/latest/userguide/managed-node-groups.html
+#   https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/amazon-ec2-nested-virtualization.html
+#   https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-options.html
 set -euo pipefail
 . "$(dirname "$0")/lib/common.sh"
 need eksctl; need aws; need kubectl
 
+# Nested virtualization passes Intel VT-x through to a regular (not bare
+# metal) instance, so Kata can start microVMs there. Only some families have it.
 phase "Preflight + launch template"
 log "Preflight"
 nv=$(aws_ ec2 describe-instance-types --instance-types "$MICROVM_INSTANCE_TYPE" \
@@ -37,6 +51,11 @@ info "$MICROVM_INSTANCE_TYPE supports nested virtualization"
   && warn "the Kubernetes API accepts connections from any address (authenticated by IAM); set EKS_PUBLIC_ACCESS_CIDRS to narrow it"
 
 log "Launch template for the microvm node group (nested virtualization)"
+# The launch template holds the EC2 settings of the microvm nodes: CpuOptions
+# for nested virtualization, the IMDS options and the encrypted root disk.
+# HttpPutResponseHopLimit 1 keeps the IMDSv2 token reply from crossing the
+# extra network hop into a pod's own network namespace.
+#   https://docs.aws.amazon.com/eks/latest/userguide/launch-templates.html
 cat > "$WORK/lt-data.json" <<EOF
 {
   "CpuOptions": {"NestedVirtualization": "enabled"},
@@ -89,6 +108,14 @@ else
   info "created $lt_id"
 fi
 
+# The eksctl config: the API endpoint (public, limited to
+# EKS_PUBLIC_ACCESS_CIDRS, and private inside the VPC), the add-ons, and one
+# managed node group per role. The vpc-cni add-on enforces NetworkPolicy only
+# with enableNetworkPolicy on. The gvisor and microvm groups carry a
+# NoSchedule taint, so only pods that tolerate it (the worker pods) land there.
+#   https://docs.aws.amazon.com/eks/latest/userguide/cluster-endpoint.html
+#   https://docs.aws.amazon.com/eks/latest/userguide/cni-network-policy.html
+#   https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/
 cidrs=""
 for c in ${EKS_PUBLIC_ACCESS_CIDRS:-0.0.0.0/0}; do cidrs+="\"$c\", "; done
 cat > "$WORK/cluster.yaml" <<EOF
@@ -162,6 +189,8 @@ $(tags_yaml 6)
 $(tags_yaml 6)
 EOF
 
+# eksctl turns the config into CloudFormation stacks: one for the cluster and
+# its VPC, one per node group.
 phase "eksctl: control plane, add-ons, node groups"
 if cluster_exists; then
   status=$(aws_ eks describe-cluster --name "$CLUSTER_NAME" --query cluster.status --output text)
@@ -192,6 +221,7 @@ ensure_kubeconfig
 
 phase "Tags, StorageClass, checks"
 log "Tag the node group Auto Scaling groups (EKS does not copy node group tags to them)"
+#   https://docs.aws.amazon.com/autoscaling/ec2/userguide/ec2-auto-scaling-tagging.html
 for ng in system gvisor microvm; do
   asg=$(aws_ eks describe-nodegroup --cluster-name "$CLUSTER_NAME" --nodegroup-name "$ng" \
     --query 'nodegroup.resources.autoScalingGroups[0].name' --output text)
@@ -205,7 +235,10 @@ done
 
 log "Default StorageClass: encrypted gp3"
 # EKS ships only a non-default gp2 class, so a PVC without storageClassName
-# (the OpenClaw gateway's) would stay Pending.
+# (the OpenClaw gateway's) would stay Pending. A StorageClass tells a CSI
+# driver, here the EBS CSI driver, how to make the volume behind a PVC.
+#   https://kubernetes.io/docs/concepts/storage/storage-classes/
+#   https://docs.aws.amazon.com/eks/latest/userguide/ebs-csi.html
 {
   cat <<'EOF'
 apiVersion: storage.k8s.io/v1
@@ -228,6 +261,7 @@ EOF
 # volumes alone.
 kubectl apply -f "$WORK/storageclass.yaml" 2>/dev/null || kubectl replace --force -f "$WORK/storageclass.yaml"
 
+# Expect "required" (IMDSv2 only) and a hop limit of 1 on every node.
 log "Node IMDS settings"
 aws_ ec2 describe-instances \
   --filters "Name=tag:eks:cluster-name,Values=$CLUSTER_NAME" Name=instance-state-name,Values=running \

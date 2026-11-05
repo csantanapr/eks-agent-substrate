@@ -7,6 +7,14 @@
 #   demos/db-rotation/verify.sh          after demos/db-rotation/deploy.sh
 #
 # Each run flips both logins (user <-> user_clone). Exits non-zero on any failure.
+#
+# Secrets Manager labels secret versions: AWSCURRENT is the one in use, and
+# AWSPENDING is the one a rotation is making. A rotation is done when
+# AWSCURRENT has moved to the new version.
+#
+# Learn more:
+#   https://docs.aws.amazon.com/secretsmanager/latest/userguide/rotate-secrets_lambda-functions.html
+#   https://github.com/external-secrets/reloader
 set -euo pipefail
 . "$(dirname "$0")/../../lib/common.sh"
 ensure_kubeconfig

@@ -10,6 +10,14 @@
 # associations and IAM roles, the EFS and S3 file systems with their mount
 # targets and security groups, and the S3 Files bucket with its contents and
 # versions.
+#
+# Order matters: actors first (their access points go with them), then the
+# Kubernetes objects and the add-on, then the file systems, and the security
+# groups last, once the mount targets' network interfaces are gone.
+#
+# Learn more:
+#   https://docs.aws.amazon.com/efs/latest/ug/accessing-fs.html
+#   https://docs.aws.amazon.com/AmazonS3/latest/userguide/Versioning.html
 set -uo pipefail
 [ "${1:-}" = --yes ] && export ASSUME_YES=1
 . "$(dirname "$0")/../../lib/common.sh"

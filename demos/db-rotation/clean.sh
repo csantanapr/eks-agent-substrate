@@ -10,6 +10,13 @@
 # security group with its rule on the RDS security group. The login secrets,
 # the Kubernetes Secret ate-api-server-secret-envvars and the database users
 # stay: ate-api-server keeps working with the current logins.
+#
+# clean.sh calls it before the RDS instance goes, because the RDS security
+# group has a rule that names the rotation group.
+#
+# Learn more:
+#   https://docs.aws.amazon.com/lambda/latest/dg/configuration-vpc.html
+#   https://external-secrets.io/latest/api/externalsecret/
 set -uo pipefail
 [ "${1:-}" = --yes ] && export ASSUME_YES=1
 . "$(dirname "$0")/../../lib/common.sh"

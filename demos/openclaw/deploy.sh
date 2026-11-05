@@ -9,6 +9,14 @@
 # into .work/). Skipped when neither is set.
 #
 #   demos/openclaw/deploy.sh [verify]
+#
+# deploy.sh calls it as its last step. Each actor's egress policy allows only
+# the LLM gateway, and swaps a placeholder token for a signed actor JWT on
+# the way out.
+#
+# Learn more:
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/guides/egress-credential-injection.md
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/guides/actor-jwts.md
 set -euo pipefail
 . "$(dirname "$0")/../../lib/common.sh"
 

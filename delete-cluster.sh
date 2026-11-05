@@ -3,6 +3,13 @@
 # microvm launch template. Run ./clean.sh first.
 #
 #   ./delete-cluster.sh [--yes]
+#
+# The last entry point. It refuses to start while aws/inventory.sh still finds
+# something deploy.sh made, and it ends with aws/inventory.sh --all.
+#
+# Learn more:
+#   https://docs.aws.amazon.com/eks/latest/eksctl/creating-and-managing-clusters.html
+#   https://docs.aws.amazon.com/eks/latest/userguide/delete-cluster.html
 set -euo pipefail
 [ "${1:-}" = --yes ] && ASSUME_YES=1
 . "$(dirname "$0")/lib/common.sh"
@@ -21,6 +28,8 @@ if cluster_exists; then
   log "eksctl delete cluster $CLUSTER_NAME"
   # The control plane delete can fail with 409 "update in progress" while
   # EKS still removes the add-ons eksctl deleted just before; try again.
+  # --disable-nodegroup-eviction skips Pod disruption budgets, which can
+  # otherwise block node removal (the EBS CSI controller has one).
   for attempt in 1 2 3; do
     eksctl delete cluster --name "$CLUSTER_NAME" --region "$AWS_REGION" --wait --disable-nodegroup-eviction && break
     cluster_exists || break

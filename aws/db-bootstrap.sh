@@ -10,6 +10,16 @@
 # The admin password only lives in a Secret in a throwaway namespace for the
 # length of the Job; the namespace is deleted afterwards, also on failure.
 # Passwords never appear in a command line, here or in the Job.
+#
+# deploy.sh runs it after substrate/fetch.sh, which provides setup.sql, and
+# demos/db-rotation/deploy.sh runs it again before the first rotation. A Job
+# runs a pod until it completes, then stops.
+#
+# Learn more:
+#   https://kubernetes.io/docs/concepts/workloads/controllers/job/
+#   https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Appendix.PostgreSQL.CommonDBATasks.Roles.html
+#   https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/PostgreSQL.Concepts.General.SSL.html
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/guides/postgres.md
 set -euo pipefail
 . "$(dirname "$0")/../lib/common.sh"
 NS=ate-db-bootstrap
@@ -69,6 +79,8 @@ print(json.dumps({"apiVersion": "v1", "kind": "Secret", "type": "Opaque",
   "data": {k: base64.b64encode(v.encode()).decode() for k, v in d.items()}}))' "$NS" \
   | kubectl apply -f - >/dev/null
 unset admin owner rw
+# The ConfigMap carries the SQL files and the RDS CA bundle to the Job's
+# /setup mount.
 kubectl -n "$NS" create configmap setup \
   --from-file=setup.sql="$SUBSTRATE_SRC/pkg/postgressetup/setup.sql" \
   --from-file=alternates.sql="$WORK/db-alternates.sql" \
@@ -76,6 +88,8 @@ kubectl -n "$NS" create configmap setup \
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 
 kubectl -n "$NS" delete job bootstrap --ignore-not-found >/dev/null
+# PGSSLMODE=verify-full: psql checks that the server certificate chains to
+# the RDS CA bundle and matches the host name.
 cat <<EOF | kubectl apply -f - >/dev/null
 apiVersion: batch/v1
 kind: Job

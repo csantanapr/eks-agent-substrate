@@ -11,6 +11,14 @@
 #   5. The LLM gateway (agentgateway + Amazon Bedrock)
 #   6. The counter demo on gVisor and on microVM
 #   7. The OpenClaw always-on agent demo, when configured
+#
+# The second entry point, after create-cluster.sh. It calls the scripts below
+# in order, and each of them is idempotent too. Afterwards,
+# demos/counter/verify.sh checks the install end to end.
+#
+# Learn more:
+#   https://github.com/agent-substrate/substrate/tree/v1.0.0-rc.3
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/concepts/architecture.md
 set -euo pipefail
 . "$(dirname "$0")/lib/common.sh"
 for t in aws kubectl git go docker jq python3 curl; do need "$t"; done
@@ -18,6 +26,8 @@ python3 -c 'import yaml' 2>/dev/null || die "python3 needs PyYAML (pip install p
 ensure_kubeconfig
 info "cluster $CLUSTER_NAME, account $ACCOUNT, region $AWS_REGION"
 
+# Order matters: the database bootstrap runs setup.sql from the Substrate
+# source, and the install needs the database and its logins.
 phase "AWS resources (S3, ECR, IAM, RDS)"; bash "$ROOT/aws/infra.sh"
 phase "Substrate source and tools";        bash "$ROOT/substrate/fetch.sh"
 phase "RDS ready + database bootstrap";    bash "$ROOT/aws/db-bootstrap.sh"

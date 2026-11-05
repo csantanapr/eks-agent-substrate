@@ -11,6 +11,14 @@
 #
 #   demos/efs/verify-move.sh [gvisor|microvm|both]
 #   STORAGE=s3files demos/efs/verify-move.sh
+#
+# Run it after demos/efs/deploy.sh. Cordon marks a node unschedulable, so new
+# pods go to other nodes. The script does not drain the node: it deletes only
+# this pool's worker pods there.
+#
+# Learn more:
+#   https://kubernetes.io/docs/tasks/administer-cluster/safely-drain-node/
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/guides/csi-volumes.md
 set -euo pipefail
 . "$(dirname "$0")/../../lib/common.sh"
 ensure_kubeconfig

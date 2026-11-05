@@ -6,6 +6,13 @@
 #
 #   demos/efs/verify.sh [gvisor|microvm|both]
 #   STORAGE=s3files demos/efs/verify.sh        after demos/s3files/deploy.sh
+#
+# Run it after demos/efs/deploy.sh. The file counter is written to the data
+# volume, so it lives on EFS (or S3 Files), not in the snapshot.
+#
+# Learn more:
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/guides/csi-volumes.md
+#   https://docs.aws.amazon.com/efs/latest/ug/efs-access-points.html
 set -euo pipefail
 . "$(dirname "$0")/../../lib/common.sh"
 ensure_kubeconfig
@@ -42,6 +49,7 @@ check() { # class
   a=$(curl -s -m 30 "http://127.0.0.1:$port/"); info "$a"
   volid=$(kubectl ate get actor "$actor" -a "$ns" -o json | jq -r '.status.externalVolumes.volumes[0].storageVolumeId // empty')
   [ -n "$volid" ] || die "$actor has no external volume"
+  # The volume ID ends with the access point ID, after "::".
   ap="${volid##*::}"
   info "volume $volid"
   grep -qw "$ap" <<<"$(aps)" || die "access point $ap is not on $fs"

@@ -6,6 +6,14 @@
 # foundation-model grant is conditioned on that profile, so the role cannot call
 # the model directly or any other model. Actors hold no AWS credentials: their
 # egress policy lets them reach this gateway, nothing else.
+#
+# deploy.sh calls it after the Substrate install. It applies
+# llm-gateway/llm-gateway.yaml and ends with a smoke test through the gateway.
+#
+# Learn more:
+#   https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles.html
+#   https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-prereq.html
+#   https://agentgateway.dev/docs/standalone/latest/integrations/llm/providers/bedrock/
 set -euo pipefail
 . "$(dirname "$0")/../lib/common.sh"
 IP_ID="$BEDROCK_INFERENCE_PROFILE"
@@ -35,6 +43,8 @@ sed -e "s|REPLACE_WITH_AWS_REGION|$AWS_REGION|" -e "s|REPLACE_WITH_INFERENCE_PRO
 kubectl -n llm-gateway rollout status deploy/llm-gateway --timeout=180s
 ensure_pod_identity llm-gateway deploy/llm-gateway
 
+# The NetworkPolicy admits any pod in the llm-gateway namespace, so a
+# throwaway busybox pod there can call the gateway.
 log "Smoke test from inside the namespace (IAM can take a minute to settle)"
 body='{"model":"claude","max_tokens":40,"messages":[{"role":"user","content":"Reply with: ready"}]}'
 for _ in $(seq 1 12); do
