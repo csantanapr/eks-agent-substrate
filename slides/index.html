@@ -627,7 +627,7 @@ aws eks create-pod-identity-association \
       <tr><th>ServiceAccount</th><th>Allowed</th></tr>
       <tr><td><code class="nw">ate-system/ate-api-server</code></td><td>snapshot bucket: get, put, delete, list</td></tr>
       <tr><td><code class="nw">ate-system/atelet</code></td><td>snapshot bucket: get, put (no delete) · asset bucket read · ECR pull</td></tr>
-      <tr><td><code class="nw">llm-gateway/llm-gateway</code></td><td><code>bedrock:InvokeModel*</code> on one inference profile</td></tr>
+      <tr><td><code class="nw">llm-gateway/llm-gateway</code></td><td><code>bedrock:InvokeModel*</code> on its pinned inference profiles</td></tr>
       <tr><td>actors</td><td class="ok">nothing: no role, no keys, no IMDS</td></tr>
     </table>
   </div>
@@ -641,7 +641,7 @@ aws eks create-pod-identity-association \
         <ul>
           <li><code>ate-api-server</code>: get, put, <b>delete</b> and list on the snapshot bucket, because it makes tag copies and garbage collects</li>
           <li><code>atelet</code>: get and put, <b>no delete</b>; read on the asset bucket; ECR pull on the demo repositories</li>
-          <li>the LLM gateway may invoke <b>one inference profile</b></li>
+          <li>the LLM gateway may invoke only its <b>pinned inference profiles</b></li>
         </ul>
       </li>
       <li><b>Actors get nothing</b>: no role, no keys, no IMDS.</li>
@@ -1556,7 +1556,7 @@ curl localhost:8001     <span class="c"># resumes</span></code></pre>
   <div class="grid3">
     <div class="card"><h3>Cluster</h3><ul><li>EKS 1.37+</li><li>Node group per sandbox class, tainted</li><li>Nested-virt Intel family (m8i, c8i, r8i, 7i) for microVM</li><li>VPC CNI network policy on</li><li>IMDSv2 with hop limit 1</li></ul></div>
     <div class="card"><h3>Data</h3><ul><li>S3: private, TLS-only, encrypted, lifecycle</li><li>Separate read-only asset bucket</li><li>RDS private, verify-full, owner/readwrite split</li><li>DB logins rotated, synced, rolled out</li><li>Per-actor EFS access points, uid of the actor's user</li></ul></div>
-    <div class="card"><h3>Identity &amp; access</h3><ul><li>Pod Identity role per ServiceAccount</li><li>No credentials in actors</li><li>Bedrock through a gateway, one profile</li><li><code class="nw">--ateapi-authz-bootstrap-owners</code> set to your operators</li><li>ClusterIP only, port-forward to operate</li><li>Private or CIDR-restricted EKS API endpoint</li></ul></div>
+    <div class="card"><h3>Identity &amp; access</h3><ul><li>Pod Identity role per ServiceAccount</li><li>No credentials in actors</li><li>Bedrock through a gateway, pinned profiles</li><li><code class="nw">--ateapi-authz-bootstrap-owners</code> set to your operators</li><li>ClusterIP only, port-forward to operate</li><li>Private or CIDR-restricted EKS API endpoint</li></ul></div>
   </div>
   <aside class="notes">
     <p><b>If you take one slide home, take this one.</b></p>
@@ -1579,7 +1579,7 @@ curl localhost:8001     <span class="c"># resumes</span></code></pre>
       <li><b>Identity and access:</b>
         <ul>
           <li>a <b>Pod Identity role per ServiceAccount</b>, and <b>no credentials in actors</b></li>
-          <li>Bedrock through a gateway, with one profile</li>
+          <li>Bedrock through a gateway, with pinned profiles</li>
           <li>set <code>--ateapi-authz-bootstrap-owners</code> to your operators; this demo uses the shared-client default</li>
           <li>keep every Service <code>ClusterIP</code>, and operate with port forwards</li>
           <li>make the EKS API endpoint <b>private or CIDR-restricted</b></li>
