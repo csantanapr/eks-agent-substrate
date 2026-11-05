@@ -43,6 +43,13 @@
   .pill { display: inline-block; padding: .25em .8em; border-radius: 999px; background: var(--panel);
     border: 1px solid var(--line); margin: .2em .3em .2em 0; font-size: 1.05rem; }
   .big { font-size: 1.8rem; line-height: 1.4; }
+  .thanks { display: grid; grid-template-columns: 1fr auto; gap: 3rem; align-items: center; }
+  .speaker { display: flex; align-items: center; gap: 1.2rem; margin-top: 2.5rem; font-size: 1.4rem; }
+  .speaker img { width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 3px solid #ff9900; }
+  .speaker-name { font-size: 1.8rem; font-weight: 700; }
+  .qr { margin: 0; text-align: center; }
+  .qr img { width: 340px; height: 340px; display: block; border-radius: 12px; }
+  .qr figcaption { margin-top: .8rem; font-size: 1.1rem; line-height: 1.5; color: var(--muted, #9aa7b4); }
   .foot { position: fixed; bottom: 2.2vh; left: 6vw; right: 6vw; display: flex; justify-content: space-between;
     color: var(--muted); font-size: .9rem; pointer-events: none; }
   .notes { display: none; position: fixed; bottom: 0; left: 0; right: 0; max-height: 34vh; overflow: auto;
@@ -975,9 +982,24 @@ curl localhost:8001     <span class="c"># resumes</span></code></pre>
 
 <!-- 19 -->
 <section class="slide title-slide">
-  <h1>Thank you</h1>
-  <p class="big muted">Agent Substrate runs on EKS today.<br>Help us make it boring: plugins, installer profile, per-actor credentials.</p>
-  <p><span class="pill">github.com/agent-substrate/substrate</span><span class="pill">agent-substrate-plugins</span></p>
+  <div class="thanks">
+    <div>
+      <h1>Thank you</h1>
+      <p class="big muted">Agent Substrate runs on EKS today.<br>Help us make it boring: plugins, installer profile, per-actor credentials.</p>
+      <p><span class="pill">github.com/agent-substrate/substrate</span><span class="pill">agent-substrate-plugins</span></p>
+      <div class="speaker">
+        <img src="carlos-santana.jpg" alt="Carlos Santana">
+        <div>
+          <div class="speaker-name">Carlos Santana</div>
+          <div class="muted">linkedin.com/in/csantanapr</div>
+        </div>
+      </div>
+    </div>
+    <figure class="qr">
+      <img src="repo-qr.svg" alt="QR code for github.com/csantanapr/eks-agent-substrate">
+      <figcaption>Scripts, demos and slides<br><b>github.com/csantanapr/eks-agent-substrate</b></figcaption>
+    </figure>
+  </div>
 </section>
 
 </div>
