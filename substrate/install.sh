@@ -25,6 +25,7 @@
 set -euo pipefail
 . "$(dirname "$0")/../lib/common.sh"
 [ -x "$WORK/bin/ate-setup" ] || die "run substrate/fetch.sh first"
+need jq
 secret_field() {
   aws_ secretsmanager get-secret-value --secret-id "$1" --query SecretString --output text \
     | python3 -c 'import sys,json;print(json.load(sys.stdin)[sys.argv[1]])' "$2"
@@ -61,11 +62,42 @@ INGRESS_IDS+=",spiffe://cluster.local/ns/openclaw/sa/openclaw-dashboard"
 CREDENTIAL_PROVIDERS='{"name":"k8s.io"}'
 for f in "$WORK"/credential-providers/*.json; do
   [ -f "$f" ] || continue
-  need jq
   CREDENTIAL_PROVIDERS+=",$(jq -ce 'select(type == "object")' "$f")" || die "$f is not a JSON object"
   info "credential provider: $(jq -r .name "$f")"
 done
 [ "$CREDENTIAL_PROVIDERS" = '{"name":"k8s.io"}' ] || CREDENTIAL_PROVIDERS="[$CREDENTIAL_PROVIDERS]"
+
+# Preview gates: the ones the cluster runs now, plus any --preview= given
+# here. ate-setup deploys exactly the gates it is passed, so a plain
+# ./deploy.sh would otherwise turn off one a demo turned on (ExternalVolumes
+# for demos/efs) and roll the worker pods. ./clean.sh uninstalls Substrate,
+# which clears them.
+args=() gates=""
+for a in "$@"; do
+  case "$a" in
+    --preview=*) gates+=",${a#--preview=}" ;;
+    *) args+=("$a") ;;
+  esac
+done
+if kubectl -n ate-system get deploy ate-api-server >/dev/null 2>&1; then
+  gates+=",$(kubectl -n ate-system get deploy ate-api-server -o json \
+    | jq -r '[.spec.template.spec.containers[].args[]? | select(startswith("--preview=")) | ltrimstr("--preview=")] | first // ""')"
+fi
+gates=$(tr ',' '\n' <<<"$gates" | sed '/^$/d' | sort -u | paste -sd, -)
+[ -z "$gates" ] || { args+=("--preview=$gates"); info "preview gates: $gates"; }
+
+# A reinstall can roll the worker pods, which crashes the actors running on
+# them. Suspend those first; the next request resumes them from their snapshot.
+# https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/reference/kubectl-ate.md
+if kubectl get crd workerpools.ate.dev >/dev/null 2>&1; then
+  running=$(kubectl ate get actors -A -o json 2>/dev/null \
+    | jq -r '.actors[]? | select(.status.state == "ACTOR_STATE_RUNNING") | "\(.metadata.atespace) \(.metadata.name)"') \
+    || { warn "cannot list actors; running ones may crash when the workers roll"; running=""; }
+  while read -r atespace actor; do
+    [ -n "$actor" ] || continue
+    kubectl ate suspend actor "$actor" -a "$atespace" >/dev/null && info "suspended $atespace/$actor"
+  done <<<"$running"
+fi
 
 log "ate-setup deploy ate-system ($SUBSTRATE_TAG)"
 cd "$SUBSTRATE_SRC"
@@ -79,7 +111,7 @@ cd "$SUBSTRATE_SRC"
   --ingress-allowed-spiffe-ids "$INGRESS_IDS" \
   --sandbox-classes gvisor,microvm \
   --rollout-timeout 5m \
-  "$@"
+  "${args[@]}"
 printf '%s' "$SUBSTRATE_TAG" > "$INSTALLED_TAG_FILE"
 # The objectstore sidecars and atelet's image pulls sign with Pod Identity.
 ensure_pod_identity ate-system deploy/ate-api-server

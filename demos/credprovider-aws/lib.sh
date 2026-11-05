@@ -50,15 +50,6 @@ owned_secret() {
   [ "$v" = "$OWNER_TAG_VALUE" ] || die "secret $1 exists but is not owned by $OWNER_TAG_VALUE ($OWNER_TAG_KEY=$v)"
 }
 
-# cp_preview_arg: the --preview the installed Substrate runs with (for
-# example ExternalVolumes from demos/efs), so a reinstall keeps it.
-cp_preview_arg() {
-  local p
-  p=$(kubectl -n ate-system get deploy ate-api-server -o json 2>/dev/null \
-    | jq -r '[.spec.template.spec.containers[].args[]? | select(startswith("--preview="))][0] // empty')
-  [ "$p" = "--preview=" ] || printf '%s' "$p"
-}
-
 # cp_gateway_serves: 0 if the egress gateway is configured with the provider.
 cp_gateway_serves() {
   kubectl -n ate-system get deploy atenet-egress -o json 2>/dev/null \
@@ -66,14 +57,8 @@ cp_gateway_serves() {
         '[.spec.template.spec.containers[].args[]?] | index($a) != null' >/dev/null
 }
 
-# cp_reinstall: substrate/install.sh with the installed release's previews,
-# which rolls the egress gateway onto the current provider list.
-cp_reinstall() {
-  local preview
-  preview=$(cp_preview_arg)
-  [ -z "$preview" ] || info "keeping $preview"
-  # shellcheck disable=SC2086
-  bash "$ROOT/substrate/install.sh" $preview
-}
+# cp_reinstall: substrate/install.sh, which keeps the installed preview gates
+# and rolls the egress gateway onto the current provider list.
+cp_reinstall() { bash "$ROOT/substrate/install.sh"; }
 
 sha256() { if command -v sha256sum >/dev/null; then sha256sum; else shasum -a 256; fi | cut -d' ' -f1; }
