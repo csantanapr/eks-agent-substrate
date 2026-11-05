@@ -147,7 +147,8 @@ kubectl -n "$NS" rollout status "deploy/$SVC" --timeout=5m
 ensure_pod_identity "$NS" "deploy/$SVC"
 
 log "Agent Substrate with the ExternalVolumes preview"
-# install.sh suspends running actors first, and later installs keep the gate.
+# The reinstall rolls the worker pods, so actors running on them crash;
+# demos/counter/verify.sh reverts its own. Later installs keep the gate.
 # A preview gate turns on a feature that is off by default.
 #   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/dev/preview-gates.md
 bash "$ROOT/substrate/install.sh" --preview=ExternalVolumes

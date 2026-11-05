@@ -25,6 +25,12 @@ roundtrip() { # actor atespace template localport
   log "$actor ($ns)"
   kubectl ate get actor "$actor" -a "$ns" >/dev/null 2>&1 \
     || kubectl ate create actor "$actor" -a "$ns" --template "$tpl" >/dev/null 2>&1
+  # A demo that reinstalls Substrate or deletes worker pods crashes a running
+  # actor. Revert it to its last snapshot; the check below starts from there.
+  if [ "$(state "$actor" "$ns")" = ACTOR_STATE_CRASHED ]; then
+    kubectl ate revert actor "$actor" -a "$ns" >/dev/null 2>&1 || die "$actor is CRASHED and does not revert"
+    info "reverted $actor from CRASHED"
+  fi
   kubectl ate proxy actor "$actor" -a "$ns" "$port:80" >"$WORK/proxy-$actor.log" 2>&1 &
   PIDS+=("$!")
   for _ in $(seq 1 60); do curl -sf -m 10 "http://127.0.0.1:$port/" >/dev/null 2>&1 && break; sleep 2; done

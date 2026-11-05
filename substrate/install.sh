@@ -68,10 +68,10 @@ done
 [ "$CREDENTIAL_PROVIDERS" = '{"name":"k8s.io"}' ] || CREDENTIAL_PROVIDERS="[$CREDENTIAL_PROVIDERS]"
 
 # Preview gates: the ones the cluster runs now, plus any --preview= given
-# here. ate-setup deploys exactly the gates it is passed, so a plain
-# ./deploy.sh would otherwise turn off one a demo turned on (ExternalVolumes
-# for demos/efs) and roll the worker pods. ./clean.sh uninstalls Substrate,
-# which clears them.
+# here. ate-setup deploys exactly the gates it is passed, so a demo that
+# reinstalls Substrate (demos/credprovider-aws) would otherwise turn off one
+# another demo turned on (ExternalVolumes for demos/efs). ./clean.sh
+# uninstalls Substrate, which clears them.
 args=() gates=""
 for a in "$@"; do
   case "$a" in
@@ -85,19 +85,6 @@ if kubectl -n ate-system get deploy ate-api-server >/dev/null 2>&1; then
 fi
 gates=$(tr ',' '\n' <<<"$gates" | sed '/^$/d' | sort -u | paste -sd, -)
 [ -z "$gates" ] || { args+=("--preview=$gates"); info "preview gates: $gates"; }
-
-# A reinstall can roll the worker pods, which crashes the actors running on
-# them. Suspend those first; the next request resumes them from their snapshot.
-# https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/reference/kubectl-ate.md
-if kubectl get crd workerpools.ate.dev >/dev/null 2>&1; then
-  running=$(kubectl ate get actors -A -o json 2>/dev/null \
-    | jq -r '.actors[]? | select(.status.state == "ACTOR_STATE_RUNNING") | "\(.metadata.atespace) \(.metadata.name)"') \
-    || { warn "cannot list actors; running ones may crash when the workers roll"; running=""; }
-  while read -r atespace actor; do
-    [ -n "$actor" ] || continue
-    kubectl ate suspend actor "$actor" -a "$atespace" >/dev/null && info "suspended $atespace/$actor"
-  done <<<"$running"
-fi
 
 log "ate-setup deploy ate-system ($SUBSTRATE_TAG)"
 cd "$SUBSTRATE_SRC"

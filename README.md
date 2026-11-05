@@ -128,11 +128,9 @@ Things to know:
   `s3files:ClientRootAccess` (the script grants it only when `EFS_UID=0`). A
   non-root image is better.
 - Turning on the preview reinstalls Substrate, and that rolls the worker
-  pods. `substrate/install.sh` suspends running actors first, so they don't
-  crash; the next request resumes them. It also keeps the preview gates the
-  cluster runs, so a later `./deploy.sh` leaves ExternalVolumes on. An actor
-  started during a reinstall can still end up `CRASHED`: restore it with
-  `kubectl ate revert actor NAME -a ATESPACE`.
+  pods: actors running at the time end up `CRASHED`. Restore one with
+  `kubectl ate revert actor NAME -a ATESPACE`; `demos/counter/verify.sh`
+  reverts its own. Later installs keep the preview gates the cluster runs.
 - Deleting an actor deletes its access point but keeps the files under it
   (the driver's default, `--delete-access-point-root-dir=false`).
   `clean.sh` deletes the file systems and the bucket.
