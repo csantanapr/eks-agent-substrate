@@ -70,7 +70,7 @@
   <h1>Running Agent Substrate<br>on EKS</h1>
   <p class="muted big">What it takes on AWS, which services to use,<br>and where AWS can help the project</p>
   <p style="margin-top:2rem">Carlos Santana</p>
-  <aside class="notes">Two goals: show that Agent Substrate v1.0.0-rc.2 runs on EKS with the AWS services you already use, including what still needs a small patch, and lay out where AWS can contribute back so a production install needs none.</aside>
+  <aside class="notes">Two goals: show that Agent Substrate v1.0.0-rc.3 runs on EKS with the AWS services you already use, including what still needs a small patch, and lay out where AWS can contribute back so a production install needs none.</aside>
 </section>
 
 <!-- 2 -->
@@ -93,7 +93,7 @@
     </div>
     <div class="card">
       <h3>Everything shown runs on</h3>
-      <p><span class="pill">Agent Substrate v1.0.0-rc.2</span><span class="pill">EKS 1.37</span><span class="pill">Amazon Linux 2023</span>
+      <p><span class="pill">Agent Substrate v1.0.0-rc.3</span><span class="pill">EKS 1.37</span><span class="pill">Amazon Linux 2023</span>
       <span class="pill">m8i (nested virt)</span><span class="pill">S3</span><span class="pill">RDS for PostgreSQL 18</span>
       <span class="pill">Secrets Manager</span><span class="pill">ECR</span><span class="pill">Bedrock</span>
       <span class="pill">EFS</span><span class="pill">S3 Files</span></p>
@@ -207,7 +207,7 @@
 <section class="slide">
   <h2>What each piece maps to on AWS</h2>
   <table>
-    <tr><th>Agent Substrate needs</th><th>On AWS</th><th>Status in rc.2</th></tr>
+    <tr><th>Agent Substrate needs</th><th>On AWS</th><th>Status in rc.3</th></tr>
     <tr><td>Kubernetes with PodCertificate + ClusterTrustBundle</td><td>EKS 1.37 (both GA)</td><td class="ok">works, no flags</td></tr>
     <tr><td>Snapshot object store</td><td>Amazon S3 via <code>objectstore-plugin</code> (<code>ATE_STORAGE_BACKEND=s3</code>)</td><td class="ok">works</td></tr>
     <tr><td>microVM guest assets</td><td>S3 asset bucket, read-only for atelet</td><td class="warn">works; stock installer stages to GCS, small patch for S3</td></tr>
@@ -472,7 +472,7 @@ export ATE_API_POSTGRES_READ_WRITE_CONNECTION_STRING=…
 
 ate-setup deploy ate-system \
   --image-repo ghcr.io/agent-substrate/substrate \
-  --image-tag v1.0.0-rc.2 \
+  --image-tag v1.0.0-rc.3 \
   --snapshot-location s3://&lt;snapshots&gt;/ \
   --ateapi-postgres-server-ca-file global-bundle.pem \
   --sandbox-classes gvisor,microvm
@@ -809,7 +809,7 @@ curl localhost:8001     <span class="c"># resumes</span></code></pre>
   <h2>What works today, and the gaps</h2>
   <div class="grid2">
     <div class="card">
-      <h3 class="ok">Works on EKS with rc.2</h3>
+      <h3 class="ok">Works on EKS with rc.3</h3>
       <ul>
         <li>Published images, stock EKS 1.37, AL2023</li>
         <li>S3 snapshots and assets with Pod Identity</li>
