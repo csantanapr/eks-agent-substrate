@@ -33,7 +33,26 @@ func (w Writer) Save(name, view string) error {
 	return os.WriteFile(filepath.Join(w.Dir, name+".html"), []byte(Page(w.Title, view)), 0o644)
 }
 
+// RebuildHTML writes NAME.html again for every NAME.ansi in dir.
+func RebuildHTML(dir, title string) (int, error) {
+	files, err := filepath.Glob(filepath.Join(dir, "*.ansi"))
+	if err != nil {
+		return 0, err
+	}
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			return 0, err
+		}
+		if err := os.WriteFile(strings.TrimSuffix(f, ".ansi")+".html", []byte(Page(title, string(b))), 0o644); err != nil {
+			return 0, err
+		}
+	}
+	return len(files), nil
+}
+
 var sgrRe = regexp.MustCompile(`\x1b\[([0-9;]*)m`)
+var brailleRe = regexp.MustCompile(`[\x{2800}-\x{28FF}]`)
 var otherEsc = regexp.MustCompile(`\x1b\[[0-9;?]*[A-Za-ln-z]|\x1b\][^\x07]*\x07`)
 
 type style struct {
@@ -163,6 +182,9 @@ func (s *style) apply(params string) {
 // <div> per line.
 func HTML(ansi string) string {
 	ansi = otherEsc.ReplaceAllString(ansi, "")
+	// The spinner's braille frames are not in DejaVu Sans Mono (nor any font
+	// on a stock host); draw them as a half circle so the cell keeps its width.
+	ansi = brailleRe.ReplaceAllString(ansi, "◐")
 	var b strings.Builder
 	var st style
 	for _, line := range strings.Split(strings.TrimRight(ansi, "\n"), "\n") {
@@ -187,7 +209,8 @@ func HTML(ansi string) string {
 			st.apply(rest[loc[2]:loc[3]])
 			rest = rest[loc[1]:]
 		}
-		b.WriteString("</div>\n")
+		// No newline between lines: inside <pre> it would draw an empty line.
+		b.WriteString("</div>")
 	}
 	return b.String()
 }

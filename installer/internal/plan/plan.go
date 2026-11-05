@@ -98,8 +98,8 @@ var counterVerify = Command{
 	ID: "counter-verify", Title: "Check the counter demo", Args: []string{"demos/counter/verify.sh"},
 	Minutes: 10, Summary: "suspend and resume a counter on gVisor and on microVM",
 	Rows: []Row{
-		{Title: "Suspend and resume on gVisor", Match: []string{"demo-gvisor"}},
-		{Title: "Suspend and resume on microVM", Match: []string{"demo-microvm"}},
+		{Title: "Suspend and resume on gVisor", Match: []string{"demo-gvisor (ate-demo-counter)"}},
+		{Title: "Suspend and resume on microVM", Match: []string{"demo-microvm (ate-demo-counter-microvm)"}},
 	},
 }
 

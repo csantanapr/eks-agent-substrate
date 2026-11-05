@@ -433,7 +433,7 @@ func (m Model) review(w, h int) string {
 			cfg = append(cfg, l)
 		}
 	}
-	where := "writes " + filepath.Join(m.opt.Repo.Dir, "config.local.env")
+	where := "written to " + m.opt.Repo.Dir + "/"
 	if m.opt.DryRun {
 		where = "dry run: shown, not written"
 	}

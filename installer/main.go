@@ -29,6 +29,7 @@ import (
 	"github.com/csantanapr/eks-agent-substrate/installer/internal/config"
 	"github.com/csantanapr/eks-agent-substrate/installer/internal/preflight"
 	"github.com/csantanapr/eks-agent-substrate/installer/internal/run"
+	"github.com/csantanapr/eks-agent-substrate/installer/internal/snap"
 	"github.com/csantanapr/eks-agent-substrate/installer/internal/ui"
 )
 
@@ -49,7 +50,17 @@ func main() {
 	auto := flag.Bool("auto", false, "walk the screens on their own (with --dry-run: a hands-off demo)")
 	redact := flag.Bool("redact", false, "mask the AWS account id on screen and in snapshots")
 	size := flag.String("snapshot-size", "126x33", "snapshot size in cells, WxH")
+	html := flag.String("html", "", "rewrite the HTML page of every NAME.ansi snapshot in this directory, then exit")
 	flag.Parse()
+
+	if *html != "" {
+		n, err := snap.RebuildHTML(*html, "eks-talk installer — eks-talk-tui")
+		if err != nil {
+			fail(err)
+		}
+		fmt.Printf("%d pages written in %s\n", n, *html)
+		return
+	}
 
 	dir, err := findRepo(*repo)
 	if err != nil {

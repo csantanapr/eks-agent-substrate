@@ -448,9 +448,10 @@ func (m Model) toReview() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	header := []string{
-		"Written by the eks-talk installer (a proof of concept).",
-		"lib/common.sh reads it after config.env. Set here: what",
-		"differs from config.env, plus cluster, Region, profile.",
+		"Written by the eks-talk installer (POC).",
+		"lib/common.sh reads it after config.env.",
+		"Set here: what differs from config.env,",
+		"plus the cluster, Region and profile.",
 	}
 	text, err := config.Render(m.opt.Repo.Defaults, m.opt.Repo.Local, m.values, header)
 	if err != nil {
