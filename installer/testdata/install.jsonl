@@ -1,0 +1,5 @@
+{"k":"header","v":1,"started":"2026-11-05T20:00:00Z","cluster":"substrate-tui","region":"us-west-2"}
+{"k":"start","t":0,"id":"create-cluster","cmd":"./create-cluster.sh"}
+{"k":"line","t":100,"id":"create-cluster","s":"\u001b[1;36m== Preflight\u001b[0m"}
+{"k":"exit","t":200,"id":"create-cluster"}
+{"k":"end","t":200}
