@@ -61,6 +61,43 @@
     background: #1d2733; border-top: 2px solid var(--accent); padding: 1rem 6vw; font-size: 1.05rem; color: var(--ink); }
   body.show-notes .slide.active .notes { display: block; }
   body.show-notes .foot { display: none; }
+  .notes p, .notes li { font-size: inherit; }
+  .notes ul { margin: .3em 0 .5em; padding-left: 1.3em; }
+  .notes i { color: var(--accent); }
+  .notes code { background: var(--code); padding: .05em .35em; border-radius: 6px; font-size: .9em; }
+
+  /* Presenter view: index.html?presenter, opened from the deck with "p". */
+  body.presenter { overflow: hidden; }
+  body.presenter .deck, body.presenter .foot { display: none; }
+  body.embed { overflow: hidden; cursor: default; }
+  .pv { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr);
+    gap: 1rem 1.4rem; height: 100vh; padding: 1rem 1.4rem; }
+  .pv-bar { grid-column: 1 / -1; display: flex; align-items: center; gap: 1.4rem; font-size: 1.1rem; color: var(--muted); }
+  .pv-bar b { color: var(--ink); font-size: 1.6rem; font-variant-numeric: tabular-nums; }
+  .pv-bar .pv-title { color: var(--ink); flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .pv-bar button { background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 8px;
+    padding: .35rem .8rem; font: inherit; cursor: pointer; }
+  .pv-bar button:hover, .pv-bar button:focus-visible { border-color: var(--accent); outline: none; }
+  .pv-left { display: flex; flex-direction: column; gap: .8rem; min-height: 0; }
+  .pv-frame { position: relative; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 10px;
+    border: 1px solid var(--line); background: var(--bg); }
+  .pv-frame.cur { border: 2px solid var(--accent); }
+  .pv-frame iframe { position: absolute; top: 0; left: 0; width: 1920px; height: 1080px; border: 0;
+    transform-origin: 0 0; pointer-events: none; }
+  .pv-next { display: grid; grid-template-columns: 48% 1fr; gap: 1rem; align-items: start; }
+  .pv-label { color: var(--muted); font-size: 1rem; text-transform: uppercase; letter-spacing: .06em; margin-bottom: .3rem; }
+  .pv-next-title { font-size: 1.25rem; line-height: 1.35; }
+  .pv-end { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--muted); font-size: 1.4rem; }
+  .pv-notes { min-height: 0; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 1.2rem 1.5rem; font-size: var(--pv-notes-size, 1.6rem); line-height: 1.5; }
+  .pv-notes p, .pv-notes li { font-size: inherit; line-height: inherit; }
+  .pv-notes p { margin: 0 0 .6em; }
+  .pv-notes ul { margin: .2em 0 .8em; padding-left: 1.3em; }
+  .pv-notes li { margin: .3em 0; }
+  .pv-notes b { color: #fff; }
+  .pv-notes i { color: var(--accent); }
+  .pv-notes code { background: var(--code); padding: .05em .35em; border-radius: 6px; font-size: .88em; }
+  .pv-keys { color: var(--muted); font-size: .95rem; }
   svg text { font-family: inherit; }
   .fill { flex: 1; display: flex; align-items: center; justify-content: center; }
   .fill svg { width: 100%; height: 100%; max-height: 70vh; }
@@ -1082,23 +1119,161 @@ curl localhost:8001     <span class="c"># resumes</span></code></pre>
 </div>
 <div class="foot"><span>Running Agent Substrate on EKS</span><span id="pageno"></span></div>
 <script>
+  // Keys in the deck: arrows / space / PageUp-PageDown move, Home / End,
+  // n toggles notes at the bottom, f toggles full screen, p opens the
+  // presenter view in a second window. The two windows follow each other.
+  // index.html?presenter is the presenter view; index.html?embed is one
+  // slide with no keys, used for the previews inside it.
   const slides = Array.from(document.querySelectorAll('section.slide'));
-  let i = Math.max(0, Math.min(slides.length - 1, (parseInt(location.hash.slice(1), 10) || 1) - 1));
-  function show(n) {
-    i = Math.max(0, Math.min(slides.length - 1, n));
+  const mode = new URLSearchParams(location.search).has('presenter') ? 'presenter'
+    : new URLSearchParams(location.search).has('embed') ? 'embed' : 'deck';
+  const clamp = (n) => Math.max(0, Math.min(slides.length - 1, n));
+  const fromHash = () => clamp((parseInt(location.hash.slice(1), 10) || 1) - 1);
+  const title = (k) => (slides[k].querySelector('h1,h2') || {}).textContent || '';
+  let i = fromHash();
+
+  // Sync: a BroadcastChannel where the browser allows it (http), and
+  // postMessage between the opener and the popup (also works from file://).
+  const MSG = 'eks-talk-goto';
+  const channel = mode !== 'embed' && 'BroadcastChannel' in window ? new BroadcastChannel(MSG) : null;
+  let peer = mode === 'presenter' ? window.opener : null;
+  function send(n) {
+    if (mode === 'embed') return;
+    if (channel) channel.postMessage({ type: MSG, n });
+    if (peer && !peer.closed) peer.postMessage({ type: MSG, n }, '*');
+  }
+  function receive(data, source) {
+    if (mode === 'embed' || !data || data.type !== MSG) return;
+    if (source && mode === 'deck') peer = source;
+    if (typeof data.n === 'number' && data.n !== i) show(data.n, true);
+  }
+  if (channel) channel.onmessage = (e) => receive(e.data);
+  window.addEventListener('message', (e) => receive(e.data, e.source));
+
+  function show(n, remote) {
+    i = clamp(n);
     slides.forEach((s, k) => s.classList.toggle('active', k === i));
     document.getElementById('pageno').textContent = (i + 1) + ' / ' + slides.length;
-    history.replaceState(null, '', '#' + (i + 1));
+    history.replaceState(null, '', location.search + '#' + (i + 1));
+    if (mode === 'presenter') renderPresenter();
+    if (!remote) send(i);
   }
-  document.addEventListener('keydown', (e) => {
-    if (['ArrowRight', 'PageDown', ' ', 'Enter'].includes(e.key)) { e.preventDefault(); show(i + 1); }
-    else if (['ArrowLeft', 'PageUp', 'Backspace'].includes(e.key)) { e.preventDefault(); show(i - 1); }
-    else if (e.key === 'Home') show(0);
-    else if (e.key === 'End') show(slides.length - 1);
-    else if (e.key === 'n') document.body.classList.toggle('show-notes');
-  });
-  document.addEventListener('click', (e) => { if (!e.target.closest('pre,a,.terminal')) show(e.clientX > innerWidth / 3 ? i + 1 : i - 1); });
-  show(i);
+
+  function openPresenter() {
+    const url = location.pathname + '?presenter#' + (i + 1);
+    peer = window.open(url, 'eks-talk-presenter', 'width=1500,height=900');
+  }
+  function toggleFullscreen() {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else document.documentElement.requestFullscreen().catch(() => {});
+  }
+
+  if (mode !== 'embed') {
+    document.addEventListener('keydown', (e) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (['ArrowRight', 'PageDown', ' ', 'Enter'].includes(e.key)) { e.preventDefault(); show(i + 1); }
+      else if (['ArrowLeft', 'PageUp', 'Backspace'].includes(e.key)) { e.preventDefault(); show(i - 1); }
+      else if (e.key === 'Home') show(0);
+      else if (e.key === 'End') show(slides.length - 1);
+      else if (mode === 'deck' && e.key === 'n') document.body.classList.toggle('show-notes');
+      else if (mode === 'deck' && e.key === 'f') toggleFullscreen();
+      else if (mode === 'deck' && e.key === 'p') openPresenter();
+      else if (mode === 'presenter' && e.key === 't') resetTimer();
+      else if (mode === 'presenter' && (e.key === '+' || e.key === '=')) notesSize(0.1);
+      else if (mode === 'presenter' && e.key === '-') notesSize(-0.1);
+    });
+  }
+  if (mode === 'deck') {
+    document.addEventListener('click', (e) => { if (!e.target.closest('pre,a,.terminal')) show(e.clientX > innerWidth / 3 ? i + 1 : i - 1); });
+  }
+  if (mode === 'embed') {
+    document.body.classList.add('embed');
+    window.addEventListener('hashchange', () => show(fromHash(), true));
+  }
+
+  // --- Presenter view ---
+  let started = Date.now();
+  let pv = null;
+  function resetTimer() { started = Date.now(); tick(); }
+  function notesSize(d) {
+    const cur = parseFloat(localStorage.getItem('eks-talk-notes-size') || '1.6');
+    const next = Math.max(1, Math.min(3, cur + d));
+    localStorage.setItem('eks-talk-notes-size', next.toFixed(1));
+    document.body.style.setProperty('--pv-notes-size', next.toFixed(1) + 'rem');
+  }
+  function tick() {
+    if (!pv) return;
+    const s = Math.floor((Date.now() - started) / 1000);
+    pv.timer.textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+    pv.clock.textContent = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  }
+  function frameSrc(k) { return location.pathname + '?embed#' + (k + 1); }
+  function fit(box) {
+    const f = box.querySelector('iframe');
+    if (f) f.style.transform = 'scale(' + box.clientWidth / 1920 + ')';
+  }
+  function buildPresenter() {
+    document.body.classList.add('presenter');
+    document.title = 'Presenter: ' + document.title;
+    const root = document.createElement('div');
+    root.className = 'pv';
+    root.innerHTML =
+      '<div class="pv-bar">' +
+        '<span>Slide <b class="pv-num"></b></span>' +
+        '<span class="pv-title"></span>' +
+        '<span>Elapsed <b class="pv-timer">0:00</b></span>' +
+        '<span><b class="pv-clock"></b></span>' +
+        '<button type="button" data-a="prev" aria-label="Previous slide">&larr;</button>' +
+        '<button type="button" data-a="next" aria-label="Next slide">&rarr;</button>' +
+        '<button type="button" data-a="timer">Reset timer</button>' +
+      '</div>' +
+      '<div class="pv-left">' +
+        '<div class="pv-frame cur"><iframe title="Current slide" tabindex="-1"></iframe></div>' +
+        '<div class="pv-next">' +
+          '<div class="pv-frame nxt"><iframe title="Next slide" tabindex="-1"></iframe><div class="pv-end" hidden>End of deck</div></div>' +
+          '<div><div class="pv-label">Next</div><div class="pv-next-title"></div>' +
+          '<p class="pv-keys">&larr; &rarr; move &middot; t reset timer &middot; + / &minus; notes size</p></div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="pv-notes" aria-live="polite"></div>';
+    document.body.appendChild(root);
+    pv = {
+      num: root.querySelector('.pv-num'), title: root.querySelector('.pv-title'),
+      timer: root.querySelector('.pv-timer'), clock: root.querySelector('.pv-clock'),
+      cur: root.querySelector('.pv-frame.cur'), nxt: root.querySelector('.pv-frame.nxt'),
+      end: root.querySelector('.pv-end'), nextTitle: root.querySelector('.pv-next-title'),
+      notes: root.querySelector('.pv-notes'),
+    };
+    pv.cur.querySelector('iframe').src = frameSrc(i);
+    pv.nxt.querySelector('iframe').src = frameSrc(clamp(i + 1));
+    root.querySelector('.pv-bar').addEventListener('click', (e) => {
+      const a = e.target.closest('button') && e.target.closest('button').dataset.a;
+      if (a === 'prev') show(i - 1); else if (a === 'next') show(i + 1); else if (a === 'timer') resetTimer();
+    });
+    const ro = new ResizeObserver(() => { fit(pv.cur); fit(pv.nxt); });
+    ro.observe(pv.cur); ro.observe(pv.nxt);
+    notesSize(0);
+    setInterval(tick, 1000);
+    tick();
+  }
+  function renderPresenter() {
+    if (!pv) return;
+    const last = i === slides.length - 1;
+    pv.num.textContent = (i + 1) + ' / ' + slides.length;
+    pv.title.textContent = title(i);
+    // A fragment-only change navigates the preview without reloading it.
+    pv.cur.querySelector('iframe').src = frameSrc(i);
+    pv.nxt.querySelector('iframe').hidden = last;
+    pv.end.hidden = !last;
+    if (!last) pv.nxt.querySelector('iframe').src = frameSrc(i + 1);
+    pv.nextTitle.textContent = last ? 'End of deck' : title(i + 1);
+    const notes = slides[i].querySelector('.notes');
+    pv.notes.innerHTML = notes ? notes.innerHTML : '<p class="muted">No notes for this slide.</p>';
+    pv.notes.scrollTop = 0;
+  }
+
+  if (mode === 'presenter') buildPresenter();
+  show(i, true);
 </script>
 </body>
 </html>
