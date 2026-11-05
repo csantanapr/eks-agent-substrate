@@ -40,7 +40,8 @@ EKS (Amazon Linux 2023, private subnets)
 - Quota for the nodes: 6 instances, 40 On-Demand standard vCPUs by default
   (`m8i`), plus a NAT gateway and an Elastic IP for the new VPC.
 - A region with EKS 1.37, RDS for PostgreSQL `DB_ENGINE_VERSION`, and the
-  Bedrock inference profile in `BEDROCK_INFERENCE_PROFILE`. For Anthropic
+  Bedrock inference profile in `BEDROCK_INFERENCE_PROFILE`, plus active
+  Claude Haiku, Sonnet and Opus profiles with the same prefix. For Anthropic
   models, submit the Bedrock first-time-use form once per account.
 - On your machine: `aws` (v2), `eksctl` 0.230 or newer, `kubectl`, `docker`
   with buildx (builds `linux/amd64` images; on arm64 it uses emulation),

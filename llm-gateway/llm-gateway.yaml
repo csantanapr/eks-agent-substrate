@@ -5,10 +5,13 @@
 # - Ingress: only atenet-egress (where actor traffic leaves the sandbox) and
 #   the llm-gateway namespace itself (for smoke tests).
 # - Actors speak the Anthropic Messages or OpenAI Chat Completions API and
-#   send model "claude"; the gateway pins the Bedrock model.
+#   send a model name: "claude" (the default), "claude-haiku",
+#   "claude-sonnet" or "claude-opus". The gateway pins each to a Bedrock
+#   inference profile.
 #
 # llm-gateway/deploy.sh applies it after filling in the region and the
-# inference profile placeholders.
+# inference profile placeholders. It picks the newest Haiku, Sonnet and Opus
+# profiles in the Region when it deploys.
 #
 # Learn more:
 #   https://agentgateway.dev/docs/standalone/latest/integrations/llm/providers/bedrock/
@@ -26,8 +29,9 @@ metadata:
   name: llm-gateway
   namespace: llm-gateway
 ---
-# agentgateway config: one model named claude, served by Bedrock. runtimeOnly
-# always uses the Bedrock Runtime endpoint (the Converse API).
+# agentgateway config: four model names, all served by Bedrock. The request's
+# "model" field picks the entry. runtimeOnly always uses the Bedrock Runtime
+# endpoint (the Converse API).
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -42,7 +46,25 @@ data:
         provider: bedrock
         params:
           awsRegion: REPLACE_WITH_AWS_REGION
-          model: REPLACE_WITH_INFERENCE_PROFILE
+          model: REPLACE_WITH_DEFAULT_PROFILE
+          bedrockEndpointPreference: runtimeOnly
+      - name: claude-haiku
+        provider: bedrock
+        params:
+          awsRegion: REPLACE_WITH_AWS_REGION
+          model: REPLACE_WITH_HAIKU_PROFILE
+          bedrockEndpointPreference: runtimeOnly
+      - name: claude-sonnet
+        provider: bedrock
+        params:
+          awsRegion: REPLACE_WITH_AWS_REGION
+          model: REPLACE_WITH_SONNET_PROFILE
+          bedrockEndpointPreference: runtimeOnly
+      - name: claude-opus
+        provider: bedrock
+        params:
+          awsRegion: REPLACE_WITH_AWS_REGION
+          model: REPLACE_WITH_OPUS_PROFILE
           bedrockEndpointPreference: runtimeOnly
 ---
 apiVersion: apps/v1
