@@ -106,6 +106,7 @@ minute after they are written.
 ```bash
 demos/efs/deploy.sh                       # EFS, the driver add-on, Substrate's CSI controller
 demos/efs/verify.sh                       # gVisor and microVM: data survives suspend and resume
+demos/efs/verify-move.sh                  # the actor resumes on another node and finds its files
 demos/s3files/deploy.sh                   # S3 Files on top (needs demos/efs/deploy.sh)
 STORAGE=s3files demos/efs/verify.sh
 ```

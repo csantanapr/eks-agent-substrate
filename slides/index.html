@@ -86,6 +86,7 @@
         <li>Snapshots on S3, state on RDS</li>
         <li>Identity: EKS Pod Identity for every AWS caller</li>
         <li>Inference on Amazon Bedrock</li>
+        <li>Per-actor volumes: Amazon EFS and S3 Files</li>
         <li>Demo</li>
         <li>Where AWS can help the project</li>
       </ol>
@@ -94,7 +95,8 @@
       <h3>Everything shown runs on</h3>
       <p><span class="pill">Agent Substrate v1.0.0-rc.2</span><span class="pill">EKS 1.37</span><span class="pill">Amazon Linux 2023</span>
       <span class="pill">m8i (nested virt)</span><span class="pill">S3</span><span class="pill">RDS for PostgreSQL 18</span>
-      <span class="pill">Secrets Manager</span><span class="pill">ECR</span><span class="pill">Bedrock</span></p>
+      <span class="pill">Secrets Manager</span><span class="pill">ECR</span><span class="pill">Bedrock</span>
+      <span class="pill">EFS</span><span class="pill">S3 Files</span></p>
       <p class="muted">Published release images from <code>ghcr.io/agent-substrate/substrate</code>, plus a small local installer patch for S3 and EKS paths. No public application endpoints: every Service is ClusterIP and every demo goes through a port forward.</p>
     </div>
   </div>
@@ -213,6 +215,7 @@
     <tr><td>Workload identity</td><td>EKS Pod Identity (atelet, ate-api-server, LLM gateway)</td><td class="ok">works</td></tr>
     <tr><td>Actor image pulls</td><td>ECR via the kubelet <code>ecr-credential-provider</code> that atelet runs</td><td class="ok">works</td></tr>
     <tr><td>Nested virt for microVM</td><td>Intel 7th/8th-gen families (m8i here) with <code>NestedVirtualization=enabled</code></td><td class="ok">works</td></tr>
+    <tr><td>Per-actor volumes (CSI)</td><td>Amazon EFS and S3 Files through the EFS CSI driver add-on</td><td class="warn">works; ExternalVolumes preview, mTLS-fronted controller</td></tr>
     <tr><td>Egress credential injection</td><td>Secrets Manager provider plugin</td><td class="bad">not yet: opportunity</td></tr>
     <tr><td>Metrics</td><td>Amazon Managed Service for Prometheus</td><td class="warn">install ships a GKE PodMonitoring</td></tr>
   </table>
@@ -613,6 +616,125 @@ ate-setup deploy ate-system \
   </div>
 </section>
 
+<!-- 12b -->
+<section class="slide">
+  <h2>Per-actor volumes on Amazon EFS <span class="tag">CSI · ExternalVolumes preview</span></h2>
+  <div class="fill">
+    <svg viewBox="0 0 1240 560" role="img" aria-label="ate-api-server creates an EFS access point per actor through a CSI controller behind Envoy; the node plugin mounts it wherever the actor resumes">
+      <defs>
+        <marker id="efsa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#9aa7b4"/></marker>
+      </defs>
+      <!-- control plane -->
+      <rect x="20" y="30" width="250" height="100" rx="14" fill="#161d26" stroke="#4aa3ff" stroke-width="2"/>
+      <text x="40" y="66" fill="#4aa3ff" font-size="21" font-weight="700">ate-api-server</text>
+      <text x="40" y="92" fill="#e8edf2" font-size="16">first resume: CreateVolume</text>
+      <text x="40" y="114" fill="#e8edf2" font-size="16">delete actor: DeleteVolume</text>
+
+      <rect x="350" y="20" width="360" height="120" rx="14" fill="#161d26" stroke="#b18cff" stroke-width="2"/>
+      <text x="370" y="56" fill="#b18cff" font-size="21" font-weight="700">EFS CSI controller</text>
+      <text x="370" y="82" fill="#e8edf2" font-size="16">Envoy: mTLS, accepts only</text>
+      <text x="370" y="104" fill="#e8edf2" font-size="16">ate-api-server's SPIFFE ID</text>
+      <text x="370" y="126" fill="#9aa7b4" font-size="15">same image as the EKS add-on</text>
+
+      <path d="M270,80 L348,80" stroke="#4aa3ff" stroke-width="3" fill="none" marker-end="url(#efsa)"/>
+      <text x="282" y="70" fill="#4aa3ff" font-size="14" font-weight="600">gRPC</text>
+
+      <!-- EFS -->
+      <rect x="860" y="20" width="360" height="200" rx="14" fill="#161d26" stroke="#ff9900" stroke-width="2"/>
+      <text x="880" y="56" fill="#ff9900" font-size="21" font-weight="700">Amazon EFS</text>
+      <text x="880" y="84" fill="#e8edf2" font-size="16">one access point per actor</text>
+      <text x="880" y="108" fill="#9aa7b4" font-size="15">/ate/&lt;volume&gt;, uid of the actor's user</text>
+      <text x="880" y="140" fill="#e8edf2" font-size="16">mount target in every AZ</text>
+      <text x="880" y="170" fill="#9aa7b4" font-size="15">or S3 Files: the same driver,</text>
+      <text x="880" y="192" fill="#9aa7b4" font-size="15">files land in an S3 bucket</text>
+
+      <path d="M710,80 L858,80" stroke="#b18cff" stroke-width="3" fill="none" marker-end="url(#efsa)"/>
+      <text x="722" y="70" fill="#b18cff" font-size="14" font-weight="600">CreateAccessPoint</text>
+      <text x="722" y="104" fill="#9aa7b4" font-size="13">Pod Identity, scoped</text>
+      <text x="722" y="121" fill="#9aa7b4" font-size="13">to this file system</text>
+
+      <!-- node A -->
+      <rect x="20" y="230" width="520" height="290" rx="14" fill="none" stroke="#2a3542" stroke-width="2" stroke-dasharray="6 6"/>
+      <text x="40" y="262" fill="#9aa7b4" font-size="17" font-weight="600">node A · us-west-2c</text>
+      <rect x="40" y="280" width="220" height="100" rx="12" fill="#161d26" stroke="#3ecf8e" stroke-width="2"/>
+      <text x="58" y="312" fill="#3ecf8e" font-size="19" font-weight="700">atelet</text>
+      <text x="58" y="338" fill="#e8edf2" font-size="15">NodePublishVolume</text>
+      <text x="58" y="360" fill="#e8edf2" font-size="15">on resume</text>
+      <rect x="290" y="280" width="230" height="100" rx="12" fill="#161d26" stroke="#ff9900" stroke-width="2"/>
+      <text x="308" y="312" fill="#ff9900" font-size="19" font-weight="700">EFS node plugin</text>
+      <text x="308" y="338" fill="#e8edf2" font-size="15">NFS over TLS</text>
+      <text x="308" y="360" fill="#9aa7b4" font-size="15">into /var/lib/ate</text>
+      <rect x="40" y="400" width="480" height="100" rx="12" fill="#161d26" stroke="#4aa3ff" stroke-width="2"/>
+      <text x="58" y="432" fill="#4aa3ff" font-size="19" font-weight="700">actor (gVisor or microVM)</text>
+      <text x="58" y="458" fill="#e8edf2" font-size="15">sees the access point at its mount path</text>
+      <text x="58" y="480" fill="#9aa7b4" font-size="15">suspend: snapshot to S3, volume unmounted</text>
+      <path d="M260,330 L288,330" stroke="#3ecf8e" stroke-width="3" fill="none" marker-end="url(#efsa)"/>
+
+      <!-- node B -->
+      <rect x="700" y="270" width="520" height="250" rx="14" fill="none" stroke="#2a3542" stroke-width="2" stroke-dasharray="6 6"/>
+      <text x="720" y="302" fill="#9aa7b4" font-size="17" font-weight="600">node B · us-west-2b</text>
+      <rect x="720" y="320" width="480" height="80" rx="12" fill="#161d26" stroke="#ff9900" stroke-width="2"/>
+      <text x="738" y="352" fill="#ff9900" font-size="19" font-weight="700">same access point, mounted here</text>
+      <text x="738" y="378" fill="#e8edf2" font-size="15">the mount target in node B's zone</text>
+      <rect x="720" y="420" width="480" height="80" rx="12" fill="#161d26" stroke="#4aa3ff" stroke-width="2"/>
+      <text x="738" y="452" fill="#4aa3ff" font-size="19" font-weight="700">actor resumes from its S3 snapshot</text>
+      <text x="738" y="478" fill="#e8edf2" font-size="15">its files are where it left them</text>
+
+      <path d="M520,450 C600,450 620,460 718,460" stroke="#4aa3ff" stroke-width="3" stroke-dasharray="8 6" fill="none" marker-end="url(#efsa)"/>
+      <text x="560" y="440" fill="#4aa3ff" font-size="15" font-weight="600">resume elsewhere</text>
+      <path d="M405,280 L880,222" stroke="#ff9900" stroke-width="2" fill="none" marker-end="url(#efsa)"/>
+      <path d="M960,320 L1000,222" stroke="#ff9900" stroke-width="2" fill="none" marker-end="url(#efsa)"/>
+    </svg>
+  </div>
+  <aside class="notes">Snapshots carry an actor's memory and its own disk, but some agents want a shared, durable file system: a repository checkout, a dataset, files that outlive the actor. Substrate does this with CSI external volumes, still behind the ExternalVolumes preview. It doesn't use PersistentVolumeClaims. The control plane itself calls the CSI controller: on an actor's first resume, ate-api-server calls CreateVolume, and the EFS driver creates an access point just for that actor, owned by the user the actor runs as. Each time the actor resumes, atelet asks the EFS node plugin on that node to mount it, over TLS. Because EFS is regional with a mount target in every Availability Zone, the actor can suspend on one node and resume on a node in another zone, and its files are still there. Deleting the actor deletes the access point. Amazon S3 Files works through the same driver: the files then also show up as objects in an S3 bucket.</aside>
+</section>
+
+<!-- 12c -->
+<section class="slide">
+  <h2>EFS wiring, and an actor moving between zones</h2>
+  <div class="grid2" style="grid-template-columns:1.1fr 1fr">
+<pre><code><span class="c"># StorageClass: one access point per actor</span>
+<span class="k">provisioner</span>: efs.csi.aws.com
+<span class="k">parameters</span>:
+  <span class="k">provisioningMode</span>: efs-ap    <span class="c"># s3files-ap for S3 Files</span>
+  <span class="k">fileSystemId</span>: fs-…
+  <span class="k">directoryPerms</span>: <span class="s">"700"</span>
+  <span class="k">uid</span>: <span class="s">"0"</span>                  <span class="c"># the actor's user</span>
+  <span class="k">gid</span>: <span class="s">"0"</span>
+  <span class="k">basePath</span>: /ate
+---
+<span class="c"># CSIDriverConfig: where ate-api-server finds the controller</span>
+<span class="k">driverName</span>: efs.csi.aws.com
+<span class="k">controllerEndpoint</span>: tcp://efs-csi-controller-ate.kube-system.svc…:50052
+<span class="k">tls</span>: { enabled: true, usePodIdentity: true,
+       serverName: efs-csi-controller-ate.kube-system.svc }
+---
+<span class="c"># ActorTemplate</span>
+<span class="k">volumes</span>:
+- <span class="k">name</span>: data
+  <span class="k">external</span>: { template: { capacityBytes: 1073741824,
+                          storageClassName: efs-ate } }
+<span class="k">containers</span>:
+- <span class="k">volumeMounts</span>: [{ name: data, mountPath: /home/counter }]</code></pre>
+    <div>
+      <table>
+        <tr><th>Storage</th><th>Sandbox</th><th>Suspended in</th><th>Resumed in</th></tr>
+        <tr><td>EFS</td><td>gVisor</td><td>us-west-2c</td><td>us-west-2b</td></tr>
+        <tr><td>EFS</td><td>microVM</td><td>us-west-2a</td><td>us-west-2b</td></tr>
+        <tr><td>S3 Files</td><td>gVisor</td><td>us-west-2b</td><td>us-west-2c</td></tr>
+        <tr><td>S3 Files</td><td>microVM</td><td>us-west-2b</td><td>us-west-2a</td></tr>
+      </table>
+      <p class="caption">A captured run: the counter wrote its file on the first node and kept counting on the second, from the same access point.</p>
+      <div class="card" style="margin-top:1rem"><h3>Best practices</h3><ul>
+        <li>Match the access point's uid to the actor's user: actors run without <code>CAP_DAC_OVERRIDE</code></li>
+        <li>Run actors as non-root; on S3 Files, root needs <code>ClientRootAccess</code></li>
+        <li>Turning on the preview reinstalls Substrate and rolls workers: plan it</li>
+      </ul></div>
+    </div>
+  </div>
+  <aside class="notes">This is all the configuration it takes. The StorageClass tells the EFS driver to create an access point per volume, rooted under /ate, owned by the uid the actor runs as. That matters: Substrate drops actor capabilities to a small default set, so even root inside the sandbox can't write a directory another uid owns. The CSIDriverConfig tells ate-api-server where the controller is. Today that's a second controller from the same image as the EKS add-on, fronted by Envoy with mTLS, because the add-on's controller only listens on a socket inside its own pod. The actor template just declares the volume and where to mount it. The table is a captured run on this cluster: for both storage types and both sandbox classes, we counted on one node, suspended, emptied that node, and resumed. Every actor came back in a different Availability Zone, and its file kept counting.</aside>
+</section>
+
 <!-- 13 -->
 <section class="slide">
   <h2>Demo <span class="tag">counter actor on gVisor and microVM</span></h2>
@@ -693,6 +815,7 @@ curl localhost:8001     <span class="c"># resumes</span></code></pre>
         <li>ECR pulls through atelet's credential provider</li>
         <li>NetworkPolicy with the VPC CNI</li>
         <li>Bedrock through an LLM gateway</li>
+        <li>Per-actor EFS and S3 Files volumes, across nodes and zones (preview)</li>
       </ul>
     </div>
     <div class="card">
@@ -704,6 +827,7 @@ curl localhost:8001     <span class="c"># resumes</span></code></pre>
         <li>On S3, snapshot transfers use the pod's credentials. GCS gets <b>per-actor</b> scoped tokens.</li>
         <li>On RDS, pre-create <code>substrate_owner</code> and grant it to the master user before <code>setup.sql</code></li>
         <li>No RDS IAM authentication, so passwords sit in a Secret</li>
+        <li>ate-api-server calls the CSI controller over gRPC. The EFS add-on's controller only listens on a socket in its pod, so a second, Envoy-fronted controller serves Substrate</li>
       </ul>
     </div>
   </div>
@@ -754,7 +878,8 @@ curl localhost:8001     <span class="c"># resumes</span></code></pre>
     <tr><td>4</td><td><b>RDS IAM authentication</b> for ate-api-server</td><td>No long-lived runtime DB passwords (bootstrap still needs an admin path)</td></tr>
     <tr><td>5</td><td><b>Actor JWT to AWS</b> token exchange (<code>AssumeRoleWithWebIdentity</code>)</td><td>Per-actor AWS access when an actor really needs it</td></tr>
     <tr><td>6</td><td><b>Metrics</b> overlay for Amazon Managed Service for Prometheus</td><td>Observability without the GKE CRD</td></tr>
-    <tr><td>7</td><td>Reference <b>blueprint</b>: eksctl / Terraform / CDK with the IAM and buckets above</td><td>A blank account to running in one command</td></tr>
+    <tr><td>7</td><td><b>EFS CSI controller endpoint</b> Substrate can call: a TLS listener in the driver, or an add-on option</td><td>Per-actor EFS and S3 Files volumes with the add-on alone</td></tr>
+    <tr><td>8</td><td>Reference <b>blueprint</b>: eksctl / Terraform / CDK with the IAM and buckets above</td><td>A blank account to running in one command</td></tr>
   </table>
 </section>
 
@@ -763,7 +888,7 @@ curl localhost:8001     <span class="c"># resumes</span></code></pre>
   <h2>Production checklist for EKS</h2>
   <div class="grid3">
     <div class="card"><h3>Cluster</h3><ul><li>EKS 1.37+</li><li>Node group per sandbox class, tainted</li><li>Nested-virt Intel family (m8i, c8i, r8i, 7i) for microVM</li><li>VPC CNI network policy on</li><li>IMDSv2 with hop limit 1</li></ul></div>
-    <div class="card"><h3>Data</h3><ul><li>S3: private, TLS-only, encrypted, lifecycle</li><li>Separate read-only asset bucket</li><li>RDS private, verify-full, owner/readwrite split</li><li>Logins in Secrets Manager, rotated (alternating users) and synced by External Secrets; Reloader rolls ate-api-server</li></ul></div>
+    <div class="card"><h3>Data</h3><ul><li>S3: private, TLS-only, encrypted, lifecycle</li><li>Separate read-only asset bucket</li><li>RDS private, verify-full, owner/readwrite split</li><li>Logins in Secrets Manager, rotated (alternating users) and synced by External Secrets; Reloader rolls ate-api-server</li><li>Per-actor EFS access points, uid of the actor's user</li></ul></div>
     <div class="card"><h3>Identity &amp; access</h3><ul><li>Pod Identity role per ServiceAccount</li><li>No credentials in actors</li><li>Bedrock through a gateway, one profile</li><li>Set <code>--ateapi-authz-bootstrap-owners</code> to your operators (this demo uses the shared-client default)</li><li>ClusterIP only, port-forward to operate</li><li>Private or CIDR-restricted EKS API endpoint</li></ul></div>
   </div>
 </section>
