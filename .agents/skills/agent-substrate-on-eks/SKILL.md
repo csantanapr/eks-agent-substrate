@@ -47,6 +47,8 @@ its own to redo one step.
 ```bash
 demos/counter/verify.sh            # must end with two "PASS" lines
 demos/openclaw/deploy.sh verify    # when OPENCLAW_DIR or OPENCLAW_REPO is set
+demos/efs/verify.sh                # after demos/efs/deploy.sh: actor data on EFS
+STORAGE=s3files demos/efs/verify.sh  # after demos/s3files/deploy.sh
 kubectl -n ate-system get pods     # all Running
 ```
 
@@ -73,6 +75,10 @@ Read the real error before changing anything. Known failures and their fixes:
 | `... exists but is not owned by ...` | A bucket, IAM role or launch template with the same name lacks this deployment's owner tag | Pick another `CLUSTER_NAME`, or remove the other resource yourself after checking whose it is |
 | `create-secret ...: scheduled for deletion` | A secret deleted moments ago still holds its name | `aws/infra.sh` retries for two minutes; run `./deploy.sh` again |
 | `kubectl-ate ... Text file busy` | A running `kubectl ate proxy` holds the binary | Stop the old port forwards (`pkill -f "kubectl-ate proxy"`) |
+| Resume fails with `failed to get volume plugin ... connection refused` | Substrate's EFS CSI controller (`kube-system/efs-csi-controller-ate`) is not serving | Read its `envoy` container logs; `kubectl -n kube-system rollout status deploy/efs-csi-controller-ate` |
+| `CSI CreateVolume failed ... Access denied` | The controllers' Pod Identity role lacks an EFS or S3 Files permission | Read the `efs-plugin` logs in `efs-csi-controller-ate`: they name the action; fix the policy in `demos/efs/deploy.sh` or `demos/s3files/deploy.sh` |
+| The counter reports `preserved file counter: -1` on EFS | The access point's uid does not match the actor's user, and actors have no `CAP_DAC_OVERRIDE` | Set `EFS_UID`/`EFS_GID` to the actor's user and run the deploy again; new actors get the new uid |
+| Demo actors are `ACTOR_STATE_CRASHED` after `demos/efs/deploy.sh` | Turning on the `ExternalVolumes` preview reinstalls Substrate, which rolls the worker pods | `kubectl ate revert actor NAME -a ATESPACE` |
 
 Logs to read: `kubectl -n ate-system logs ds/atelet -c atelet`,
 `kubectl -n ate-system logs deploy/ate-api-server`, the worker pod in the

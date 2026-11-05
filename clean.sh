@@ -28,6 +28,10 @@ if cluster_exists; then
     --ignore-not-found --timeout=10m
   step kubectl delete clusterrole,clusterrolebinding openclaw-gateway-eks openclaw-dashboard --ignore-not-found
 
+  # Before Substrate goes: deleting the actors deletes their access points.
+  phase "EFS and S3 Files demos"
+  step bash "$ROOT/demos/efs/clean.sh" --yes
+
   phase "Agent Substrate uninstall"
   log "Agent Substrate"
   # Remove the release that is installed, with that release's installer.

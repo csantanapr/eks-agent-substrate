@@ -12,7 +12,7 @@ found() { printf '   LEFT  %s\n' "$*"; left=1; }
 
 if cluster_exists; then
   [ "${1:-}" = --all ] && found "EKS cluster $CLUSTER_NAME"
-  for pair in $POD_IDENTITY_SAS; do
+  for pair in $POD_IDENTITY_SAS kube-system/efs-csi-controller-sa kube-system/efs-csi-node-sa; do
     ids=$(aws_ eks list-pod-identity-associations --cluster-name "$CLUSTER_NAME" \
       --namespace "${pair%/*}" --service-account "${pair#*/}" --query 'associations[].associationId' --output text)
     [ -n "$ids" ] && found "Pod Identity association $pair ($ids)"
@@ -44,6 +44,22 @@ for b in "$SNAP_BUCKET" "$ASSET_BUCKET"; do
 done
 repos=$(aws_ ecr describe-repositories --query "repositories[?starts_with(repositoryName, \`$ECR_PREFIX/\`)].repositoryName" --output text)
 [ -n "$repos" ] && found "ECR repositories $repos"
+# demos/efs and demos/s3files: file systems hold mount targets in the VPC.
+for role in "${IAM_PREFIX}-efs-csi-controller-sa" "${IAM_PREFIX}-efs-csi-node-sa" "${IAM_PREFIX}-s3files-sync"; do
+  aws_exists iam get-role --role-name "$role" && found "IAM role $role"
+done
+efs=$(aws_ efs describe-file-systems --creation-token "$EFS_TOKEN" --query 'FileSystems[].FileSystemId' --output text)
+[ -n "$efs" ] && found "EFS file system $efs"
+s3fs=$(aws_ s3files list-file-systems --output json | jq -r --arg b "arn:$PARTITION:s3:::$S3FILES_BUCKET" \
+  '[.fileSystems[] | select(.bucket == $b and .status != "deleted") | .fileSystemId] | join(" ")')
+[ -n "$s3fs" ] && found "S3 file system $s3fs"
+aws_exists s3api head-bucket --bucket "$S3FILES_BUCKET" --expected-bucket-owner "$ACCOUNT" && found "S3 bucket $S3FILES_BUCKET"
+sgs=$(aws_ ec2 describe-security-groups --filters "Name=group-name,Values=$EFS_SG_NAME,$S3FILES_SG_NAME" \
+  --query 'SecurityGroups[].GroupId' --output text)
+[ -n "$sgs" ] && found "security groups $EFS_SG_NAME/$S3FILES_SG_NAME ($sgs)"
+if cluster_exists && aws_exists eks describe-addon --cluster-name "$CLUSTER_NAME" --addon-name aws-efs-csi-driver; then
+  found "EKS add-on aws-efs-csi-driver"
+fi
 # EBS volumes from PVCs (the gp3 StorageClass tags them with the owner tag).
 vols=$(aws_ ec2 describe-volumes --filters "Name=tag:$OWNER_TAG_KEY,Values=$OWNER_TAG_VALUE" Name=status,Values=available \
   --query 'Volumes[].VolumeId' --output text)

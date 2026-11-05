@@ -29,9 +29,10 @@ roundtrip() { # actor atespace template localport
   [ "$(state "$actor" "$ns")" = ACTOR_STATE_RUNNING ] || die "$actor did not resume"
   [ "$(count "$c")" -eq $(( $(count "$b") + 1 )) ] || die "$actor lost its in-memory count across suspend/resume"
   # The resume can use the node's local copy while the S3 upload of the same
-  # snapshot finishes in the background; wait for the durable copy.
+  # snapshot finishes in the background (sometimes minutes later); wait for
+  # the durable copy.
   local snap="" st=""
-  for _ in $(seq 1 60); do
+  for _ in $(seq 1 120); do
     snap=$(kubectl ate get actor "$actor" -a "$ns" -o json 2>/dev/null \
       | jq -c '[.status.snapshots[]? | select(.owner == "SNAPSHOT_OWNER_ACTOR")] | max_by(.generation) // empty')
     st=$(jq -r '.durableSnapshot.state // empty' <<<"$snap")

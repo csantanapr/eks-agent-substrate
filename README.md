@@ -94,6 +94,47 @@ EKS scripts: set `OPENCLAW_DIR`, or `OPENCLAW_REPO` and `OPENCLAW_REF`, and
 optionally `WHATSAPP_PEER`, then run `demos/openclaw/deploy.sh` (and
 `demos/openclaw/deploy.sh verify`).
 
+## Optional: per-actor volumes on Amazon EFS and Amazon S3 Files
+
+Substrate's external volumes (CSI, `ExternalVolumes` preview) work with the
+Amazon EFS CSI driver, for both EFS and S3 Files. Each actor gets its own
+access point when it is first resumed. That access point is mounted on
+whichever node the actor resumes on, and deleted with the actor. With S3
+Files, the actor's files also appear as objects in an S3 bucket, about a
+minute after they are written.
+
+```bash
+demos/efs/deploy.sh                       # EFS, the driver add-on, Substrate's CSI controller
+demos/efs/verify.sh                       # gVisor and microVM: data survives suspend and resume
+demos/s3files/deploy.sh                   # S3 Files on top (needs demos/efs/deploy.sh)
+STORAGE=s3files demos/efs/verify.sh
+```
+
+`clean.sh` removes both. How the pieces fit:
+
+| Piece | What it does |
+|---|---|
+| `aws-efs-csi-driver` EKS add-on | Its node plugin mounts each volume (TLS, through `efs-proxy`). The add-on config also mounts `/var/lib/ate` with bidirectional propagation, so atelet sees the mount. |
+| `efs-csi-controller-ate` | A second controller from the same image, for Substrate. ate-api-server calls `CreateVolume` itself over gRPC, so the driver's socket is fronted by Envoy with mTLS: a Substrate servicedns certificate, and only ate-api-server's SPIFFE ID allowed. |
+| `CSIDriverConfig` + StorageClass | `provisioningMode: efs-ap` or `s3files-ap`, one access point per actor under `/ate` |
+| IAM (Pod Identity) | The controllers may create and delete tagged access points on this file system only. For S3 Files, the node plugin may mount this file system only. |
+
+Things to know:
+- Set `EFS_UID`/`EFS_GID` to the user the actor runs as. Actors run without
+  `CAP_DAC_OVERRIDE`, so even root can't write an access point directory
+  that another uid owns.
+- With S3 Files, an actor that runs as root also needs
+  `s3files:ClientRootAccess` (the script grants it only when `EFS_UID=0`). A
+  non-root image is better.
+- Turning on the preview reinstalls Substrate, and that rolls the worker
+  pods: actors running at the time end up `CRASHED`. Restore them with
+  `kubectl ate revert actor NAME -a ATESPACE`.
+- Deleting an actor deletes its access point but keeps the files under it
+  (the driver's default, `--delete-access-point-root-dir=false`).
+  `clean.sh` deletes the file systems and the bucket.
+- The template's golden snapshot gets a volume of its own too, so each
+  template leaves one extra directory under `/ate`.
+
 ## Move to a new release
 
 Set `SUBSTRATE_TAG` in `config.local.env` (for example `v1.0.0-rc.3`, or
@@ -168,7 +209,7 @@ client identity (pass it through `substrate/install.sh`).
 | `substrate/` | Fetch, patch and build the installer; install Agent Substrate |
 | `patches/` | The installer patch for EKS and S3, and why |
 | `llm-gateway/` | agentgateway with the Bedrock backend |
-| `demos/` | The counter and OpenClaw demos |
+| `demos/` | The counter and OpenClaw demos; per-actor EFS and S3 Files volumes |
 | `slides/` | The talk deck (open `slides/index.html`) |
 | `.agents/skills/` | Agent skill for deploying and troubleshooting this repo; `.claude/skills` and `.kiro/skills` link to it |
 | `.work/` | Generated: kubeconfig, Substrate clone, tools (gitignored) |

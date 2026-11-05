@@ -1,0 +1,155 @@
+# An EFS CSI controller that Agent Substrate's ate-api-server can call.
+# ate-api-server calls CreateVolume and DeleteVolume itself over gRPC, so the
+# driver's unix socket is fronted by an Envoy sidecar that serves mTLS with a
+# Substrate servicedns certificate and accepts only ate-api-server's SPIFFE ID.
+# The EKS add-on's own controller keeps serving PersistentVolumeClaims; this one
+# shares its ServiceAccount and Pod Identity role.
+apiVersion: v1
+kind: Service
+metadata:
+  name: efs-csi-controller-ate
+  namespace: kube-system
+spec:
+  type: ClusterIP
+  selector:
+    app: efs-csi-controller-ate
+  ports:
+  - name: grpc
+    port: 50052
+    targetPort: 10000
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: efs-csi-controller-ate-envoy
+  namespace: kube-system
+data:
+  envoy.yaml: |
+    node: { id: efs-csi-controller-ate, cluster: efs-csi-controller-ate }
+    static_resources:
+      listeners:
+      - name: grpc
+        address: { socket_address: { address: 0.0.0.0, port_value: 10000 } }
+        filter_chains:
+        - transport_socket:
+            name: envoy.transport_sockets.tls
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
+              require_client_certificate: true
+              common_tls_context:
+                alpn_protocols: [h2]
+                tls_certificate_sds_secret_configs:
+                - name: serving
+                  sds_config: { resource_api_version: V3, path_config_source: { path: /etc/envoy/sds-cert.yaml } }
+                combined_validation_context:
+                  default_validation_context:
+                    match_typed_subject_alt_names:
+                    - san_type: URI
+                      matcher: { exact: "spiffe://cluster.local/ns/ate-system/sa/ate-api-server" }
+                  validation_context_sds_secret_config:
+                    name: podidentity-ca
+                    sds_config: { resource_api_version: V3, path_config_source: { path: /etc/envoy/sds-ca.yaml } }
+          filters:
+          - name: envoy.filters.network.http_connection_manager
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+              stat_prefix: csi
+              http2_protocol_options: {}
+              route_config:
+                virtual_hosts:
+                - name: csi
+                  domains: ["*"]
+                  routes: [{ match: { prefix: "/" }, route: { cluster: csi, timeout: 120s } }]
+              http_filters:
+              - name: envoy.filters.http.router
+                typed_config: { "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router }
+      clusters:
+      - name: csi
+        connect_timeout: 1s
+        type: STATIC
+        typed_extension_protocol_options:
+          envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+            "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+            explicit_http_config: { http2_protocol_options: {} }
+        load_assignment:
+          cluster_name: csi
+          endpoints: [{ lb_endpoints: [{ endpoint: { address: { pipe: { path: /csi/csi.sock } } } }] }]
+  sds-cert.yaml: |
+    resources:
+    - "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.Secret
+      name: serving
+      tls_certificate:
+        certificate_chain: { filename: /run/servicedns/credential-bundle.pem }
+        private_key: { filename: /run/servicedns/credential-bundle.pem }
+        watched_directory: { path: /run/servicedns }
+  sds-ca.yaml: |
+    resources:
+    - "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.Secret
+      name: podidentity-ca
+      validation_context:
+        trusted_ca: { filename: /run/podidentity-ca/trust-bundle.pem }
+        watched_directory: { path: /run/podidentity-ca }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: efs-csi-controller-ate
+  namespace: kube-system
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: efs-csi-controller-ate }
+  template:
+    metadata:
+      labels: { app: efs-csi-controller-ate }
+      # A changed Envoy config rolls the pods.
+      annotations: { agent-substrate-on-eks/config-sha256: REPLACE_WITH_CONFIG_SHA }
+    spec:
+      serviceAccountName: efs-csi-controller-sa
+      priorityClassName: system-cluster-critical
+      nodeSelector: { ate.dev/pool: system }
+      securityContext: { seccompProfile: { type: RuntimeDefault } }
+      containers:
+      - name: efs-plugin
+        image: REPLACE_WITH_EFS_IMAGE
+        args: [--endpoint=unix:///csi/csi.sock, --logtostderr, --v=2, --delete-access-point-root-dir=false]
+        env:
+        - { name: CSI_NODE_NAME, valueFrom: { fieldRef: { fieldPath: spec.nodeName } } }
+        # Pod Identity only; never the node role.
+        - { name: AWS_EC2_METADATA_DISABLED, value: "true" }
+        securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: [ALL] } }
+        volumeMounts: [{ name: socket-dir, mountPath: /csi }]
+        resources: { requests: { cpu: 10m, memory: 40Mi }, limits: { memory: 256Mi } }
+      - name: envoy
+        image: REPLACE_WITH_ENVOY_IMAGE
+        command: [/usr/local/bin/envoy, -c, /etc/envoy/envoy.yaml, --log-level, warn]
+        ports: [{ name: grpc, containerPort: 10000 }]
+        # Root only to open the driver's root-owned socket.
+        securityContext:
+          runAsUser: 0
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities: { drop: [ALL] }
+        volumeMounts:
+        - { name: socket-dir, mountPath: /csi }
+        - { name: envoy-config, mountPath: /etc/envoy }
+        - { name: servicedns, mountPath: /run/servicedns, readOnly: true }
+        - { name: podidentity-ca, mountPath: /run/podidentity-ca, readOnly: true }
+        resources: { requests: { cpu: 10m, memory: 40Mi }, limits: { memory: 128Mi } }
+      volumes:
+      - { name: socket-dir, emptyDir: {} }
+      - { name: envoy-config, configMap: { name: efs-csi-controller-ate-envoy } }
+      - name: servicedns
+        projected:
+          sources:
+          - podCertificate:
+              signerName: servicedns.podcert.ate.dev/identity
+              keyType: ECDSAP256
+              credentialBundlePath: credential-bundle.pem
+      - name: podidentity-ca
+        projected:
+          sources:
+          - clusterTrustBundle:
+              signerName: podidentity.podcert.ate.dev/identity
+              labelSelector: { matchLabels: { podcert.ate.dev/canarying: live } }
+              path: trust-bundle.pem
