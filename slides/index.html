@@ -52,6 +52,7 @@
   svg text { font-family: inherit; }
   .fill { flex: 1; display: flex; align-items: center; justify-content: center; }
   .fill svg { width: 100%; height: 100%; max-height: 70vh; }
+  .fill img { max-width: 100%; max-height: 74vh; border-radius: 10px; background: #fff; }
   .step { opacity: .18; transition: opacity .35s ease; }
   .step.on { opacity: 1; }
   @media (prefers-reduced-motion: reduce) { .step { transition: none; } }
@@ -201,6 +202,15 @@
     </svg>
   </div>
   <aside class="notes">One EKS cluster, three managed node groups on AL2023. Everything the project needs from a cloud maps to a managed AWS service. The components that call AWS (ate-api-server, atelet, the LLM gateway, the EBS CSI driver) use EKS Pod Identity, not static keys; actors get no AWS identity at all.</aside>
+</section>
+
+<!-- 4b -->
+<section class="slide">
+  <h2>Every AWS service in one view</h2>
+  <div class="fill">
+    <img src="agent-substrate-on-eks.png" alt="Agent Substrate on Amazon EKS in us-west-2: a VPC with public and private subnets; in the private subnets the EKS cluster with system, gVisor and microVM node groups running ate-api-server, ate-controller, ate-idp-server, atenet-router, atenet-egress, External Secrets with the Reloader, OpenClaw, efs-csi-controller-ate, agentgateway, atelet and worker pods; plus RDS for PostgreSQL and the rotation Lambdas; with Amazon S3, S3 Files, EFS, EBS, ECR, Secrets Manager, Bedrock, IAM with Pod Identity, CloudFormation and CloudWatch Logs.">
+  </div>
+  <aside class="notes">This is the whole install on one page. Outside AWS there are only two things: your laptop, and ghcr.io, where the Substrate release images come from. There are no public load balancers. You reach the EKS API with IAM, and the Substrate API through kubectl port-forward. Everything runs in the private subnets. The system node group runs the control pieces: ate-api-server with its state in RDS and its snapshots in S3, the controller and the identity server, the router that brings traffic in to actors, and the egress gateway that is the only way out. The gVisor and microVM node groups run atelet and the worker pods that host the actors. Each pod that calls AWS has its own IAM role through Pod Identity. Actors have no AWS identity at all. Bedrock is reached only through agentgateway, and the database logins rotate through Secrets Manager. The editable source is agent-substrate-on-eks.drawio next to this deck.</aside>
 </section>
 
 <!-- 5 -->

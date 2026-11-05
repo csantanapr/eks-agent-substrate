@@ -200,6 +200,10 @@ until `clean.sh` has finished. Run `aws/inventory.sh --all` any time.
 
 ## How it is built, and why
 
+![Agent Substrate on Amazon EKS: every AWS service, the EKS cluster and the Agent Substrate components](slides/agent-substrate-on-eks.png)
+
+The editable source is [`slides/agent-substrate-on-eks.drawio`](slides/agent-substrate-on-eks.drawio); open it in [draw.io](https://app.diagrams.net/).
+
 | Area | Choice |
 |---|---|
 | Nodes | Amazon Linux 2023 EKS-optimized AMI, IMDSv2 only with a hop limit of 1, so pods in their own network namespace cannot read node credentials from IMDS. Host-network pods (CNI, kube-proxy, CSI) still can, so keep host networking to trusted system DaemonSets. AWS access is only through Pod Identity. |
