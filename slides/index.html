@@ -18,7 +18,7 @@
   section.slide.active { display: flex; }
   h1 { font-size: 3.2rem; margin: 0 0 .4em; letter-spacing: -.02em; }
   h2 { font-size: 2.2rem; margin: 0 0 .6em; letter-spacing: -.01em; }
-  h2 .tag { font-size: .9rem; vertical-align: middle; margin-left: .6em; padding: .15em .6em;
+  h2 .tag { font-size: 1rem; vertical-align: middle; margin-left: .6em; padding: .15em .6em;
     border-radius: 999px; border: 1px solid var(--line); color: var(--muted); font-weight: 500; }
   p, li { font-size: 1.35rem; line-height: 1.5; }
   li { margin: .25em 0; }
@@ -31,13 +31,14 @@
   .card h3 { margin: 0 0 .4em; font-size: 1.25rem; }
   .card p, .card li { font-size: 1.1rem; }
   pre { background: var(--code); color: var(--ink); border: 1px solid var(--line); border-radius: 12px;
-    padding: 1rem 1.2rem; font-size: .95rem; line-height: 1.45; overflow: auto; margin: 0; }
+    padding: 1rem 1.2rem; font-size: 1rem; line-height: 1.45; overflow: auto; margin: 0; }
   code { font-family: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace; }
   p code, li code, td code { background: var(--code); padding: .05em .35em; border-radius: 6px; font-size: .9em; }
   .k { color: var(--blue); } .s { color: var(--green); } .c { color: var(--muted); } .h { color: var(--accent); }
   table { border-collapse: collapse; width: 100%; font-size: 1.15rem; }
   th, td { text-align: left; padding: .55rem .8rem; border-bottom: 1px solid var(--line); vertical-align: top; }
-  th { color: var(--muted); font-weight: 600; font-size: .95rem; text-transform: uppercase; letter-spacing: .05em; }
+  th { color: var(--muted); font-weight: 600; font-size: 1rem; text-transform: uppercase; letter-spacing: .05em; }
+  code.nw { white-space: nowrap; }
   .title-slide { justify-content: center; }
   .title-slide h1 { font-size: 4rem; }
   .pill { display: inline-block; padding: .25em .8em; border-radius: 999px; background: var(--panel);
@@ -66,7 +67,15 @@
   .terminal { background: #05080b; border-radius: 12px; border: 1px solid var(--line); padding: 1rem 1.2rem;
     font-family: "JetBrains Mono", Menlo, monospace; font-size: 1rem; line-height: 1.5; white-space: pre; overflow: auto; }
   .terminal .p { color: var(--green); } .terminal .o { color: var(--ink); } .terminal .d { color: var(--muted); }
-  .caption { color: var(--muted); font-size: .95rem; margin-top: .6rem; }
+  .caption { color: var(--muted); font-size: 1.05rem; margin-top: .6rem; }
+  .watch { border-color: var(--accent); }
+  .watch h3 { color: var(--accent); }
+  .watch ol { margin: 0; padding-left: 1.4em; }
+  .watch li { font-size: 1.25rem; }
+  .terminal .hl { color: var(--accent); font-weight: 700; }
+  .crop { aspect-ratio: 6080 / 3228; height: 80vh; max-width: 100%; overflow: hidden; border-radius: 10px; background: #fff; }
+  .fill .crop img { width: 100%; height: auto; max-width: none; max-height: none; display: block; border-radius: 0; }
+  .grid3 .card li, .card.roomy li { font-size: 1.25rem; }
 </style>
 </head>
 <body>
@@ -77,7 +86,8 @@
   <p class="accent" style="font-size:1.2rem;letter-spacing:.12em;text-transform:uppercase;margin:0">Agent Substrate Day</p>
   <h1>Running Agent Substrate<br>on EKS</h1>
   <p class="muted big">What it takes on AWS, which services to use,<br>and where AWS can help the project</p>
-  <p style="margin-top:2rem">Carlos Santana</p>
+  <p style="margin:2rem 0 0;font-size:1.5rem;font-weight:600">Carlos Santana</p>
+  <p class="muted" style="margin:.2rem 0 0">Sr. Specialist Solutions Architect, Amazon Web Services</p>
   <aside class="notes">Two goals: show that Agent Substrate v1.0.0-rc.3 runs on EKS with the AWS services you already use, including what still needs a small patch, and lay out where AWS can contribute back so a production install needs none.</aside>
 </section>
 
@@ -88,15 +98,14 @@
     <div>
       <ol>
         <li>Agent Substrate in one slide</li>
-        <li>The reference architecture on AWS</li>
-        <li>Cluster: EKS 1.37, three node groups</li>
-        <li>Two sandbox classes: gVisor and microVM</li>
-        <li>Snapshots on S3, state on RDS</li>
-        <li>Identity: EKS Pod Identity for every AWS caller</li>
-        <li>Inference on Amazon Bedrock</li>
+        <li>The architecture on AWS</li>
+        <li>Cluster and sandboxes: EKS 1.37, gVisor, microVM</li>
+        <li>Snapshots on S3, one IAM role per component</li>
+        <li>State on RDS, with rotating logins</li>
+        <li>Actor secrets and Bedrock, through the egress gateway</li>
         <li>Per-actor volumes: Amazon EFS and S3 Files</li>
-        <li>Demo</li>
-        <li>Where AWS can help the project</li>
+        <li>Two demos</li>
+        <li>Lessons, where AWS can help, production checklist</li>
       </ol>
     </div>
     <div class="card">
@@ -105,18 +114,19 @@
       <span class="pill">m8i (nested virt)</span><span class="pill">S3</span><span class="pill">RDS for PostgreSQL 18</span>
       <span class="pill">Secrets Manager</span><span class="pill">ECR</span><span class="pill">Bedrock</span>
       <span class="pill">EFS</span><span class="pill">S3 Files</span></p>
-      <p class="muted">Published release images from <code>ghcr.io/agent-substrate/substrate</code>, plus a small local installer patch for S3 and EKS paths. No public application endpoints: every Service is ClusterIP and every demo goes through a port forward.</p>
+      <p class="muted">No public application endpoints: every Service is ClusterIP.</p>
     </div>
   </div>
+  <aside class="notes">The path for the next half hour: what Agent Substrate is, how it maps onto AWS, then the pieces one at a time (the cluster and its two sandbox classes, snapshots and identity, state and rotating logins, secrets and inference through the egress gateway, per-actor volumes), two demos, and what we learned. Everything shown runs on the published release images from ghcr.io/agent-substrate/substrate, plus a small local installer patch for S3 and EKS paths. No application endpoint is public: every Service is ClusterIP and every demo goes through a port forward.</aside>
 </section>
 
 <!-- 3 -->
 <section class="slide">
-  <h2>Agent Substrate in one slide</h2>
+  <h2>Thousands of idle agents share a small pool of worker pods</h2>
   <div class="fill">
     <svg viewBox="0 0 1200 520" role="img" aria-label="Many actors multiplexed onto a few worker pods, suspended to object storage when idle">
       <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#9aa7b4"/></marker></defs>
-      <text x="40" y="40" fill="#9aa7b4" font-size="20">Actors (agents) — thousands, mostly idle</text>
+      <text x="40" y="40" fill="#9aa7b4" font-size="20">Actors (agents): thousands, mostly idle</text>
       <g fill="#161d26" stroke="#4aa3ff" stroke-width="2">
         <rect x="40" y="60" width="90" height="46" rx="10"/><rect x="145" y="60" width="90" height="46" rx="10"/>
         <rect x="250" y="60" width="90" height="46" rx="10"/><rect x="355" y="60" width="90" height="46" rx="10"/>
@@ -129,13 +139,14 @@
       </g>
       <text x="900" y="90" fill="#9aa7b4" font-size="22">…</text>
       <rect x="40" y="200" width="830" height="110" rx="14" fill="#161d26" stroke="#ff9900" stroke-width="2"/>
-      <text x="60" y="232" fill="#ff9900" font-size="20">Workers — a small pool of ready Kubernetes pods</text>
+      <text x="852" y="232" fill="#ff9900" font-size="20" text-anchor="end">Workers: a small pool of ready pods</text>
       <g fill="#0b1016" stroke="#3ecf8e" stroke-width="2"><rect x="60" y="248" width="180" height="46" rx="10"/><rect x="260" y="248" width="180" height="46" rx="10"/><rect x="460" y="248" width="180" height="46" rx="10"/><rect x="660" y="248" width="180" height="46" rx="10"/></g>
       <g fill="#e8edf2" font-size="17" text-anchor="middle"><text x="150" y="277">worker · agent</text><text x="350" y="277">worker · agent</text><text x="550" y="277">worker · free</text><text x="750" y="277">worker · free</text></g>
       <path d="M190 106 L150 246" stroke="#9aa7b4" stroke-width="2" fill="none" marker-end="url(#arr)"/>
       <path d="M505 106 L350 246" stroke="#9aa7b4" stroke-width="2" fill="none" marker-end="url(#arr)"/>
+      <text x="474" y="168" fill="#9aa7b4" font-size="17">placed on demand</text>
       <rect x="40" y="400" width="830" height="80" rx="14" fill="#161d26" stroke="#b18cff" stroke-width="2"/>
-      <text x="60" y="435" fill="#b18cff" font-size="20">Object storage — suspended actors: memory, rootfs, durable volumes</text>
+      <text x="60" y="435" fill="#b18cff" font-size="20">Object storage: suspended actors' memory, rootfs and durable volumes</text>
       <text x="60" y="462" fill="#9aa7b4" font-size="17">resume on the next request, on any worker with a compatible runtime</text>
       <path d="M350 296 L350 398" stroke="#b18cff" stroke-width="2" fill="none" marker-end="url(#arr)" stroke-dasharray="6 6"/>
       <text x="362" y="352" fill="#b18cff" font-size="16">suspend</text>
@@ -155,7 +166,7 @@
 
 <!-- 4 -->
 <section class="slide">
-  <h2>The reference architecture on AWS</h2>
+  <h2>One EKS cluster, three node groups, managed AWS services around it</h2>
   <div class="fill">
     <svg viewBox="0 0 1240 560" role="img" aria-label="Agent Substrate on EKS with S3, RDS, Secrets Manager, ECR, Bedrock and Pod Identity">
       <defs><marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#9aa7b4"/></marker></defs>
@@ -217,16 +228,17 @@
 
 <!-- 4b -->
 <section class="slide">
-  <h2>Every AWS service in one view</h2>
+  <h2>Everything runs in private subnets, with no public application endpoints</h2>
   <div class="fill">
-    <img src="agent-substrate-on-eks.png" alt="Agent Substrate on Amazon EKS in us-west-2: a VPC with public and private subnets; in the private subnets the EKS cluster with system, gVisor and microVM node groups running ate-api-server, ate-controller, ate-idp-server, atenet-router, atenet-egress, External Secrets with the Reloader, OpenClaw, efs-csi-controller-ate, agentgateway, atelet and worker pods; plus RDS for PostgreSQL and the rotation Lambdas; with Amazon S3, S3 Files, EFS, EBS, ECR, Secrets Manager, Bedrock, IAM with Pod Identity, CloudFormation and CloudWatch Logs.">
+    <div class="crop"><img src="agent-substrate-on-eks.png" alt="Agent Substrate on Amazon EKS in us-west-2: a VPC with public and private subnets; in the private subnets the EKS cluster with system, gVisor and microVM node groups running ate-api-server, ate-controller, ate-idp-server, atenet-router, atenet-egress, External Secrets with the Reloader, OpenClaw, efs-csi-controller-ate, agentgateway, atelet and worker pods; plus RDS for PostgreSQL and the rotation Lambdas; with Amazon S3, S3 Files, EFS, EBS, ECR, Secrets Manager, Bedrock, IAM with Pod Identity, CloudFormation and CloudWatch Logs."></div>
   </div>
-  <aside class="notes">This is the whole install on one page. Outside AWS there are only two things: your laptop, and ghcr.io, where the Substrate release images come from. There are no public load balancers. You reach the EKS API with IAM, and the Substrate API through kubectl port-forward. Everything runs in the private subnets. The system node group runs the control pieces: ate-api-server with its state in RDS and its snapshots in S3, the controller and the identity server, the router that brings traffic in to actors, and the egress gateway that is the only way out. The gVisor and microVM node groups run atelet and the worker pods that host the actors. Each pod that calls AWS has its own IAM role through Pod Identity. Actors have no AWS identity at all. Bedrock is reached only through agentgateway, and the database logins rotate through Secrets Manager. The editable source is agent-substrate-on-eks.drawio next to this deck.</aside>
+  <aside class="notes">This is the whole install on one page; the full-size image is in the repo README, so people can read the small labels later. Dashed lines are TLS over the public internet. Also in the cluster, not drawn: k8s-credential-provider, podcertcontroller (mTLS pod certificates), and the add-ons vpc-cni (NetworkPolicy), CoreDNS, kube-proxy, Pod Identity Agent, EBS CSI and EFS CSI. Rotation Lambdas rotate the owner and readwrite secrets every 30 days. Nodes run AL2023 with IMDSv2 and a hop limit of 1; the microvm launch template turns on nested virtualization. EFS and S3 Files access points are per actor volume, in the optional demo.
+  <br><br>The walk-through: outside AWS there are only two things: your laptop, and ghcr.io, where the Substrate release images come from. There are no public load balancers. You reach the EKS API with IAM, and the Substrate API through kubectl port-forward. Everything runs in the private subnets. The system node group runs the control pieces: ate-api-server with its state in RDS and its snapshots in S3, the controller and the identity server, the router that brings traffic in to actors, and the egress gateway that is the only way out. The gVisor and microVM node groups run atelet and the worker pods that host the actors. Each pod that calls AWS has its own IAM role through Pod Identity. Actors have no AWS identity at all. Bedrock is reached only through agentgateway, and the database logins rotate through Secrets Manager. The editable source is agent-substrate-on-eks.drawio next to this deck.</aside>
 </section>
 
 <!-- 5 -->
 <section class="slide">
-  <h2>What each piece maps to on AWS</h2>
+  <h2>Every Substrate dependency maps to an AWS service</h2>
   <table>
     <tr><th>Agent Substrate needs</th><th>On AWS</th><th>Status in rc.3</th></tr>
     <tr><td>Kubernetes with PodCertificate + ClusterTrustBundle</td><td>EKS 1.37 (both GA)</td><td class="ok">works, no flags</td></tr>
@@ -240,11 +252,12 @@
     <tr><td>Egress credential injection</td><td>AWS Secrets Manager through the <code>aws-sm-credential-provider</code> plugin</td><td class="ok">works</td></tr>
     <tr><td>Metrics</td><td>Amazon Managed Service for Prometheus</td><td class="warn">install ships a GKE PodMonitoring</td></tr>
   </table>
+  <aside class="notes">Read the green column first: almost everything works on a stock EKS cluster with the published release. The orange rows are where you need a little help today. microVM guest assets: the stock installer stages them to Google Cloud Storage, and a small installer patch in this repo stages them to S3 instead. Per-actor volumes work through the ExternalVolumes preview and a second EFS CSI controller behind Envoy. Metrics: the install ships a GKE PodMonitoring object, so on EKS you wire Prometheus yourself. Each orange row comes back on the "where AWS can help" slide.</aside>
 </section>
 
 <!-- 6 -->
 <section class="slide">
-  <h2>The cluster <span class="tag">eksctl · EKS 1.37 · AL2023</span></h2>
+  <h2>One node group per sandbox class, network policy on <span class="tag">eksctl · EKS 1.37 · AL2023</span></h2>
   <div class="grid2">
 <pre><code><span class="k">apiVersion</span>: eksctl.io/v1alpha5
 <span class="k">kind</span>: ClusterConfig
@@ -271,19 +284,20 @@
           effect: NoSchedule }</code></pre>
     <div>
       <ul>
-        <li>One node group per sandbox class. Worker pods tolerate <code>ate.dev/sandboxClass=&lt;class&gt;</code> on their own.</li>
-        <li>Turn on <b>VPC CNI network policy</b>. Substrate ships default-deny policies for <code>ate-system</code> and per-WorkerPool policies. Without enforcement they do nothing.</li>
-        <li>PodCertificate and ClusterTrustBundle are GA in 1.37, so the mTLS identity layer works on a stock cluster.</li>
-        <li>Private subnets for nodes and data stores.</li>
+        <li>One tainted node group per sandbox class</li>
+        <li>Turn on <b>VPC CNI network policy</b>: Substrate's default-deny policies need it</li>
+        <li>PodCertificate and ClusterTrustBundle are GA in 1.37: mTLS works on a stock cluster</li>
+        <li>Private subnets for nodes and data stores</li>
       </ul>
     </div>
   </div>
+  <aside class="notes">This is the shape of the eksctl config, shortened. One managed node group per sandbox class, each tainted ate.dev/sandboxClass equals its class; Substrate's worker pods carry the matching toleration on their own, so nothing else lands there. Turn on network policy in the VPC CNI add-on: Substrate ships default-deny NetworkPolicies for ate-system and one per WorkerPool, and without enforcement they do nothing. PodCertificateRequest and ClusterTrustBundle are GA in Kubernetes 1.37, so Substrate's mTLS identity layer needs no feature flags. disablePodIMDS sets IMDSv2 with a hop limit of 1 so pods can't use the node's credentials; the microvm group gets the same settings, plus nested virtualization, from its launch template.</aside>
 </section>
 
 <!-- 7 -->
 <section class="slide">
   <h2>Two sandbox classes, one cluster</h2>
-  <div class="grid2">
+  <div class="grid2" style="flex:0">
     <div class="card">
       <h3 class="ok">gVisor <span class="muted">· soft isolation</span></h3>
       <ul>
@@ -303,18 +317,47 @@
       </ul>
     </div>
   </div>
-  <p class="muted">Same ActorTemplate shape for both. Pick per workload with <code>sandboxClasses</code> on the WorkerPool.</p>
+  <div class="fill" style="margin-top:1.4rem">
+    <svg viewBox="0 0 1690 380" role="img" aria-label="Layer stacks: on gVisor the actor sits on the gVisor userspace kernel, then the host kernel and the EC2 instance; on microVM the actor has its own guest kernel, then Cloud Hypervisor on KVM, the host kernel and an EC2 instance with nested virtualization">
+      <g font-size="21">
+        <rect x="1" y="1" width="825" height="60" rx="12" fill="#161d26" stroke="#4aa3ff" stroke-width="2"/>
+        <text x="24" y="39"><tspan fill="#4aa3ff" font-weight="700">actor</tspan><tspan dx="14" fill="#9aa7b4" font-size="18">the agent's own processes</tspan></text>
+        <rect x="1" y="72" width="825" height="60" rx="12" fill="#161d26" stroke="#3ecf8e" stroke-width="2"/>
+        <text x="24" y="110"><tspan fill="#3ecf8e" font-weight="700">gVisor userspace kernel</tspan><tspan dx="14" fill="#9aa7b4" font-size="18">runsc · intercepts the actor's syscalls</tspan></text>
+        <text x="24" y="161" fill="#e8edf2" font-size="17">isolation boundary</text>
+        <path d="M190 155 H826" stroke="#e8edf2" stroke-width="2" stroke-dasharray="8 6"/>
+        <rect x="1" y="176" width="825" height="132" rx="12" fill="#0b1016" stroke="#2a3542" stroke-width="2"/>
+        <text x="24" y="250"><tspan fill="#e8edf2" font-weight="700">host Linux kernel</tspan><tspan dx="14" fill="#9aa7b4" font-size="18">Amazon Linux 2023</tspan></text>
+        <rect x="1" y="320" width="825" height="58" rx="12" fill="#161d26" stroke="#ff9900" stroke-width="2"/>
+        <text x="24" y="357"><tspan fill="#ff9900" font-weight="700">EC2 instance</tspan><tspan dx="14" fill="#9aa7b4" font-size="18">m8i.2xlarge · no special hardware</tspan></text>
+
+        <rect x="864" y="1" width="825" height="60" rx="12" fill="#161d26" stroke="#4aa3ff" stroke-width="2"/>
+        <text x="887" y="39"><tspan fill="#4aa3ff" font-weight="700">actor</tspan><tspan dx="14" fill="#9aa7b4" font-size="18">the agent's own processes</tspan></text>
+        <rect x="864" y="72" width="825" height="60" rx="12" fill="#161d26" stroke="#b18cff" stroke-width="2"/>
+        <text x="887" y="110"><tspan fill="#b18cff" font-weight="700">guest kernel</tspan><tspan dx="14" fill="#9aa7b4" font-size="18">the actor's own Linux kernel (Kata)</tspan></text>
+        <text x="887" y="161" fill="#e8edf2" font-size="17">isolation boundary</text>
+        <path d="M1053 155 H1689" stroke="#e8edf2" stroke-width="2" stroke-dasharray="8 6"/>
+        <rect x="864" y="176" width="825" height="60" rx="12" fill="#161d26" stroke="#b18cff" stroke-width="2"/>
+        <text x="887" y="214"><tspan fill="#b18cff" font-weight="700">Cloud Hypervisor</tspan><tspan dx="14" fill="#9aa7b4" font-size="18">VMM on KVM, through /dev/kvm</tspan></text>
+        <rect x="864" y="248" width="825" height="60" rx="12" fill="#0b1016" stroke="#2a3542" stroke-width="2"/>
+        <text x="887" y="286"><tspan fill="#e8edf2" font-weight="700">host Linux kernel</tspan><tspan dx="14" fill="#9aa7b4" font-size="18">Amazon Linux 2023</tspan></text>
+        <rect x="864" y="320" width="825" height="58" rx="12" fill="#161d26" stroke="#ff9900" stroke-width="2"/>
+        <text x="887" y="357"><tspan fill="#ff9900" font-weight="700">EC2 instance</tspan><tspan dx="14" fill="#9aa7b4" font-size="18">m8i.2xlarge · nested virtualization on</tspan></text>
+      </g>
+    </svg>
+  </div>
+  <p class="muted" style="margin:.8rem 0 0">Same ActorTemplate shape for both. Pick per workload with <code>sandboxClasses</code> on the WorkerPool.</p>
+  <aside class="notes">Both sandbox classes run side by side in one cluster. gVisor is soft isolation: a userspace kernel, runsc, intercepts the actor's syscalls, so it runs on any node with no special hardware, and it checkpoints and restores the process tree natively. microVM is VM isolation: Kata runs the actor with its own guest kernel inside Cloud Hypervisor, which needs /dev/kvm; atelet advertises it as the ate.dev/kvm resource. Its memory snapshot is restored on demand with userfaultfd, and its guest assets come from the S3 asset bucket. The ActorTemplate looks the same for both; the WorkerPool's sandboxClasses picks which one a workload gets.</aside>
 </section>
 
 <!-- 8 -->
 <section class="slide">
-  <h2>Nested virtualization on EC2</h2>
+  <h2>Nested virtualization runs microVMs without bare metal</h2>
   <div class="grid2">
     <div>
       <ul>
         <li>Supported on recent Intel families. In us-west-2 today: <span class="pill">c7i</span><span class="pill">m7i</span><span class="pill">r7i</span><span class="pill">c8i</span><span class="pill">m8i</span><span class="pill">r8i</span><span class="pill">i7i</span><span class="pill">x8i</span> plus flex and <code>d</code> variants. This demo uses m8i.2xlarge.</li>
         <li>Turned on per instance through the launch template's <code>CpuOptions</code>.</li>
-        <li>On Windows instances it disables Credential Guard's Virtual Secure Mode. No effect on AL2023 nodes.</li>
         <li>No bare metal needed to run Kata microVMs on EKS.</li>
         <li>Check from a node: <code>/dev/kvm</code> exists and the CPU exposes <code>vmx</code>.</li>
       </ul>
@@ -338,26 +381,22 @@ Values=nested-virtualization
 crw-rw-rw- 1 root kvm 10, 232 /dev/kvm
 kernel 6.18.56-125.164.amzn2023.x86_64</code></pre>
   </div>
+  <aside class="notes">The microVM sandbox needs KVM. Without nested virtualization that means bare metal instances. With it: recent Intel families support it, and this demo uses m8i.2xlarge. You turn it on per instance with CpuOptions in the launch template, which is why the microvm node group has its own template; the same template keeps IMDSv2 with a hop limit of 1 and an encrypted 200 GB volume. create-cluster.sh checks the instance type with the describe-instance-types filter shown here before it creates anything. On a node, /dev/kvm exists and the CPU exposes vmx. One side note if anyone asks: on Windows instances, turning it on disables Credential Guard's Virtual Secure Mode; that has no effect on AL2023 nodes.</aside>
 </section>
 
 <!-- 9 -->
 <section class="slide">
-  <h2>Snapshots on Amazon S3</h2>
+  <h2>Suspended actors live in S3, moved by a sidecar</h2>
   <div class="grid2">
     <div>
       <ul>
-        <li>The <code>objectstore-plugin</code> sidecar moves snapshots. atelet and ate-api-server never talk to storage directly.</li>
-        <li>Select S3 with <code>ATE_STORAGE_BACKEND=s3</code> and the AWS SDK default chain. Credentials come from Pod Identity.</li>
-        <li>Cluster-wide <code>--snapshot-location s3://&lt;bucket&gt;/</code>.</li>
-        <li>A separate <b>asset bucket</b> holds the microVM guest kernel, rootfs, VMM and virtiofsd, content addressed by sha256.</li>
+        <li>The <code>objectstore-plugin</code> sidecar moves every snapshot</li>
+        <li><code>ATE_STORAGE_BACKEND=s3</code>, credentials from Pod Identity</li>
+        <li>A separate, read-only <b>asset bucket</b> for microVM guest assets</li>
       </ul>
-      <h3 style="margin-top:1rem">Bucket best practices</h3>
-      <ul>
-        <li>Block Public Access on, <code>BucketOwnerEnforced</code></li>
-        <li>Default encryption (SSE-S3 here; SSE-KMS with a Bucket Key if you need key control)</li>
-        <li>Bucket policy that denies non-TLS requests</li>
-        <li>Lifecycle rule to abort incomplete multipart uploads</li>
-      </ul>
+      <div class="card" style="margin-top:1.4rem"><h3>Bucket best practices</h3>
+        <p><span class="pill">Block Public Access</span><span class="pill">BucketOwnerEnforced</span><span class="pill">default encryption</span><span class="pill">TLS-only bucket policy</span><span class="pill">abort incomplete uploads</span></p>
+      </div>
     </div>
 <pre><code><span class="c"># a golden (tag) snapshot in S3; an actor's own suspends</span>
 <span class="c"># go to atespaces/&lt;a&gt;/actors/&lt;uid&gt;/snapshots/&lt;name&gt;/</span>
@@ -376,6 +415,7 @@ microvm-assets/amd64/&lt;sha256&gt;   <span class="c"># virtiofsd</span>
 microvm-assets/amd64/&lt;sha256&gt;   <span class="c"># guest kernel</span>
 microvm-assets/amd64/&lt;sha256&gt;   <span class="c"># guest rootfs</span></code></pre>
   </div>
+  <aside class="notes">A suspended actor is a set of objects in S3. Neither atelet nor ate-api-server talks to storage directly: an objectstore-plugin sidecar does every transfer. You select S3 with ATE_STORAGE_BACKEND=s3, and the sidecar uses the AWS SDK default chain, so its credentials come from Pod Identity. The snapshot location is one cluster-wide flag, --snapshot-location s3://bucket/. On the right: a golden snapshot made for a template tag has the process memory, the durable volumes and the root filesystem writes; an actor's own suspends go under atespaces, actors, its uid, snapshots. A separate asset bucket holds the microVM guest kernel, rootfs, the VMM and virtiofsd, content addressed by sha256, and it is read-only for atelet. For the buckets: Block Public Access on, BucketOwnerEnforced, default encryption (SSE-S3 here; use SSE-KMS with a Bucket Key if you need control of the key), a bucket policy that denies requests without TLS, and a lifecycle rule that aborts incomplete multipart uploads.</aside>
 </section>
 
 <!-- 10 -->
@@ -394,18 +434,19 @@ aws eks create-pod-identity-association \
   --role-arn arn:aws:iam::&lt;account&gt;:role/substrate-day-us-west-2-atelet</code></pre>
     <table>
       <tr><th>ServiceAccount</th><th>Allowed</th></tr>
-      <tr><td><code>ate-system/ate-api-server</code></td><td>snapshot bucket: get, put, delete, list (tag copies, garbage collection)</td></tr>
-      <tr><td><code>ate-system/atelet</code></td><td>snapshot bucket: get, put (no delete) · asset bucket read · ECR pull on the demo repos</td></tr>
-      <tr><td><code>llm-gateway/llm-gateway</code></td><td><code>bedrock:InvokeModel*</code> on one inference profile</td></tr>
+      <tr><td><code class="nw">ate-system/ate-api-server</code></td><td>snapshot bucket: get, put, delete, list</td></tr>
+      <tr><td><code class="nw">ate-system/atelet</code></td><td>snapshot bucket: get, put (no delete) · asset bucket read · ECR pull</td></tr>
+      <tr><td><code class="nw">llm-gateway/llm-gateway</code></td><td><code>bedrock:InvokeModel*</code> on one inference profile</td></tr>
       <tr><td>actors</td><td class="ok">nothing: no role, no keys, no IMDS</td></tr>
     </table>
   </div>
-  <div class="card" style="margin-top:1.6rem"><h3>Lesson: atelet pulls actor images itself</h3><p>It runs the node's <code>ecr-credential-provider</code> inside the atelet pod, so the provider uses atelet's Pod Identity role, not the node role. Give that role ECR pull on your private actor repositories, or golden snapshots of those templates fail at image pull (we saw a 401).</p></div>
+  <div class="card" style="margin-top:1.6rem"><h3>Lesson: atelet pulls actor images with its own role</h3><p style="font-size:1.25rem">atelet runs the node's <code>ecr-credential-provider</code> itself, so ECR pull on your actor repositories goes on <b>atelet's Pod Identity role</b>, not the node role.</p></div>
+  <aside class="notes">Every component that calls AWS gets its own IAM role through EKS Pod Identity, one role per ServiceAccount. The trust policy trusts the Pod Identity service, and the aws:SourceAccount and aws:SourceArn conditions limit it to this account and this cluster. Then one association binds the role to a namespace and ServiceAccount. The table is the whole list: ate-api-server gets get, put, delete and list on the snapshot bucket, because it makes tag copies and garbage collects; atelet gets get and put but no delete, read on the asset bucket, and ECR pull on the demo repositories; the LLM gateway may invoke one inference profile. Actors get nothing: no role, no keys, no IMDS. The lesson: atelet pulls actor images itself. It runs the node's ecr-credential-provider inside the atelet pod, so the provider uses atelet's Pod Identity role, not the node role. Give that role ECR pull on your private actor repositories, or golden snapshots of those templates fail at image pull with a 401.</aside>
 </section>
 
 <!-- 10b -->
 <section class="slide">
-  <h2>Each controller does different S3 work, so it gets its own policy</h2>
+  <h2>Each component gets only the S3 actions it needs</h2>
   <div class="fill">
     <svg viewBox="0 0 1240 560" role="img" aria-label="Which Substrate component calls S3 and ECR, and with which actions">
       <defs>
@@ -474,15 +515,14 @@ aws eks create-pod-identity-association \
 
 <!-- 11 -->
 <section class="slide">
-  <h2>State on Amazon RDS for PostgreSQL</h2>
+  <h2>Actor state lives in RDS: private, TLS verify-full, two logins</h2>
   <div class="grid2">
     <div>
       <ul>
-        <li>Private subnets. The security group allows 5432 only from the EKS cluster security group.</li>
-        <li>Master password managed by RDS in Secrets Manager. It's used once, to bootstrap roles.</li>
-        <li>Two logins: <b>owner</b> (migrations, DDL) and <b>readwrite</b> (runtime). Each has its own secret.</li>
-        <li><code>sslmode=verify-full</code> against the RDS CA bundle. ate-setup mounts it at <code>/run/postgres-server-ca</code>.</li>
-        <li>DSNs go through environment variables only, never flags.</li>
+        <li>Private subnets; 5432 open only to the cluster security group</li>
+        <li>Two logins: <b>owner</b> (migrations) and <b>readwrite</b> (runtime), each in its own secret</li>
+        <li><code>sslmode=verify-full</code> against the RDS CA bundle</li>
+        <li>Connection strings in environment variables, never flags</li>
       </ul>
     </div>
 <pre><code><span class="c"># install: logins read from Secrets Manager</span>
@@ -503,6 +543,7 @@ ate-setup deploy ate-system \
 <span class="c">#   rds_superuser is not a superuser</span>
 <span class="c"># - run setup.sql with --single-transaction</span></code></pre>
   </div>
+  <aside class="notes">Substrate keeps actor and template state in PostgreSQL, and Amazon RDS runs it. The instance is in the private subnets, and its security group allows port 5432 only from the EKS cluster security group. RDS manages the master password in Secrets Manager, and it's used once, to bootstrap the roles. Substrate then uses two logins, each with its own secret: owner for migrations and DDL, and readwrite at runtime. Connections use sslmode verify-full against the RDS CA bundle, which ate-setup mounts at /run/postgres-server-ca. The connection strings go through environment variables only, never command-line flags, because other users can read flags in ps. Two bootstrap tips for RDS: the master user is rds_superuser, which is not a real superuser, so grant substrate_owner to it first; and run setup.sql in a single transaction.</aside>
 </section>
 
 <!-- 11b -->
@@ -554,12 +595,19 @@ ate-setup deploy ate-system \
       <text x="980" y="460" fill="#9aa7b4" font-size="16">verify-full TLS</text>
 
       <path d="M230,225 L298,225" stroke="#9aa7b4" stroke-width="3" fill="none" marker-end="url(#rota)"/>
+      <text x="264" y="212" text-anchor="middle" fill="#9aa7b4" font-size="15">read</text>
       <path d="M550,225 L618,225" stroke="#3ecf8e" stroke-width="3" fill="none" marker-end="url(#rota)"/>
+      <text x="584" y="212" text-anchor="middle" fill="#3ecf8e" font-size="15">write</text>
       <path d="M890,190 L958,110" stroke="#b18cff" stroke-width="3" fill="none" marker-end="url(#rota)"/>
+      <text x="880" y="140" text-anchor="end" fill="#b18cff" font-size="15">change</text>
       <path d="M1095,150 L1095,208" stroke="#e8edf2" stroke-width="3" fill="none" marker-end="url(#rota)"/>
+      <text x="1107" y="185" fill="#e8edf2" font-size="15">rolling restart</text>
       <path d="M890,260 L958,280" stroke="#b18cff" stroke-width="3" fill="none" marker-end="url(#rota)"/>
+      <text x="925" y="320" text-anchor="middle" fill="#b18cff" font-size="15">envFrom</text>
       <path d="M1095,350 L1095,398" stroke="#4aa3ff" stroke-width="3" fill="none" marker-end="url(#rota)"/>
+      <text x="1107" y="380" fill="#4aa3ff" font-size="15">connects, TLS</text>
       <path d="M120,300 L120,378" stroke="#ff9900" stroke-width="3" fill="none" marker-end="url(#rota)"/>
+      <text x="132" y="344" fill="#ff9900" font-size="15">every 30 days</text>
       <path d="M230,450 L958,450" stroke="#ff9900" stroke-width="3" stroke-dasharray="8 6" fill="none" marker-end="url(#rota)"/>
       <text x="594" y="440" text-anchor="middle" fill="#ff9900" font-size="16">CREATE ROLE / ALTER USER as the master login</text>
     </svg>
@@ -569,7 +617,7 @@ ate-setup deploy ate-system \
 
 <!-- 11c -->
 <section class="slide">
-  <h2>Rotation wiring</h2>
+  <h2>Rotation wiring, with no change to the Substrate manifests</h2>
   <div class="grid2" style="grid-template-columns:1.25fr 1fr">
 <pre><code><span class="k">apiVersion</span>: external-secrets.io/v1
 <span class="k">kind</span>: ExternalSecret
@@ -605,9 +653,104 @@ ate-setup deploy ate-system \
   <aside class="notes">The ExternalSecret writes into the Secret ate-setup already created. creationPolicy Merge means it updates only the keys it templates and leaves the schema key alone. The SecretStore has no auth block, so ESO uses its controller's Pod Identity role, which needs GetSecretValue on this cluster's two login secrets only. The template URL-encodes the password, because it sits inside a URL. The ESO Reloader Config lives outside the Deployment: it watches Secrets and rolls any Deployment in its list that reads the changed Secret through envFrom. So nothing goes into the ate-setup manifests, and a redeploy can't drop it. It restarts by stamping a last-reloaded annotation on the pod template. Upstream, ate-api-server reading its password from a mounted file on each new connection would take the restart out of rotation.</aside>
 </section>
 
+<!-- 16 -->
+<section class="slide">
+  <h2>Actors use API keys they never hold</h2>
+  <div class="fill">
+    <svg viewBox="0 0 1240 560" role="img" aria-label="An actor sends a request with a placeholder header; atenet-egress asks the Secrets Manager credential provider for the secret over mTLS; the provider checks its atespace policy and reads the secret with GetSecretValue using its Pod Identity role; atenet-egress sends the request on with the real header">
+      <defs>
+        <marker id="sm1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#9aa7b4"/></marker>
+        <marker id="sm2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#ff9900"/></marker>
+      </defs>
+      <rect x="20" y="120" width="240" height="190" rx="14" fill="#161d26" stroke="#3ecf8e" stroke-width="2"/>
+      <text x="40" y="156" fill="#3ecf8e" font-size="22" font-weight="700">Actor</text>
+      <text x="40" y="184" fill="#e8edf2" font-size="16">gVisor or microVM</text>
+      <text x="40" y="216" fill="#9aa7b4" font-size="15">holds only a placeholder:</text>
+      <text x="40" y="238" fill="#9aa7b4" font-size="15">the secret is never in its</text>
+      <text x="40" y="260" fill="#9aa7b4" font-size="15">memory, files or snapshots</text>
+
+      <rect x="340" y="120" width="300" height="190" rx="14" fill="#161d26" stroke="#4aa3ff" stroke-width="2"/>
+      <text x="360" y="156" fill="#4aa3ff" font-size="22" font-weight="700">atenet-egress</text>
+      <text x="360" y="184" fill="#e8edf2" font-size="16">terminates TLS</text>
+      <text x="360" y="208" fill="#e8edf2" font-size="16">matches the EgressPolicy rule</text>
+      <text x="360" y="232" fill="#e8edf2" font-size="16">replaces the header</text>
+      <text x="360" y="264" fill="#9aa7b4" font-size="15">the only way out for actors</text>
+
+      <rect x="980" y="120" width="240" height="190" rx="14" fill="#161d26" stroke="#e8edf2" stroke-width="2"/>
+      <text x="1000" y="156" fill="#e8edf2" font-size="22" font-weight="700">External API</text>
+      <text x="1000" y="184" fill="#9aa7b4" font-size="16">GitHub, a SaaS API,</text>
+      <text x="1000" y="208" fill="#9aa7b4" font-size="16">any HTTPS host</text>
+      <text x="1000" y="240" fill="#e8edf2" font-size="16">sees the real secret</text>
+
+      <rect x="340" y="370" width="300" height="160" rx="14" fill="#161d26" stroke="#b18cff" stroke-width="2"/>
+      <text x="360" y="404" fill="#b18cff" font-size="18" font-weight="700">aws-sm-credential-provider</text>
+      <text x="360" y="432" fill="#e8edf2" font-size="16">mTLS: admits only atenet-egress</text>
+      <text x="360" y="456" fill="#e8edf2" font-size="16">atespace policy, default deny</text>
+      <text x="360" y="480" fill="#e8edf2" font-size="16">30s cache for AWSCURRENT</text>
+      <text x="360" y="508" fill="#9aa7b4" font-size="15">ate-system · plugin, own repo</text>
+
+      <rect x="760" y="370" width="300" height="160" rx="14" fill="#161d26" stroke="#ff9900" stroke-width="2"/>
+      <text x="780" y="404" fill="#ff9900" font-size="20" font-weight="700">AWS Secrets Manager</text>
+      <text x="780" y="432" fill="#e8edf2" font-size="16">GetSecretValue with the</text>
+      <text x="780" y="456" fill="#e8edf2" font-size="16">provider's Pod Identity role</text>
+      <text x="780" y="480" fill="#e8edf2" font-size="16">only secrets tagged</text>
+      <text x="780" y="502" fill="#e8edf2" font-size="16">ate.dev/injectable=true</text>
+
+      <path d="M260,215 L338,215" stroke="#9aa7b4" stroke-width="3" fill="none" marker-end="url(#sm1)"/>
+      <text x="299" y="200" text-anchor="middle" fill="#3ecf8e" font-size="16" font-weight="700">1</text>
+      <text x="20" y="402" fill="#3ecf8e" font-size="16">1  Authorization: Bearer placeholder</text>
+
+      <path d="M490,310 L490,368" stroke="#9aa7b4" stroke-width="3" fill="none" marker-end="url(#sm1)"/>
+      <text x="504" y="345" fill="#4aa3ff" font-size="16" font-weight="700">2</text>
+      <text x="20" y="430" fill="#4aa3ff" font-size="16">2  FetchSecret(uri, actor ID)</text>
+
+      <path d="M640,430 L758,430" stroke="#9aa7b4" stroke-width="3" fill="none" marker-end="url(#sm1)"/>
+      <text x="699" y="420" text-anchor="middle" fill="#b18cff" font-size="16" font-weight="700">3</text>
+      <path d="M758,480 L642,480" stroke="#ff9900" stroke-width="3" stroke-dasharray="8 6" fill="none" marker-end="url(#sm2)"/>
+      <text x="699" y="502" text-anchor="middle" fill="#ff9900" font-size="16" font-weight="700">4</text>
+      <text x="20" y="458" fill="#b18cff" font-size="16">3  GetSecretValue</text>
+      <text x="20" y="486" fill="#ff9900" font-size="16">4  the value, to the gateway only</text>
+
+      <path d="M640,215 L978,215" stroke="#e8edf2" stroke-width="3" fill="none" marker-end="url(#sm1)"/>
+      <text x="809" y="200" text-anchor="middle" fill="#e8edf2" font-size="16">5  Authorization: Bearer &lt;secret&gt;</text>
+    </svg>
+  </div>
+  <aside class="notes">This is how an agent uses an API key without ever holding it. The actor sends its request with a placeholder in the Authorization header. Every request out of an actor goes through atenet-egress, which terminates TLS and matches the actor's EgressPolicy. The rule names a secret by URI, so the gateway asks the credential provider for it, over mTLS, passing the actor's identity. The provider is a small plugin we wrote, credprovider-aws-secret-manager, running in ate-system. It admits only the egress gateway, checks a default-deny policy that maps each atespace to the secrets it may use, and then calls GetSecretValue with its own Pod Identity role. That role can read only secrets tagged ate.dev/injectable=true, so even a bug in the policy can't reach the database logins. The value goes back to the gateway, which swaps it into the header and sends the request on. The actor never sees the secret, so it's not in its memory, its files, or its snapshots in S3. A 30-second cache keeps Secrets Manager calls per secret, not per request, and a rotation reaches actors within that window, with no redeploy.</aside>
+</section>
+
+<!-- 16b -->
+<section class="slide">
+  <h2>Actor secrets: the wiring and its three gates</h2>
+  <div class="grid2" style="grid-template-columns:1.25fr 1fr">
+<pre><code><span class="c"># EgressPolicy on the actor</span>
+<span class="k">rules</span>:
+- <span class="k">https</span>:
+    <span class="k">hostnames</span>: [<span class="s">"api.github.com"</span>]
+    <span class="k">effects</span>:
+      <span class="k">replaceHeaders</span>:
+      - <span class="k">header</span>: Authorization
+        <span class="k">prefix</span>: <span class="s">"Bearer "</span>
+        <span class="k">credentialUri</span>: <span class="s">ate-secret://secretsmanager.amazonaws.com/</span>
+          <span class="s">accounts/&lt;id&gt;/regions/us-west-2/</span>
+          <span class="s">secrets/ate/team-a/github/stages/AWSCURRENT</span>
+---
+<span class="c"># provider policy: atespace -&gt; secrets, default deny</span>
+<span class="k">policies</span>:
+- <span class="k">atespace</span>: team-a
+  <span class="k">allowedSecrets</span>:
+  - { <span class="k">account</span>: <span class="s">"&lt;id&gt;"</span>, <span class="k">region</span>: us-west-2, <span class="k">namePrefix</span>: ate/team-a/ }</code></pre>
+    <div>
+      <div class="card"><h3>Three gates</h3><ul><li>mTLS: only atenet-egress may ask</li><li>Provider policy: the atespace must be granted the secret</li><li>IAM: <code>GetSecretValue</code> on <code>ate/*</code> with tag <code>ate.dev/injectable=true</code></li></ul></div>
+      <div class="card" style="margin-top:1rem"><h3>On EKS</h3><ul><li>Pod Identity role, no keys</li><li>NetworkPolicy admits only atenet-egress</li><li>Registered next to the bundled <code>k8s.io</code> provider</li></ul></div>
+      <div class="card" style="margin-top:1rem"><h3>Rotation</h3><ul><li><code>AWSCURRENT</code> cached 30s</li><li>Rotate in Secrets Manager; actors pick it up, no redeploy</li></ul></div>
+    </div>
+  </div>
+  <aside class="notes">Three pieces of configuration. The EgressPolicy on the actor names the host, the header and the secret by URI: account, Region, secret name and stage. The provider's own policy maps each atespace to the secrets it may use, by account, Region and name prefix, and everything else is denied. And the provider's IAM role only reads secrets under ate/ that carry the ate.dev/injectable tag, so that's a second gate in IAM. On EKS the provider gets its role through Pod Identity, ships a NetworkPolicy that only lets the egress gateway in, and is registered with the gateway next to the bundled Kubernetes Secrets provider, so both work at once. The full example policy is demos/credprovider-aws/egress-policy.example.yaml in the repo, and the plugin is github.com/csantanapr/credprovider-aws-secret-manager.</aside>
+</section>
+
 <!-- 12 -->
 <section class="slide">
-  <h2>Inference on Amazon Bedrock</h2>
+  <h2>Actors reach Bedrock through a gateway, with no AWS credentials</h2>
   <div class="fill">
     <svg viewBox="0 0 1200 380" role="img" aria-label="Actor to atenet egress to LLM gateway to Bedrock">
       <defs><marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#9aa7b4"/></marker></defs>
@@ -636,14 +779,15 @@ ate-setup deploy ate-system \
     </svg>
   </div>
   <div class="grid2" style="flex:0">
-    <div class="card"><h3>Lesson: block IMDS for pods</h3><p>eksctl managed node groups get a launch template, and with one the hop limit defaults to 2, so pods can reach IMDS. With it open, agentgateway's credential chain signed with the <b>node instance role</b> and got a 403. Set <code>disablePodIMDS: true</code> (hop limit 1) on every node group, and <code>AWS_EC2_METADATA_DISABLED=true</code> on the gateway so it fails closed.</p></div>
-    <div class="card"><h3>Why a gateway, not SigV4 injection</h3><p>Egress credential providers swap in fixed header values. SigV4 signs the body hash per request, so signing has to live in a proxy that holds the role.</p></div>
+    <div class="card"><h3>Lesson: block IMDS for pods</h3><p>Set <code>disablePodIMDS: true</code> (hop limit 1) on every node group, so the gateway signs with its own role, never the <b>node instance role</b>.</p></div>
+    <div class="card"><h3>Why a gateway, not header injection</h3><p>SigV4 signs each request's body hash, so signing lives in a proxy that holds the role.</p></div>
   </div>
+  <aside class="notes">The actor talks to a model with a normal Anthropic or OpenAI SDK and holds no AWS credentials. Its request goes out through atenet-egress, whose EgressPolicy allows one host, the in-cluster LLM gateway, and swaps the actor's placeholder token for a signed actor JWT. The gateway is agentgateway, a ClusterIP service, and it signs the call to Bedrock with SigV4 using its own Pod Identity role. That role may invoke the pinned inference profiles only: InvokeModel on each profile ARN, and on the profile's foundation models only when bedrock:InferenceProfileArn is that profile. The model name "claude" maps to the default profile; claude-haiku, claude-sonnet and claude-opus map to the newest active profile of each family, read at deploy time. The lesson: eksctl managed node groups get a launch template, and with one the IMDS hop limit defaults to 2, so pods can reach IMDS. With it open, agentgateway's credential chain signed with the node instance role and got a 403. Set disablePodIMDS true on every node group, which gives a hop limit of 1, and set AWS_EC2_METADATA_DISABLED=true on the gateway so it fails closed. Why not inject credentials at egress like other secrets? Egress credential providers swap in fixed header values, and SigV4 signs the body hash of every request, so signing has to live in a proxy that holds the role.</aside>
 </section>
 
 <!-- 12b -->
 <section class="slide">
-  <h2>Per-actor volumes on Amazon EFS <span class="tag">CSI · ExternalVolumes preview</span></h2>
+  <h2>Per-actor EFS volumes follow the actor to any zone <span class="tag">CSI · ExternalVolumes preview</span></h2>
   <div class="fill">
     <svg viewBox="0 0 1240 560" role="img" aria-label="ate-api-server creates an EFS access point per actor through a CSI controller behind Envoy; the node plugin mounts it wherever the actor resumes">
       <defs>
@@ -655,7 +799,7 @@ ate-setup deploy ate-system \
       <text x="40" y="92" fill="#e8edf2" font-size="16">first resume: CreateVolume</text>
       <text x="40" y="114" fill="#e8edf2" font-size="16">delete actor: DeleteVolume</text>
 
-      <rect x="350" y="20" width="360" height="120" rx="14" fill="#161d26" stroke="#b18cff" stroke-width="2"/>
+      <rect x="350" y="20" width="320" height="120" rx="14" fill="#161d26" stroke="#b18cff" stroke-width="2"/>
       <text x="370" y="56" fill="#b18cff" font-size="21" font-weight="700">EFS CSI controller</text>
       <text x="370" y="82" fill="#e8edf2" font-size="16">Envoy: mTLS, accepts only</text>
       <text x="370" y="104" fill="#e8edf2" font-size="16">ate-api-server's SPIFFE ID</text>
@@ -673,10 +817,10 @@ ate-setup deploy ate-system \
       <text x="880" y="170" fill="#9aa7b4" font-size="15">or S3 Files: the same driver,</text>
       <text x="880" y="192" fill="#9aa7b4" font-size="15">files land in an S3 bucket</text>
 
-      <path d="M710,80 L858,80" stroke="#b18cff" stroke-width="3" fill="none" marker-end="url(#efsa)"/>
-      <text x="722" y="70" fill="#b18cff" font-size="14" font-weight="600">CreateAccessPoint</text>
-      <text x="722" y="104" fill="#9aa7b4" font-size="13">Pod Identity, scoped</text>
-      <text x="722" y="121" fill="#9aa7b4" font-size="13">to this file system</text>
+      <path d="M670,80 L858,80" stroke="#b18cff" stroke-width="3" fill="none" marker-end="url(#efsa)"/>
+      <text x="682" y="70" fill="#b18cff" font-size="14" font-weight="600">CreateAccessPoint</text>
+      <text x="682" y="104" fill="#9aa7b4" font-size="13">Pod Identity, scoped</text>
+      <text x="682" y="121" fill="#9aa7b4" font-size="13">to this file system</text>
 
       <!-- node A -->
       <rect x="20" y="230" width="520" height="290" rx="14" fill="none" stroke="#2a3542" stroke-width="2" stroke-dasharray="6 6"/>
@@ -724,8 +868,8 @@ ate-setup deploy ate-system \
   <span class="k">provisioningMode</span>: efs-ap    <span class="c"># s3files-ap for S3 Files</span>
   <span class="k">fileSystemId</span>: fs-…
   <span class="k">directoryPerms</span>: <span class="s">"700"</span>
-  <span class="k">uid</span>: <span class="s">"0"</span>                  <span class="c"># the actor's user</span>
-  <span class="k">gid</span>: <span class="s">"0"</span>
+  <span class="k">uid</span>: <span class="s">"&lt;uid&gt;"</span>              <span class="c"># EFS_UID: the actor's user</span>
+  <span class="k">gid</span>: <span class="s">"&lt;gid&gt;"</span>
   <span class="k">basePath</span>: /ate
 ---
 <span class="c"># CSIDriverConfig: where ate-api-server finds the controller</span>
@@ -757,21 +901,20 @@ ate-setup deploy ate-system \
       </ul></div>
     </div>
   </div>
-  <aside class="notes">This is all the configuration it takes. The StorageClass tells the EFS driver to create an access point per volume, rooted under /ate, owned by the uid the actor runs as. That matters: Substrate drops actor capabilities to a small default set, so even root inside the sandbox can't write a directory another uid owns. The CSIDriverConfig tells ate-api-server where the controller is. Today that's a second controller from the same image as the EKS add-on, fronted by Envoy with mTLS, because the add-on's controller only listens on a socket inside its own pod. The actor template just declares the volume and where to mount it. The table is a captured run on this cluster: for both storage types and both sandbox classes, we counted on one node, suspended, emptied that node, and resumed. Every actor came back in a different Availability Zone, and its file kept counting.</aside>
+  <aside class="notes">This is all the configuration it takes. The StorageClass tells the EFS driver to create an access point per volume, rooted under /ate, owned by the uid the actor runs as (EFS_UID and EFS_GID; the demo's counter image runs as root, so the demo sets 0, and a non-root image is better). That matters: Substrate drops actor capabilities to a small default set, so even root inside the sandbox can't write a directory another uid owns. The CSIDriverConfig tells ate-api-server where the controller is. Today that's a second controller from the same image as the EKS add-on, fronted by Envoy with mTLS, because the add-on's controller only listens on a socket inside its own pod. The actor template just declares the volume and where to mount it. The table is a captured run on this cluster: for both storage types and both sandbox classes, we counted on one node, suspended, emptied that node, and resumed. Every actor came back in a different Availability Zone, and its file kept counting.</aside>
 </section>
 
 <!-- 13 -->
 <section class="slide">
-  <h2>Demo <span class="tag">counter actor on gVisor and microVM</span></h2>
+  <h2>Demo: suspend frees the worker, and every count keeps going <span class="tag">gVisor and microVM</span></h2>
   <div class="grid2">
     <div>
-      <ul>
-        <li>One counter actor per sandbox class. Each counts in <b>memory</b>, in a <b>file</b> on a durable volume, and in the <b>root filesystem</b>.</li>
-        <li>Reached with <code>kubectl ate proxy actor</code>, a localhost-only forward through atenet-router.</li>
-        <li>Suspend: worker freed, snapshot in S3, state in RDS.</li>
-        <li>The next request resumes it. All three counters continue.</li>
-      </ul>
-<pre><code>kubectl ate create actor demo-gvisor -a ate-demo-counter --template counter
+      <div class="card watch"><h3>Watch for</h3><ol>
+        <li>Each actor counts in <b>memory</b>, a <b>file</b> and the <b>root filesystem</b>: 3, 3, 3</li>
+        <li>Suspend: the state turns <code>SUSPENDED</code> and the worker is free</li>
+        <li>The next request resumes it: all three read <b class="accent">4</b></li>
+      </ol></div>
+<pre style="margin-top:1.4rem"><code>kubectl ate create actor demo-gvisor -a ate-demo-counter --template counter
 kubectl ate proxy actor demo-gvisor -a ate-demo-counter 8001:80 &amp;
 curl localhost:8001
 kubectl ate suspend actor demo-gvisor -a ate-demo-counter
@@ -782,32 +925,36 @@ curl localhost:8001     <span class="c"># resumes</span></code></pre>
 <span class="o">memory: 3 | file: 3 | rootfs: 3</span>
 <span class="p">$ kubectl ate suspend actor demo-gvisor -a ate-demo-counter</span>
 <span class="d">state: ACTOR_STATE_SUSPENDED</span>
-<span class="o">memory: 4 | file: 4 | rootfs: 4</span>
+<span class="hl">memory: 4 | file: 4 | rootfs: 4</span>
 <span class="d">state: ACTOR_STATE_RUNNING</span>
 
 <span class="d">== demo-microvm (Kata + Cloud Hypervisor)</span>
 <span class="o">memory: 3 | file: 3 | rootfs: 3</span>
 <span class="p">$ kubectl ate suspend actor demo-microvm -a ate-demo-counter-microvm</span>
 <span class="d">state: ACTOR_STATE_SUSPENDED</span>
-<span class="o">memory: 4 | file: 4 | rootfs: 4</span>
+<span class="hl">memory: 4 | file: 4 | rootfs: 4</span>
 <span class="d">state: ACTOR_STATE_RUNNING</span></div>
       <p class="caption">Condensed from a run of this demo on the cluster above</p>
     </div>
   </div>
+  <aside class="notes">Tell the room what to watch before you run it. There is one counter actor per sandbox class, gVisor and microVM. Each one counts in three places: in memory, in a file on a durable volume, and in its root filesystem. You reach it with kubectl ate proxy actor, a localhost-only forward through atenet-router, so nothing is exposed. Call it a few times: all three counters read 3. Suspend it: the state turns SUSPENDED, the worker pod is free for another actor, the snapshot is in S3 and the actor's state is in RDS. Then send one more request. That request resumes the actor from its snapshot, and all three counters read 4: memory, file and root filesystem all came back. Same result on the microVM.</aside>
 </section>
 
 <!-- 14 -->
 <section class="slide">
-  <h2>Demo <span class="tag">always-on agents</span></h2>
+  <h2>Demo: an always-on agent that sleeps between messages <span class="tag">OpenClaw</span></h2>
   <div class="grid2">
     <div>
       <ul>
-        <li>OpenClaw split in two: an <b>always-on gateway</b> holds the chat channel, and the agent runs as a <b>suspendable actor</b>.</li>
-        <li>The gateway creates actors and suspends them when idle. The next message resumes them.</li>
-        <li>On EKS the agent thinks with <b>Bedrock</b> through the LLM gateway. The actor holds no keys.</li>
-        <li>Images in ECR. Gateway and dashboard are ClusterIP behind a port forward.</li>
-        <li>Tip: the v1 router adds forwarded headers. An app with strict proxy attribution, like OpenClaw, should listen on loopback behind a small front door that drops them.</li>
+        <li>An <b>always-on gateway</b> holds the chat channel</li>
+        <li>Each conversation's agent is a <b>suspendable actor</b></li>
+        <li>It thinks with <b>Bedrock</b> and holds no keys</li>
       </ul>
+      <div class="card watch" style="margin-top:1.4rem"><h3>Watch for</h3><ol>
+        <li>The actor answers, then suspends to S3</li>
+        <li>The next message wakes it from its snapshot, and it answers again</li>
+        <li>A new conversation gets a new actor</li>
+      </ol></div>
     </div>
     <div>
       <div class="card">
@@ -824,150 +971,59 @@ curl localhost:8001     <span class="c"># resumes</span></code></pre>
       <p class="caption">Condensed from a run of this demo on the cluster above</p>
     </div>
   </div>
+  <aside class="notes">This is the pattern for real agents. OpenClaw is split in two: an always-on gateway holds the chat channel, for example WhatsApp, and each conversation's agent runs as a suspendable actor. The gateway creates actors and suspends them when they go idle; the next message resumes them from their snapshot in S3. On EKS the agent thinks with Bedrock through the LLM gateway, so the actor holds no AWS keys. The images are in ECR, and the gateway and its dashboard are ClusterIP services behind a port forward. Watch the log: the actor answers, it is suspended, the next message resumes it on demand and it answers again, and a new conversation gets a brand-new actor with its own egress policy. One tip for your own apps: the v1 router adds forwarded headers, so an app with strict proxy attribution, like OpenClaw, should listen on loopback behind a small front door that drops them.</aside>
 </section>
 
 <!-- 15 -->
 <section class="slide">
-  <h2>What works today, and the gaps</h2>
+  <h2>What works on EKS today, and the rough edges</h2>
   <div class="grid2">
-    <div class="card">
-      <h3 class="ok">Works on EKS with rc.3</h3>
+    <div class="card roomy">
+      <h3 class="ok">Works with rc.3</h3>
       <ul>
-        <li>Published images, stock EKS 1.37, AL2023</li>
-        <li>S3 snapshots and assets with Pod Identity</li>
-        <li>RDS with verify-full TLS</li>
-        <li>gVisor and microVM suspend/resume</li>
-        <li>ECR pulls through atelet's credential provider</li>
+        <li>Published images on stock EKS 1.37 and AL2023</li>
+        <li>gVisor and microVM suspend and resume</li>
+        <li>S3, RDS, ECR and Bedrock with Pod Identity</li>
         <li>NetworkPolicy with the VPC CNI</li>
-        <li>Bedrock through an LLM gateway</li>
-        <li>Actor secrets from Secrets Manager, injected on egress</li>
-        <li>Per-actor EFS and S3 Files volumes, across nodes and zones (preview)</li>
+        <li>Actor secrets injected from Secrets Manager</li>
+        <li>Per-actor EFS and S3 Files volumes (preview)</li>
       </ul>
     </div>
-    <div class="card">
-      <h3 class="warn">Rough edges we hit</h3>
+    <div class="card roomy">
+      <h3 class="warn">Rough edges</h3>
       <ul>
-        <li><code>ate-setup</code> treats every non-kind cluster as GKE: GCP transfer service account required, <code>gcloud</code> asset upload, <code>gs://</code> asset URLs</li>
-        <li>Base install applies a GKE <code>PodMonitoring</code></li>
-        <li>atelet's credential provider hostPaths are GKE paths. On AL2023 they're <code>/etc/eks/image-credential-provider</code></li>
-        <li>On S3, snapshot transfers use the pod's credentials. GCS gets <b>per-actor</b> scoped tokens.</li>
-        <li>On RDS, pre-create <code>substrate_owner</code> and grant it to the master user before <code>setup.sql</code></li>
-        <li>ate-api-server reads both database passwords once at start, so a rotation needs a rolling restart</li>
-        <li>ate-api-server calls the CSI controller over gRPC. The EFS add-on's controller only listens on a socket in its pod, so a second, Envoy-fronted controller serves Substrate</li>
+        <li><code>ate-setup</code> assumes GKE for any real cluster</li>
+        <li>GKE paths and a GKE <code>PodMonitoring</code> in the install</li>
+        <li>S3 transfers use the pod's role, not <b>per-actor</b> tokens</li>
+        <li>RDS needs a role grant before <code>setup.sql</code></li>
+        <li>DB password rotation needs a rolling restart</li>
+        <li>EFS needs a second, Envoy-fronted CSI controller</li>
       </ul>
     </div>
   </div>
-</section>
-
-<!-- 16 -->
-<section class="slide">
-  <h2>Actor secrets from AWS Secrets Manager</h2>
-  <div class="fill">
-    <svg viewBox="0 0 1240 560" role="img" aria-label="An actor sends a request with a placeholder header; atenet-egress asks the Secrets Manager credential provider for the secret over mTLS; the provider checks its atespace policy and reads the secret with GetSecretValue using its Pod Identity role; atenet-egress sends the request on with the real header">
-      <defs>
-        <marker id="sm1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#9aa7b4"/></marker>
-        <marker id="sm2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#ff9900"/></marker>
-      </defs>
-      <rect x="20" y="120" width="240" height="190" rx="14" fill="#161d26" stroke="#3ecf8e" stroke-width="2"/>
-      <text x="40" y="156" fill="#3ecf8e" font-size="22" font-weight="700">Actor</text>
-      <text x="40" y="184" fill="#e8edf2" font-size="16">gVisor or microVM</text>
-      <text x="40" y="216" fill="#9aa7b4" font-size="15">holds only a placeholder:</text>
-      <text x="40" y="238" fill="#9aa7b4" font-size="15">the secret is never in its</text>
-      <text x="40" y="260" fill="#9aa7b4" font-size="15">memory, files or snapshots</text>
-
-      <rect x="340" y="120" width="300" height="190" rx="14" fill="#161d26" stroke="#4aa3ff" stroke-width="2"/>
-      <text x="360" y="156" fill="#4aa3ff" font-size="22" font-weight="700">atenet-egress</text>
-      <text x="360" y="184" fill="#e8edf2" font-size="16">terminates TLS</text>
-      <text x="360" y="208" fill="#e8edf2" font-size="16">matches the EgressPolicy rule</text>
-      <text x="360" y="232" fill="#e8edf2" font-size="16">replaces the header</text>
-      <text x="360" y="264" fill="#9aa7b4" font-size="15">the only way out for actors</text>
-
-      <rect x="980" y="120" width="240" height="190" rx="14" fill="#161d26" stroke="#e8edf2" stroke-width="2"/>
-      <text x="1000" y="156" fill="#e8edf2" font-size="22" font-weight="700">External API</text>
-      <text x="1000" y="184" fill="#9aa7b4" font-size="16">GitHub, a SaaS API,</text>
-      <text x="1000" y="208" fill="#9aa7b4" font-size="16">any HTTPS host</text>
-      <text x="1000" y="240" fill="#e8edf2" font-size="16">sees the real secret</text>
-
-      <rect x="340" y="370" width="300" height="160" rx="14" fill="#161d26" stroke="#b18cff" stroke-width="2"/>
-      <text x="360" y="404" fill="#b18cff" font-size="18" font-weight="700">aws-sm-credential-provider</text>
-      <text x="360" y="432" fill="#e8edf2" font-size="16">mTLS: admits only atenet-egress</text>
-      <text x="360" y="456" fill="#e8edf2" font-size="16">atespace policy, default deny</text>
-      <text x="360" y="480" fill="#e8edf2" font-size="16">30s cache for AWSCURRENT</text>
-      <text x="360" y="508" fill="#9aa7b4" font-size="15">ate-system · plugin, own repo</text>
-
-      <rect x="760" y="370" width="300" height="160" rx="14" fill="#161d26" stroke="#ff9900" stroke-width="2"/>
-      <text x="780" y="404" fill="#ff9900" font-size="20" font-weight="700">AWS Secrets Manager</text>
-      <text x="780" y="432" fill="#e8edf2" font-size="16">GetSecretValue with the</text>
-      <text x="780" y="456" fill="#e8edf2" font-size="16">provider's Pod Identity role</text>
-      <text x="780" y="480" fill="#e8edf2" font-size="16">only secrets tagged</text>
-      <text x="780" y="502" fill="#e8edf2" font-size="16">ate.dev/injectable=true</text>
-
-      <path d="M260,215 L338,215" stroke="#9aa7b4" stroke-width="3" fill="none" marker-end="url(#sm1)"/>
-      <text x="299" y="200" text-anchor="middle" fill="#3ecf8e" font-size="16" font-weight="700">1</text>
-      <text x="20" y="342" fill="#3ecf8e" font-size="16">1  Authorization: Bearer placeholder</text>
-
-      <path d="M490,310 L490,368" stroke="#9aa7b4" stroke-width="3" fill="none" marker-end="url(#sm1)"/>
-      <text x="504" y="345" fill="#4aa3ff" font-size="16" font-weight="700">2</text>
-      <text x="20" y="430" fill="#4aa3ff" font-size="16">2  FetchSecret(uri, actor ID)</text>
-
-      <path d="M640,430 L758,430" stroke="#9aa7b4" stroke-width="3" fill="none" marker-end="url(#sm1)"/>
-      <text x="699" y="420" text-anchor="middle" fill="#b18cff" font-size="16" font-weight="700">3</text>
-      <path d="M758,480 L642,480" stroke="#ff9900" stroke-width="3" stroke-dasharray="8 6" fill="none" marker-end="url(#sm2)"/>
-      <text x="699" y="502" text-anchor="middle" fill="#ff9900" font-size="16" font-weight="700">4</text>
-      <text x="20" y="458" fill="#b18cff" font-size="16">3  GetSecretValue</text>
-      <text x="20" y="486" fill="#ff9900" font-size="16">4  the value, to the gateway only</text>
-
-      <path d="M640,215 L978,215" stroke="#e8edf2" stroke-width="3" fill="none" marker-end="url(#sm1)"/>
-      <text x="809" y="200" text-anchor="middle" fill="#e8edf2" font-size="16">5  Authorization: Bearer &lt;secret&gt;</text>
-    </svg>
-  </div>
-  <aside class="notes">This is how an agent uses an API key without ever holding it. The actor sends its request with a placeholder in the Authorization header. Every request out of an actor goes through atenet-egress, which terminates TLS and matches the actor's EgressPolicy. The rule names a secret by URI, so the gateway asks the credential provider for it, over mTLS, passing the actor's identity. The provider is a small plugin we wrote, credprovider-aws-secret-manager, running in ate-system. It admits only the egress gateway, checks a default-deny policy that maps each atespace to the secrets it may use, and then calls GetSecretValue with its own Pod Identity role. That role can read only secrets tagged ate.dev/injectable=true, so even a bug in the policy can't reach the database logins. The value goes back to the gateway, which swaps it into the header and sends the request on. The actor never sees the secret, so it's not in its memory, its files, or its snapshots in S3. A 30-second cache keeps Secrets Manager calls per secret, not per request, and a rotation reaches actors within that window, with no redeploy.</aside>
-</section>
-
-<!-- 16b -->
-<section class="slide">
-  <h2>Actor secrets: the wiring</h2>
-  <div class="grid2" style="grid-template-columns:1.25fr 1fr">
-<pre><code><span class="c"># EgressPolicy on the actor</span>
-<span class="k">rules</span>:
-- <span class="k">https</span>:
-    <span class="k">hostnames</span>: [<span class="s">"api.github.com"</span>]
-    <span class="k">effects</span>:
-      <span class="k">replaceHeaders</span>:
-      - <span class="k">header</span>: Authorization
-        <span class="k">prefix</span>: <span class="s">"Bearer "</span>
-        <span class="k">credentialUri</span>: <span class="s">ate-secret://secretsmanager.amazonaws.com/</span>
-          <span class="s">accounts/&lt;id&gt;/regions/us-west-2/</span>
-          <span class="s">secrets/ate/team-a/github/stages/AWSCURRENT</span>
----
-<span class="c"># provider policy: atespace -&gt; secrets, default deny</span>
-<span class="k">policies</span>:
-- <span class="k">atespace</span>: team-a
-  <span class="k">allowedSecrets</span>:
-  - { <span class="k">account</span>: <span class="s">"&lt;id&gt;"</span>, <span class="k">region</span>: us-west-2, <span class="k">namePrefix</span>: ate/team-a/ }</code></pre>
-    <div>
-      <div class="card"><h3>Three gates</h3><ul><li>mTLS: only atenet-egress may ask</li><li>Provider policy: the atespace must be granted the secret</li><li>IAM: <code>GetSecretValue</code> on <code>ate/*</code> with tag <code>ate.dev/injectable=true</code></li></ul></div>
-      <div class="card" style="margin-top:1rem"><h3>On EKS</h3><ul><li>Pod Identity role, no keys</li><li>NetworkPolicy admits only atenet-egress</li><li>Registered next to the bundled <code>k8s.io</code> provider</li></ul></div>
-      <div class="card" style="margin-top:1rem"><h3>Rotation</h3><ul><li><code>AWSCURRENT</code> cached 30s</li><li>Rotate in Secrets Manager; actors pick it up, no redeploy</li></ul></div>
-    </div>
-  </div>
-  <aside class="notes">Three pieces of configuration. The EgressPolicy on the actor names the host, the header and the secret by URI: account, Region, secret name and stage. The provider's own policy maps each atespace to the secrets it may use, by account, Region and name prefix, and everything else is denied. And the provider's IAM role only reads secrets under ate/ that carry the ate.dev/injectable tag, so that's a second gate in IAM. On EKS the provider gets its role through Pod Identity, ships a NetworkPolicy that only lets the egress gateway in, and is registered with the gateway next to the bundled Kubernetes Secrets provider, so both work at once. The full example policy is demos/credprovider-aws/egress-policy.example.yaml in the repo, and the plugin is github.com/csantanapr/credprovider-aws-secret-manager.</aside>
+  <aside class="notes">Left: what works on EKS with the rc.3 release, using the published images on a stock EKS 1.37 cluster with AL2023 nodes. S3 snapshots and microVM assets, RDS with verify-full TLS, ECR pulls through atelet's credential provider, and Bedrock through the LLM gateway all use Pod Identity. gVisor and microVM both suspend and resume, NetworkPolicy is enforced by the VPC CNI, actor secrets come from Secrets Manager and are injected on egress, and per-actor EFS and S3 Files volumes work across nodes and zones, behind the preview gate. Right: the rough edges. ate-setup treats every non-kind cluster as GKE: it wants a GCP transfer service account, uploads assets with gcloud, and writes gs:// asset URLs; this repo carries a small installer patch for that. The base install applies a GKE PodMonitoring. atelet's credential provider hostPaths are GKE paths; on AL2023 they are /etc/eks/image-credential-provider. On S3, snapshot transfers use the pod's credentials, where GCS gets per-actor scoped tokens. On RDS, pre-create substrate_owner and grant it to the master user before setup.sql. ate-api-server reads both database passwords once at start, so a rotation needs a rolling restart. And ate-api-server calls the CSI controller over gRPC, while the EFS add-on's controller only listens on a socket inside its pod, so a second, Envoy-fronted controller serves Substrate. Most of these come back on the next slide.</aside>
 </section>
 
 <!-- 17 -->
 <section class="slide">
-  <h2>Where AWS can help</h2>
-  <table>
-    <tr><th>#</th><th>Contribution</th><th>Why it matters</th></tr>
-    <tr><td>1</td><td><b>Secrets Manager credential provider</b>: built as <code>credprovider-aws-secret-manager</code>; next, donate it to <code>agent-substrate-plugins</code></td><td>Production secrets for actors without Kubernetes Secrets</td></tr>
-    <tr><td>2</td><td><b>EKS profile in ate-setup</b>: S3 asset staging, <code>s3://</code> URLs, AL2023 credential provider paths, no GCP-only checks</td><td>Install on EKS with flags, no patches</td></tr>
-    <tr><td>3</td><td><b>Per-actor S3 credentials</b> in the credential exchange: STS session policies scoped to the actor's prefix, or S3 Access Grants</td><td>Parity with GCS per-actor tokens. A compromised node can't read every snapshot.</td></tr>
-    <tr><td>4</td><td><b>Password file</b> for ate-api-server's database logins, re-read on each new connection</td><td>Secrets Manager rotation without restarting ate-api-server</td></tr>
-    <tr><td>5</td><td><b>Actor JWT to AWS</b> token exchange (<code>AssumeRoleWithWebIdentity</code>)</td><td>Per-actor AWS access when an actor really needs it</td></tr>
-    <tr><td>6</td><td><b>Metrics</b> overlay for Amazon Managed Service for Prometheus</td><td>Observability without the GKE CRD</td></tr>
-    <tr><td>7</td><td><b>EFS CSI controller endpoint</b> Substrate can call: a TLS listener in the driver, or an add-on option</td><td>Per-actor EFS and S3 Files volumes with the add-on alone</td></tr>
-    <tr><td>8</td><td>Reference <b>blueprint</b>: eksctl / Terraform / CDK with the IAM and buckets above</td><td>A blank account to running in one command</td></tr>
-  </table>
+  <h2>Where AWS can help the project next</h2>
+  <div class="grid3">
+    <div class="card"><h3 class="accent">Install with flags, no patches</h3><ul>
+      <li><b>EKS profile</b> in <code>ate-setup</code></li>
+      <li>Reference <b>blueprint</b>: eksctl, Terraform or CDK</li>
+      <li><b>Metrics</b> for Amazon Managed Service for Prometheus</li>
+    </ul></div>
+    <div class="card"><h3 class="accent">Per-actor AWS access</h3><ul>
+      <li><b>Per-actor S3 credentials</b> for snapshot transfers</li>
+      <li><b>Actor JWT to AWS</b> token exchange</li>
+    </ul></div>
+    <div class="card"><h3 class="accent">Plugins and drivers</h3><ul>
+      <li><b>Secrets Manager provider</b> in the project's plugins repo</li>
+      <li><b>Password file</b> for the database logins</li>
+      <li><b>EFS CSI endpoint</b> Substrate can call</li>
+    </ul></div>
+  </div>
+  <aside class="notes">Most rough edges on the last slide have a fix the project can take, and AWS can help with each one. Install: an EKS profile in ate-setup, with S3 asset staging, s3:// URLs, the AL2023 credential provider paths and no GCP-only checks, so you install on EKS with flags and no patches. A reference blueprint, in eksctl, Terraform or CDK, with the IAM and buckets from this talk, so a blank account gets to a running install in one command. A metrics overlay for Amazon Managed Service for Prometheus, for observability without the GKE CRD. Per-actor access: per-actor S3 credentials in the credential exchange, with STS session policies scoped to the actor's prefix or S3 Access Grants; that gives parity with the GCS per-actor tokens, so a compromised node can't read every snapshot. And an actor JWT to AWS token exchange with AssumeRoleWithWebIdentity, for per-actor AWS access when an actor really needs it. Plugins and drivers: the Secrets Manager credential provider is built as credprovider-aws-secret-manager; next is donating it to agent-substrate-plugins, for production actor secrets without Kubernetes Secrets. A password file for ate-api-server's database logins, re-read on each new connection, so Secrets Manager rotation needs no restart. And an EFS CSI controller endpoint Substrate can call, a TLS listener in the driver or an add-on option, so per-actor EFS and S3 Files volumes work with the add-on alone.</aside>
 </section>
 
 <!-- 18 -->
@@ -975,9 +1031,10 @@ curl localhost:8001     <span class="c"># resumes</span></code></pre>
   <h2>Production checklist for EKS</h2>
   <div class="grid3">
     <div class="card"><h3>Cluster</h3><ul><li>EKS 1.37+</li><li>Node group per sandbox class, tainted</li><li>Nested-virt Intel family (m8i, c8i, r8i, 7i) for microVM</li><li>VPC CNI network policy on</li><li>IMDSv2 with hop limit 1</li></ul></div>
-    <div class="card"><h3>Data</h3><ul><li>S3: private, TLS-only, encrypted, lifecycle</li><li>Separate read-only asset bucket</li><li>RDS private, verify-full, owner/readwrite split</li><li>Logins in Secrets Manager, rotated (alternating users) and synced by External Secrets; Reloader rolls ate-api-server</li><li>Per-actor EFS access points, uid of the actor's user</li></ul></div>
-    <div class="card"><h3>Identity &amp; access</h3><ul><li>Pod Identity role per ServiceAccount</li><li>No credentials in actors</li><li>Bedrock through a gateway, one profile</li><li>Set <code>--ateapi-authz-bootstrap-owners</code> to your operators (this demo uses the shared-client default)</li><li>ClusterIP only, port-forward to operate</li><li>Private or CIDR-restricted EKS API endpoint</li></ul></div>
+    <div class="card"><h3>Data</h3><ul><li>S3: private, TLS-only, encrypted, lifecycle</li><li>Separate read-only asset bucket</li><li>RDS private, verify-full, owner/readwrite split</li><li>DB logins rotated, synced, rolled out</li><li>Per-actor EFS access points, uid of the actor's user</li></ul></div>
+    <div class="card"><h3>Identity &amp; access</h3><ul><li>Pod Identity role per ServiceAccount</li><li>No credentials in actors</li><li>Bedrock through a gateway, one profile</li><li><code class="nw">--ateapi-authz-bootstrap-owners</code> set to your operators</li><li>ClusterIP only, port-forward to operate</li><li>Private or CIDR-restricted EKS API endpoint</li></ul></div>
   </div>
+  <aside class="notes">If you take one slide home, take this one. Cluster: EKS 1.37 or newer, one tainted node group per sandbox class, a nested-virtualization Intel family for microVMs, network policy on in the VPC CNI, and IMDSv2 with a hop limit of 1. Data: private, TLS-only, encrypted S3 buckets with a lifecycle rule, a separate read-only asset bucket, a private RDS instance with verify-full TLS and the owner and readwrite split. The logins live in Secrets Manager, rotate with the alternating-users strategy, are synced by External Secrets, and the Reloader rolls ate-api-server. EFS access points are owned by the actor's uid. Identity and access: a Pod Identity role per ServiceAccount, no credentials in actors, Bedrock through a gateway with one profile. Set --ateapi-authz-bootstrap-owners to your operators; this demo uses the shared-client default. Keep every Service ClusterIP and operate with port forwards. And make the EKS API endpoint private or CIDR-restricted. For production also turn on Multi-AZ RDS, longer backup retention and deletion protection.</aside>
 </section>
 
 <!-- 19 -->
@@ -1000,6 +1057,7 @@ curl localhost:8001     <span class="c"># resumes</span></code></pre>
       <figcaption>Scripts, demos and slides<br><b>github.com/csantanapr/eks-agent-substrate</b></figcaption>
     </figure>
   </div>
+  <aside class="notes">Agent Substrate runs on EKS today. Scan the code for the scripts, both demos and these slides: two commands create the cluster and deploy everything, and two more tear it down. If you want to help make it boring, the places to start are the plugins repository, an EKS installer profile and per-actor credentials. Thank you.</aside>
 </section>
 
 </div>
