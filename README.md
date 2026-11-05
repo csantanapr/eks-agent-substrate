@@ -166,6 +166,44 @@ Things to know:
 - A rotation takes about 10 seconds, and the restart follows within the
   1 minute refresh.
 
+## Optional: inject Secrets Manager secrets into actor requests
+
+An actor sends an API request with a placeholder header, and the egress
+gateway swaps in a secret from AWS Secrets Manager on the way out. The actor
+never holds the secret, so it is not in its memory, files or snapshots. The
+[credprovider-aws-secret-manager](https://github.com/csantanapr/credprovider-aws-secret-manager)
+plugin reads the secret for the gateway
+([egress credential injection](https://github.com/agent-substrate/substrate/blob/main/docs/guides/egress-credential-injection.md)).
+
+```bash
+git clone https://github.com/csantanapr/credprovider-aws-secret-manager ~/credprovider-aws-secret-manager
+demos/credprovider-aws/deploy.sh          # provider, IAM, secrets, gateway, probe actors; set CREDPROVIDER_DIR for another checkout
+demos/credprovider-aws/verify.sh          # injection, no value in the actor, 403s, logs
+```
+
+`clean.sh` removes it. How the pieces fit:
+
+| Piece | What it does |
+|---|---|
+| `aws-sm-credential-provider` | Two replicas in `ate-system`, built with docker from your checkout and pushed to ECR. It serves mTLS with a Substrate servicedns certificate, accepts only atenet-egress's SPIFFE ID, and its NetworkPolicy admits only atenet-egress. |
+| Secret policy | A ConfigMap: actors in `ate-demo-credprovider` may resolve `ate/ate-demo-credprovider/*`. Every other atespace, such as `ate-demo-credprovider-denied`, gets a 403. |
+| IAM (Pod Identity) | The provider may call `GetSecretValue` only on secrets under `ate/` tagged `ate.dev/injectable=true` and with this deployment's owner tag. The demo's `untagged-token` lacks the first tag, so IAM refuses it. |
+| Egress gateway | `deploy.sh` writes `.work/credential-providers/secretsmanager.amazonaws.com.json` and reinstalls Substrate. `substrate/install.sh` adds every file there to `--credential-provider`, so atenet-egress serves `k8s.io` and `secretsmanager.amazonaws.com`, and every later `./deploy.sh` keeps it that way. |
+| Probe actors | Substrate's e2e probe, from the release source, on a gVisor pool. Its EgressPolicy has an `https` rule for the echo endpoint that replaces `Authorization` with `ate-secret://secretsmanager.amazonaws.com/accounts/<account>/regions/<region>/secrets/ate/ate-demo-credprovider/demo-token/stages/AWSCURRENT`. |
+
+Things to know:
+- `verify.sh` sends the request to a public header-echo endpoint,
+  `https://postman-echo.com/headers` by default (`CREDPROVIDER_ECHO_URL`), and
+  compares the echoed value with Secrets Manager's by SHA-256. The echo sends
+  the value back to the actor in its response; a real API does not.
+- The provider caches a value for 30 seconds, so after a rotation the old
+  value is injected for up to 30 seconds.
+- The secret names (`ate/ate-demo-credprovider/...`) carry no cluster name:
+  one deployment per account and Region can run this demo. `deploy.sh` stops
+  if another deployment owns them.
+- Registering the provider reinstalls Substrate with the preview gates the
+  cluster runs (for example `ExternalVolumes` from `demos/efs`).
+
 ## Move to a new release
 
 Set `SUBSTRATE_TAG` in `config.local.env` (for example `v1.0.0-rc.3`, or
@@ -244,7 +282,7 @@ client identity (pass it through `substrate/install.sh`).
 | `substrate/` | Fetch, patch and build the installer; install Agent Substrate |
 | `patches/` | The installer patch for EKS and S3, and why |
 | `llm-gateway/` | agentgateway with the Bedrock backend |
-| `demos/` | The counter and OpenClaw demos; per-actor EFS and S3 Files volumes; DB login rotation |
+| `demos/` | The counter and OpenClaw demos; per-actor EFS and S3 Files volumes; DB login rotation; Secrets Manager credential injection |
 | `slides/` | The talk deck (open `slides/index.html`) |
 | `.agents/skills/` | Agent skill for deploying and troubleshooting this repo; `.claude/skills` and `.kiro/skills` link to it |
 | `.work/` | Generated: kubeconfig, Substrate clone, tools (gitignored) |

@@ -19,7 +19,8 @@ found() { printf '   LEFT  %s\n' "$*"; left=1; }
 
 if cluster_exists; then
   [ "${1:-}" = --all ] && found "EKS cluster $CLUSTER_NAME"
-  for pair in $POD_IDENTITY_SAS kube-system/efs-csi-controller-sa kube-system/efs-csi-node-sa external-secrets/external-secrets; do
+  for pair in $POD_IDENTITY_SAS kube-system/efs-csi-controller-sa kube-system/efs-csi-node-sa external-secrets/external-secrets \
+              ate-system/aws-sm-credential-provider; do
     ids=$(aws_ eks list-pod-identity-associations --cluster-name "$CLUSTER_NAME" \
       --namespace "${pair%/*}" --service-account "${pair#*/}" --query 'associations[].associationId' --output text)
     [ -n "$ids" ] && found "Pod Identity association $pair ($ids)"
@@ -27,7 +28,8 @@ if cluster_exists; then
   if [ -f "$KUBECONFIG" ]; then
     ns=$(kubectl get namespace -o name) || die "kubectl cannot reach $CLUSTER_NAME"
     for n in openclaw ate-demo-counter ate-demo-counter-microvm llm-gateway ate-db-bootstrap \
-             ate-system podcertificate-controller-system external-secrets external-secrets-reloader; do
+             ate-system podcertificate-controller-system external-secrets external-secrets-reloader \
+             ate-demo-credprovider; do
       grep -qx "namespace/$n" <<<"$ns" && found "namespace $n"
     done
     crds=$(kubectl get crd -o name | grep -E '\.ate\.dev$' || true)
@@ -73,6 +75,18 @@ aws_exists iam get-role --role-name "${IAM_PREFIX}-external-secrets" && found "I
 aws_exists cloudformation describe-stacks --stack-name "$ROTATION_STACK" && found "CloudFormation stack $ROTATION_STACK"
 sgs=$(aws_ ec2 describe-security-groups --filters "Name=group-name,Values=$ROTATION_SG_NAME" --query 'SecurityGroups[].GroupId' --output text)
 [ -n "$sgs" ] && found "security group $ROTATION_SG_NAME ($sgs)"
+# demos/credprovider-aws: the provider's role and the demo secrets (its ECR
+# repositories are under ECR_PREFIX, listed above).
+aws_exists iam get-role --role-name "${IAM_PREFIX}-aws-sm-credential-provider" \
+  && found "IAM role ${IAM_PREFIX}-aws-sm-credential-provider"
+for s in demo-token untagged-token; do
+  # The name has no cluster in it: count it only when it is ours.
+  name="ate/ate-demo-credprovider/$s"
+  aws_exists secretsmanager describe-secret --secret-id "$name" || continue
+  owner=$(aws_ secretsmanager describe-secret --secret-id "$name" \
+    --query "Tags[?Key=='$OWNER_TAG_KEY'].Value | [0]" --output text)
+  [ "$owner" = "$OWNER_TAG_VALUE" ] && found "secret $name"
+done
 # EBS volumes from PVCs (the gp3 StorageClass tags them with the owner tag).
 vols=$(aws_ ec2 describe-volumes --filters "Name=tag:$OWNER_TAG_KEY,Values=$OWNER_TAG_VALUE" Name=status,Values=available \
   --query 'Volumes[].VolumeId' --output text)

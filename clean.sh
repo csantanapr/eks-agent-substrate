@@ -5,7 +5,8 @@
 #
 #   ./clean.sh [--yes]
 #
-# Deletes: the demos and their volumes, the LLM gateway, Agent Substrate, the
+# Deletes: the demos and their volumes (the credential provider demo's IAM
+# role, secrets and images too), the LLM gateway, Agent Substrate, the
 # Pod Identity associations and IAM roles, the RDS instance (no final
 # snapshot), its subnet and security groups, the Secrets Manager secrets
 # (no recovery window, so deploy.sh can recreate them at once), both S3
@@ -39,6 +40,11 @@ if cluster_exists; then
   # Before Substrate goes: deleting the actors deletes their access points.
   phase "EFS and S3 Files demos"
   step bash "$ROOT/demos/efs/clean.sh" --yes
+
+  # Before Substrate goes, which also takes the gateway's provider list with
+  # it, so the demo does not reinstall Substrate first (--keep-gateway).
+  phase "Secrets Manager credential provider demo"
+  step bash "$ROOT/demos/credprovider-aws/clean.sh" --yes --keep-gateway
 
   phase "Agent Substrate uninstall"
   log "Agent Substrate"
@@ -77,6 +83,9 @@ if cluster_exists; then
   done
 else
   warn "cluster $CLUSTER_NAME not found; cleaning the AWS resources only"
+  # Its IAM role, secrets and repositories outlive the cluster.
+  phase "Secrets Manager credential provider demo"
+  step bash "$ROOT/demos/credprovider-aws/clean.sh" --yes
 fi
 
 # Before RDS: its security group admits the rotation security group.

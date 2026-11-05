@@ -7,6 +7,9 @@
 #     verify-full against the RDS CA bundle
 #   - gVisor and microVM (Kata + Cloud Hypervisor) sandbox classes; the
 #     microVM guest assets are staged in the S3 asset bucket
+#   - egress credential injection from the bundled Kubernetes Secrets
+#     provider, plus any provider a demo registered in
+#     .work/credential-providers/ (demos/credprovider-aws)
 # Extra arguments go to `ate-setup deploy ate-system`.
 #
 # deploy.sh calls it after aws/infra.sh, substrate/fetch.sh and
@@ -50,8 +53,20 @@ INGRESS_IDS="spiffe://cluster.local/ns/ate-system/sa/atenet-client"
 INGRESS_IDS+=",spiffe://cluster.local/ns/openclaw/sa/openclaw-gateway"
 INGRESS_IDS+=",spiffe://cluster.local/ns/openclaw/sa/openclaw-dashboard"
 
-# --credential-provider k8s.io deploys the bundled provider, which injects
-# credentials from Kubernetes Secrets into actor egress.
+# The egress gateway's credential providers. k8s.io is the bundled provider,
+# which injects credentials from Kubernetes Secrets into actor egress. Each
+# JSON object a demo registered in .work/credential-providers/
+# (demos/credprovider-aws) adds one more. They are read on every install, so a
+# later ./deploy.sh keeps them. With none registered, only k8s.io is passed.
+CREDENTIAL_PROVIDERS='{"name":"k8s.io"}'
+for f in "$WORK"/credential-providers/*.json; do
+  [ -f "$f" ] || continue
+  need jq
+  CREDENTIAL_PROVIDERS+=",$(jq -ce 'select(type == "object")' "$f")" || die "$f is not a JSON object"
+  info "credential provider: $(jq -r .name "$f")"
+done
+[ "$CREDENTIAL_PROVIDERS" = '{"name":"k8s.io"}' ] || CREDENTIAL_PROVIDERS="[$CREDENTIAL_PROVIDERS]"
+
 log "ate-setup deploy ate-system ($SUBSTRATE_TAG)"
 cd "$SUBSTRATE_SRC"
 "$WORK/bin/ate-setup" deploy ate-system \
@@ -60,7 +75,7 @@ cd "$SUBSTRATE_SRC"
   --storage-bucket-name "$SNAP_BUCKET" \
   --snapshot-location "s3://${SNAP_BUCKET}/" \
   --ateapi-postgres-server-ca-file "$WORK/rds-global-bundle.pem" \
-  --credential-provider '{"name":"k8s.io"}' \
+  --credential-provider "$CREDENTIAL_PROVIDERS" \
   --ingress-allowed-spiffe-ids "$INGRESS_IDS" \
   --sandbox-classes gvisor,microvm \
   --rollout-timeout 5m \
