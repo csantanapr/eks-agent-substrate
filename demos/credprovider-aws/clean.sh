@@ -94,7 +94,15 @@ fi
 
 log "Secrets Manager"
 for name in "$CP_SECRET" "$CP_UNTAGGED_SECRET"; do
-  owned_secret "$name" || continue
+  # The names carry the atespace but not the cluster, so another cluster in
+  # this account and Region can own a secret with the same name. Leave it.
+  owner=$(secret_owner "$name"); rc=$?
+  [ "$rc" = 1 ] && continue
+  if [ "$rc" != 0 ]; then warn "cannot read the tags of secret $name"; fail=1; continue; fi
+  if [ "$owner" != "$OWNER_TAG_VALUE" ]; then
+    info "$name belongs to $owner, not $OWNER_TAG_VALUE: left in place"
+    continue
+  fi
   step aws_ secretsmanager delete-secret --secret-id "$name" --force-delete-without-recovery >/dev/null
   # The delete finishes in the background; wait so deploy.sh can reuse the name.
   for _ in $(seq 1 30); do aws_exists secretsmanager describe-secret --secret-id "$name" || break; sleep 2; done

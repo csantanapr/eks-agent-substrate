@@ -39,14 +39,21 @@ cp_uri() {
     "$CP_PROVIDER_NAME" "$ACCOUNT" "$AWS_REGION" "$1"
 }
 
+# secret_owner NAME: prints the secret's owner tag value ("None" when it has
+# none). Returns 1 if the secret does not exist, 2 if its tags can't be read.
+secret_owner() {
+  aws_exists secretsmanager describe-secret --secret-id "$1" || return 1
+  aws_ secretsmanager describe-secret --secret-id "$1" \
+    --query "Tags[?Key=='$OWNER_TAG_KEY'].Value | [0]" --output text || return 2
+}
+
 # owned_secret NAME: 0 if it carries our owner tag, 1 if it does not exist;
 # stops the script when it exists without the tag (another deployment's).
 owned_secret() {
-  aws_exists secretsmanager describe-secret --secret-id "$1" || return 1
-  local v
-  v=$(aws_ secretsmanager describe-secret --secret-id "$1" \
-        --query "Tags[?Key=='$OWNER_TAG_KEY'].Value | [0]" --output text) \
-    || die "cannot read the tags of secret $1"
+  local v rc=0
+  v=$(secret_owner "$1") || rc=$?
+  [ "$rc" = 1 ] && return 1
+  [ "$rc" = 0 ] || die "cannot read the tags of secret $1"
   [ "$v" = "$OWNER_TAG_VALUE" ] || die "secret $1 exists but is not owned by $OWNER_TAG_VALUE ($OWNER_TAG_KEY=$v)"
 }
 
