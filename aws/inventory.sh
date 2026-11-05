@@ -12,7 +12,7 @@ found() { printf '   LEFT  %s\n' "$*"; left=1; }
 
 if cluster_exists; then
   [ "${1:-}" = --all ] && found "EKS cluster $CLUSTER_NAME"
-  for pair in $POD_IDENTITY_SAS kube-system/efs-csi-controller-sa kube-system/efs-csi-node-sa; do
+  for pair in $POD_IDENTITY_SAS kube-system/efs-csi-controller-sa kube-system/efs-csi-node-sa external-secrets/external-secrets; do
     ids=$(aws_ eks list-pod-identity-associations --cluster-name "$CLUSTER_NAME" \
       --namespace "${pair%/*}" --service-account "${pair#*/}" --query 'associations[].associationId' --output text)
     [ -n "$ids" ] && found "Pod Identity association $pair ($ids)"
@@ -20,7 +20,7 @@ if cluster_exists; then
   if [ -f "$KUBECONFIG" ]; then
     ns=$(kubectl get namespace -o name) || die "kubectl cannot reach $CLUSTER_NAME"
     for n in openclaw ate-demo-counter ate-demo-counter-microvm llm-gateway ate-db-bootstrap \
-             ate-system podcertificate-controller-system; do
+             ate-system podcertificate-controller-system external-secrets external-secrets-reloader; do
       grep -qx "namespace/$n" <<<"$ns" && found "namespace $n"
     done
     crds=$(kubectl get crd -o name | grep -E '\.ate\.dev$' || true)
@@ -60,6 +60,11 @@ sgs=$(aws_ ec2 describe-security-groups --filters "Name=group-name,Values=$EFS_S
 if cluster_exists && aws_exists eks describe-addon --cluster-name "$CLUSTER_NAME" --addon-name aws-efs-csi-driver; then
   found "EKS add-on aws-efs-csi-driver"
 fi
+# demos/db-rotation: the rotation security group is in the VPC.
+aws_exists iam get-role --role-name "${IAM_PREFIX}-external-secrets" && found "IAM role ${IAM_PREFIX}-external-secrets"
+aws_exists cloudformation describe-stacks --stack-name "$ROTATION_STACK" && found "CloudFormation stack $ROTATION_STACK"
+sgs=$(aws_ ec2 describe-security-groups --filters "Name=group-name,Values=$ROTATION_SG_NAME" --query 'SecurityGroups[].GroupId' --output text)
+[ -n "$sgs" ] && found "security group $ROTATION_SG_NAME ($sgs)"
 # EBS volumes from PVCs (the gp3 StorageClass tags them with the owner tag).
 vols=$(aws_ ec2 describe-volumes --filters "Name=tag:$OWNER_TAG_KEY,Values=$OWNER_TAG_VALUE" Name=status,Values=available \
   --query 'Volumes[].VolumeId' --output text)

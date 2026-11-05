@@ -1,0 +1,44 @@
+# Secrets Manager rotation for Agent Substrate's two database logins, with
+# the AWS-maintained "alternating users" PostgreSQL function. Each rotation
+# switches the secret between <user> and <user>_clone and sets a new password
+# on the one not in use, so the login running pods hold keeps working until
+# the next rotation. The functions run in the cluster's private subnets and
+# reach RDS through their own security group.
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::SecretsManager-2024-09-16
+Parameters:
+  OwnerSecretArn: { Type: String }
+  ReadWriteSecretArn: { Type: String }
+  MasterSecretArn: { Type: String }
+  SubnetIds: { Type: String, Description: comma-separated private subnets }
+  SecurityGroupId: { Type: String }
+  NamePrefix: { Type: String }
+  Schedule: { Type: String, Default: "rate(30 days)" }
+Resources:
+  OwnerRotation:
+    Type: AWS::SecretsManager::RotationSchedule
+    Properties:
+      SecretId: !Ref OwnerSecretArn
+      RotateImmediatelyOnUpdate: false
+      RotationRules: { ScheduleExpression: !Ref Schedule }
+      HostedRotationLambda:
+        RotationType: PostgreSQLMultiUser
+        RotationLambdaName: !Sub "${NamePrefix}-owner"
+        MasterSecretArn: !Ref MasterSecretArn
+        VpcSubnetIds: !Ref SubnetIds
+        VpcSecurityGroupIds: !Ref SecurityGroupId
+        # Passwords go into a postgres:// URL; keep them URL-safe.
+        ExcludeCharacters: "/@\"'\\:?#[]%&+=,;!$*(){}<>|`^~ "
+  ReadWriteRotation:
+    Type: AWS::SecretsManager::RotationSchedule
+    Properties:
+      SecretId: !Ref ReadWriteSecretArn
+      RotateImmediatelyOnUpdate: false
+      RotationRules: { ScheduleExpression: !Ref Schedule }
+      HostedRotationLambda:
+        RotationType: PostgreSQLMultiUser
+        RotationLambdaName: !Sub "${NamePrefix}-readwrite"
+        MasterSecretArn: !Ref MasterSecretArn
+        VpcSubnetIds: !Ref SubnetIds
+        VpcSecurityGroupIds: !Ref SecurityGroupId
+        ExcludeCharacters: "/@\"'\\:?#[]%&+=,;!$*(){}<>|`^~ "

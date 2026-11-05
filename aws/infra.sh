@@ -104,18 +104,23 @@ if [[ "$db_sg" == "None" ]]; then
     --tag-specifications "ResourceType=security-group,Tags=[$(tags_braces)]" \
     --query GroupId --output text)
 fi
-# Exactly one ingress rule: 5432 from the cluster security group.
+# Ingress: 5432 from the cluster security group, and from the rotation
+# Lambda's group when demos/db-rotation added one. Nothing else.
+rotation_sg=$(aws_ ec2 describe-security-groups --filters "Name=vpc-id,Values=$vpc" "Name=group-name,Values=$ROTATION_SG_NAME" \
+  --query 'SecurityGroups[0].GroupId' --output text)
 rules=$(aws_ ec2 describe-security-groups --group-ids "$db_sg" --output json \
   --query 'SecurityGroups[0].IpPermissions[].{p:IpProtocol,f:FromPort,t:ToPort,g:UserIdGroupPairs[].GroupId,c:IpRanges[].CidrIp,c6:Ipv6Ranges[].CidrIpv6}')
 case "$(python3 -c '
 import sys, json
-r = json.load(sys.stdin); want = sys.argv[1]
-ok = [x for x in r if x["p"] == "tcp" and x["f"] == 5432 and x["t"] == 5432 and x["g"] == [want] and not x["c"] and not x["c6"]]
-print("ok" if len(r) == 1 and ok else "none" if not r else "other")' "$cluster_sg" <<<"$rules")" in
+r = json.load(sys.stdin); cluster, rotation = sys.argv[1], sys.argv[2]
+allowed = {cluster} | ({rotation} if rotation.startswith("sg-") else set())
+bad = [x for x in r if x["p"] != "tcp" or x["f"] != 5432 or x["t"] != 5432 or x["c"] or x["c6"] or not set(x["g"]) <= allowed]
+groups = {g for x in r for g in x["g"]}
+print("other" if bad else "ok" if cluster in groups else "none")' "$cluster_sg" "$rotation_sg" <<<"$rules")" in
   ok) ;;
   none) aws_ ec2 authorize-security-group-ingress --group-id "$db_sg" \
           --ip-permissions "IpProtocol=tcp,FromPort=5432,ToPort=5432,UserIdGroupPairs=[{GroupId=$cluster_sg}]" >/dev/null ;;
-  *) die "security group $DB_ID ($db_sg) has ingress rules other than 5432 from $cluster_sg: $rules" ;;
+  *) die "security group $DB_ID ($db_sg) has ingress rules other than 5432 from $cluster_sg (and $ROTATION_SG_NAME): $rules" ;;
 esac
 if ! aws_exists rds describe-db-instances --db-instance-identifier "$DB_ID"; then
   multi_az=--no-multi-az; [ "$DB_MULTI_AZ" = true ] && multi_az=--multi-az

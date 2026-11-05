@@ -71,6 +71,10 @@ else
   warn "cluster $CLUSTER_NAME not found; cleaning the AWS resources only"
 fi
 
+# Before RDS: its security group admits the rotation security group.
+phase "DB rotation demo"
+step bash "$ROOT/demos/db-rotation/clean.sh" --yes
+
 phase "IAM roles"
 log "IAM roles"
 for pair in $POD_IDENTITY_SAS; do

@@ -136,6 +136,34 @@ Things to know:
 - The template's golden snapshot gets a volume of its own too, so each
   template leaves one extra directory under `/ate`.
 
+## Optional: rotate the database logins
+
+Secrets Manager rotates the owner and readwrite logins, and ate-api-server
+follows with a rolling restart. ate-api-server reads both connection strings
+only at start, and the owner login runs outbox maintenance every minute, so
+both logins rotate.
+
+```bash
+demos/db-rotation/deploy.sh               # rotation functions, External Secrets, ESO Reloader
+demos/db-rotation/verify.sh               # rotate both now; check the sync, the rollout and the API
+```
+
+`clean.sh` removes it. How the pieces fit:
+
+| Piece | What it does |
+|---|---|
+| Rotation function | The AWS-hosted `PostgreSQLMultiUser` Lambda (`rotation.cfn.yaml`), in the private subnets with its own security group, every 30 days. It alternates each login between `USER` and `USER_clone`, so the login the running pods hold keeps working during the rollout. Native RDS rotation covers only the master user. |
+| External Secrets Operator | Controller only (no webhook, nothing listening), with a Pod Identity role that may read the two login secrets. Every minute it writes both connection strings into `ate-api-server-secret-envvars`. |
+| ESO Reloader | A `Config` that rolls the ate-api-server Deployment when that Secret changes. Nothing changes in the Substrate manifests. |
+
+Things to know:
+- `aws/db-bootstrap.sh` creates both users of each login, `NOINHERIT` and
+  granted the Substrate role, before the first rotation. Otherwise the
+  rotation function creates the clone with `INHERIT`, and the next
+  `./deploy.sh` fails in `setup.sql`.
+- A rotation takes about 10 seconds, and the restart follows within the
+  1 minute refresh.
+
 ## Move to a new release
 
 Set `SUBSTRATE_TAG` in `config.local.env` (for example `v1.0.0-rc.3`, or
@@ -210,7 +238,7 @@ client identity (pass it through `substrate/install.sh`).
 | `substrate/` | Fetch, patch and build the installer; install Agent Substrate |
 | `patches/` | The installer patch for EKS and S3, and why |
 | `llm-gateway/` | agentgateway with the Bedrock backend |
-| `demos/` | The counter and OpenClaw demos; per-actor EFS and S3 Files volumes |
+| `demos/` | The counter and OpenClaw demos; per-actor EFS and S3 Files volumes; DB login rotation |
 | `slides/` | The talk deck (open `slides/index.html`) |
 | `.agents/skills/` | Agent skill for deploying and troubleshooting this repo; `.claude/skills` and `.kiro/skills` link to it |
 | `.work/` | Generated: kubeconfig, Substrate clone, tools (gitignored) |

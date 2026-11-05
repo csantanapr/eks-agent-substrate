@@ -49,6 +49,7 @@ demos/counter/verify.sh            # must end with two "PASS" lines
 demos/openclaw/deploy.sh verify    # when OPENCLAW_DIR or OPENCLAW_REPO is set
 demos/efs/verify.sh                # after demos/efs/deploy.sh: actor data on EFS
 STORAGE=s3files demos/efs/verify.sh  # after demos/s3files/deploy.sh
+demos/db-rotation/verify.sh        # after demos/db-rotation/deploy.sh: rotates both logins now
 kubectl -n ate-system get pods     # all Running
 ```
 
@@ -79,6 +80,9 @@ Read the real error before changing anything. Known failures and their fixes:
 | `CSI CreateVolume failed ... Access denied` | The controllers' Pod Identity role lacks an EFS or S3 Files permission | Read the `efs-plugin` logs in `efs-csi-controller-ate`: they name the action; fix the policy in `demos/efs/deploy.sh` or `demos/s3files/deploy.sh` |
 | The counter reports `preserved file counter: -1` on EFS | The access point's uid does not match the actor's user, and actors have no `CAP_DAC_OVERRIDE` | Set `EFS_UID`/`EFS_GID` to the actor's user and run the deploy again; new actors get the new uid |
 | Demo actors are `ACTOR_STATE_CRASHED` after `demos/efs/deploy.sh` | Turning on the `ExternalVolumes` preview reinstalls Substrate, which rolls the worker pods | `kubectl ate revert actor NAME -a ATESPACE` |
+| `demos/db-rotation/verify.sh` stops at "rotation did not finish" | The rotation function failed a step | `aws logs tail /aws/lambda/<cluster>-db-owner` (or `-db-readwrite`); it logs each of createSecret, setSecret, testSecret, finishSecret |
+| `db-bootstrap.sh` fails with `role "..._clone" conflicts with the required attributes` | The rotation function created the clone login with `INHERIT` | Run the current `aws/db-bootstrap.sh`: it makes both users of each login `NOINHERIT` before `setup.sql` |
+| The counter waits minutes for "snapshot in S3" | atelet uploads a suspend snapshot in the background 5 minutes after the checkpoint (`--snapshot-upload-delay`) | Nothing; `verify.sh` waits up to 10 minutes |
 
 Logs to read: `kubectl -n ate-system logs ds/atelet -c atelet`,
 `kubectl -n ate-system logs deploy/ate-api-server`, the worker pod in the

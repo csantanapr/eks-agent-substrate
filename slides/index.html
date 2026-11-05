@@ -488,7 +488,7 @@ ate-setup deploy ate-system \
 <section class="slide">
   <h2>Rotate the DB password, and ate-api-server follows</h2>
   <div class="fill">
-    <svg viewBox="0 0 1240 520" role="img" aria-label="Secrets Manager rotation flows through External Secrets Operator or the Secrets Store CSI driver into a Kubernetes Secret, and Reloader rolls ate-api-server">
+    <svg viewBox="0 0 1240 520" role="img" aria-label="An AWS-hosted Lambda rotates the logins in RDS; External Secrets Operator syncs Secrets Manager into a Kubernetes Secret, and the ESO Reloader rolls ate-api-server">
       <defs>
         <marker id="rota" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#9aa7b4"/></marker>
       </defs>
@@ -499,26 +499,26 @@ ate-setup deploy ate-system \
       <text x="30" y="258" fill="#e8edf2" font-size="16">works until the next</text>
       <text x="30" y="280" fill="#e8edf2" font-size="16">rotation</text>
 
-      <rect x="300" y="60" width="250" height="140" rx="14" fill="#161d26" stroke="#3ecf8e" stroke-width="2"/>
-      <text x="320" y="96" fill="#3ecf8e" font-size="21" font-weight="700">External Secrets</text>
-      <text x="320" y="122" fill="#e8edf2" font-size="16">Pod Identity · refresh 5m</text>
-      <text x="320" y="146" fill="#e8edf2" font-size="16">templates the DSN</text>
-      <text x="320" y="170" fill="#9aa7b4" font-size="15">recommended</text>
+      <rect x="10" y="380" width="220" height="120" rx="14" fill="#161d26" stroke="#ff9900" stroke-width="2" stroke-dasharray="8 6"/>
+      <text x="30" y="414" fill="#ff9900" font-size="19" font-weight="700">Rotation function</text>
+      <text x="30" y="440" fill="#e8edf2" font-size="16">AWS-hosted Lambda</text>
+      <text x="30" y="462" fill="#e8edf2" font-size="16">private subnets</text>
+      <text x="30" y="484" fill="#9aa7b4" font-size="15">sets user or user_clone</text>
 
-      <rect x="300" y="250" width="250" height="140" rx="14" fill="#161d26" stroke="#4aa3ff" stroke-width="2" stroke-dasharray="8 6"/>
-      <text x="320" y="286" fill="#4aa3ff" font-size="21" font-weight="700">Secrets Store CSI</text>
-      <text x="320" y="312" fill="#e8edf2" font-size="16">AWS provider · Pod Identity</text>
-      <text x="320" y="336" fill="#e8edf2" font-size="16">rotation poll · syncSecret</text>
-      <text x="320" y="360" fill="#9aa7b4" font-size="15">alternative</text>
+      <rect x="300" y="150" width="250" height="150" rx="14" fill="#161d26" stroke="#3ecf8e" stroke-width="2"/>
+      <text x="320" y="186" fill="#3ecf8e" font-size="21" font-weight="700">External Secrets</text>
+      <text x="320" y="214" fill="#e8edf2" font-size="16">Pod Identity</text>
+      <text x="320" y="238" fill="#e8edf2" font-size="16">refresh 1m</text>
+      <text x="320" y="262" fill="#e8edf2" font-size="16">templates both DSNs</text>
 
       <rect x="620" y="150" width="270" height="150" rx="14" fill="#161d26" stroke="#b18cff" stroke-width="2"/>
       <text x="640" y="186" fill="#b18cff" font-size="21" font-weight="700">Kubernetes Secret</text>
       <text x="640" y="212" fill="#e8edf2" font-size="15">ate-api-server-secret-envvars</text>
-      <text x="640" y="240" fill="#9aa7b4" font-size="15">…READ_WRITE_CONNECTION_STRING</text>
-      <text x="640" y="262" fill="#9aa7b4" font-size="15">…OWNER_CONNECTION_STRING</text>
+      <text x="640" y="240" fill="#9aa7b4" font-size="13">…READ_WRITE_CONNECTION_STRING</text>
+      <text x="640" y="262" fill="#9aa7b4" font-size="13">…OWNER_CONNECTION_STRING</text>
 
       <rect x="960" y="40" width="270" height="110" rx="14" fill="#161d26" stroke="#e8edf2" stroke-width="2"/>
-      <text x="980" y="76" fill="#e8edf2" font-size="21" font-weight="700">Reloader</text>
+      <text x="980" y="76" fill="#e8edf2" font-size="21" font-weight="700">ESO Reloader</text>
       <text x="980" y="102" fill="#9aa7b4" font-size="16">sees the Secret change,</text>
       <text x="980" y="124" fill="#9aa7b4" font-size="16">starts a rolling restart</text>
 
@@ -532,17 +532,18 @@ ate-setup deploy ate-system \
       <text x="980" y="436" fill="#ff9900" font-size="21" font-weight="700">Amazon RDS</text>
       <text x="980" y="460" fill="#9aa7b4" font-size="16">verify-full TLS</text>
 
-      <path d="M230,200 L298,140" stroke="#9aa7b4" stroke-width="3" fill="none" marker-end="url(#rota)"/>
-      <path d="M230,250 L298,310" stroke="#9aa7b4" stroke-width="3" stroke-dasharray="8 6" fill="none" marker-end="url(#rota)"/>
-      <path d="M550,140 L618,200" stroke="#3ecf8e" stroke-width="3" fill="none" marker-end="url(#rota)"/>
-      <path d="M550,310 L618,250" stroke="#4aa3ff" stroke-width="3" stroke-dasharray="8 6" fill="none" marker-end="url(#rota)"/>
+      <path d="M230,225 L298,225" stroke="#9aa7b4" stroke-width="3" fill="none" marker-end="url(#rota)"/>
+      <path d="M550,225 L618,225" stroke="#3ecf8e" stroke-width="3" fill="none" marker-end="url(#rota)"/>
       <path d="M890,190 L958,110" stroke="#b18cff" stroke-width="3" fill="none" marker-end="url(#rota)"/>
       <path d="M1095,150 L1095,208" stroke="#e8edf2" stroke-width="3" fill="none" marker-end="url(#rota)"/>
       <path d="M890,260 L958,280" stroke="#b18cff" stroke-width="3" fill="none" marker-end="url(#rota)"/>
       <path d="M1095,350 L1095,398" stroke="#4aa3ff" stroke-width="3" fill="none" marker-end="url(#rota)"/>
+      <path d="M120,300 L120,378" stroke="#ff9900" stroke-width="3" fill="none" marker-end="url(#rota)"/>
+      <path d="M230,450 L958,450" stroke="#ff9900" stroke-width="3" stroke-dasharray="8 6" fill="none" marker-end="url(#rota)"/>
+      <text x="594" y="440" text-anchor="middle" fill="#ff9900" font-size="16">CREATE ROLE / ALTER USER as the master login</text>
     </svg>
   </div>
-  <aside class="notes">ate-setup puts both connection strings in one Kubernetes Secret, ate-api-server-secret-envvars, and ate-api-server reads it as environment variables when it starts. So a rotation reaches it only through a restart, and the job is to make that restart automatic. First, let Secrets Manager rotate the owner and readwrite logins with the alternating-users strategy. It flips between two database users, so the login the running pods hold keeps working while new pods start; single-user rotation changes the password in place, and new connections fail until the rollout finishes. Check that the clone user gets the substrate_readwrite role. Second, sync the secret into the cluster. External Secrets Operator is the better fit: its controller has its own Pod Identity role, it templates the full DSN from the secret's username and password, and it doesn't need a volume in the ate-api-server pod. The Secrets Store CSI driver with the AWS provider works too: it supports Pod Identity, rotation polling and syncing to a Kubernetes Secret. But it has to be mounted by the pod, and it copies values rather than templating them, so you'd store the whole DSN in Secrets Manager. Third, Stakater Reloader watches that Secret and does a rolling restart of ate-api-server when it changes. With two replicas the API stays up the whole time.</aside>
+  <aside class="notes">ate-setup puts both connection strings in one Kubernetes Secret, ate-api-server-secret-envvars, and ate-api-server reads it as environment variables when it starts. So a rotation reaches it only through a restart, and the job is to make that restart automatic. First, let Secrets Manager rotate the owner and readwrite logins with the alternating-users strategy. Secrets Manager's native RDS rotation covers only the master user, so the app logins need a rotation function. AWS hosts the code: one CloudFormation transform creates the Lambda in your private subnets, and it logs in as the master user. It flips between two database users, user and user_clone, so the login the running pods hold keeps working while new pods start. Both users hold the same substrate role, so either one can SET ROLE to it. Single-user rotation changes the password in place, and new connections fail until the rollout finishes. Second, External Secrets Operator syncs the secret into the cluster. Its controller has its own Pod Identity role, it checks Secrets Manager every minute, and it templates the full DSN from the secret's username and password. Nothing changes in the ate-api-server pod. Third, the External Secrets Reloader watches that Secret and does a rolling restart of ate-api-server when it changes. With two replicas the API stays up the whole time.</aside>
 </section>
 
 <!-- 11c -->
@@ -553,7 +554,7 @@ ate-setup deploy ate-system \
 <span class="k">kind</span>: ExternalSecret
 <span class="k">metadata</span>: { name: ate-db, namespace: ate-system }
 <span class="k">spec</span>:
-  <span class="k">refreshInterval</span>: 5m
+  <span class="k">refreshInterval</span>: 1m
   <span class="k">secretStoreRef</span>: { kind: SecretStore, name: aws }  <span class="c"># Pod Identity</span>
   <span class="k">target</span>:
     <span class="k">name</span>: ate-api-server-secret-envvars  <span class="c"># what ate-setup made</span>
@@ -568,17 +569,19 @@ ate-setup deploy ate-system \
   - { secretKey: pw,   remoteRef: { key: &lt;cluster&gt;/ate-readwrite, property: password } }
 <span class="c">  # the owner login: the same, with ate-owner</span>
 ---
-<span class="c"># on the ate-api-server Deployment (in the install patch)</span>
-<span class="k">metadata</span>:
-  <span class="k">annotations</span>:
-    <span class="k">secret.reloader.stakater.com/reload</span>: <span class="s">ate-api-server-secret-envvars</span></code></pre>
+<span class="k">apiVersion</span>: reloader.external-secrets.io/v1alpha1
+<span class="k">kind</span>: Config
+<span class="k">spec</span>:
+  <span class="k">notificationSources</span>: [{ type: KubernetesSecret }]
+  <span class="k">destinationsToWatch</span>:
+  - { type: Deployment, deployment: { names: [ate-api-server] } }</code></pre>
     <div>
-      <div class="card"><h3>External Secrets Operator</h3><ul><li>Templates the DSN from username and password</li><li>No volume in the ate-api-server pod</li><li>IAM: <code>secretsmanager:GetSecretValue</code> on <code>&lt;cluster&gt;/ate-*</code></li></ul></div>
-      <div class="card" style="margin-top:1rem"><h3>Secrets Store CSI driver</h3><ul><li><code>usePodIdentity: "true"</code>, <code>enableSecretRotation</code></li><li>The pod mounts the volume; <code>secretObjects</code> syncs a Secret</li><li>No templating: store the whole DSN</li></ul></div>
-      <div class="card" style="margin-top:1rem"><h3>Either way</h3><ul><li>Rotation strategy: alternating users</li><li>Reloader rolls ate-api-server</li><li>Put the annotation in the install patch, so <code>ate-setup</code> keeps it</li></ul></div>
+      <div class="card"><h3>Rotation</h3><ul><li>AWS-hosted <code>PostgreSQLMultiUser</code> Lambda</li><li>Private subnets, its own security group</li><li>Every 30 days, or <code>rotate-secret</code> now</li></ul></div>
+      <div class="card" style="margin-top:1rem"><h3>External Secrets Operator</h3><ul><li>Templates both DSNs from username and password</li><li>Controller only: no webhook, nothing listening</li><li>IAM: <code>secretsmanager:GetSecretValue</code> on <code>&lt;cluster&gt;/ate-*</code></li></ul></div>
+      <div class="card" style="margin-top:1rem"><h3>ESO Reloader</h3><ul><li>Rolls ate-api-server when the Secret changes</li><li>No change to the ate-api-server manifest</li></ul></div>
     </div>
   </div>
-  <aside class="notes">The ExternalSecret writes into the Secret ate-setup already created. creationPolicy Merge means it updates only the keys it templates and leaves the schema key alone. The SecretStore has no auth block, so ESO uses its controller's Pod Identity role, which needs GetSecretValue on this cluster's two login secrets only. The template URL-encodes the password, because it sits inside a URL. Put the Reloader annotation in the same install patch the rest of the EKS changes live in. If you add it with kubectl annotate instead, the next ate-setup deploy re-applies the Deployment and drops it. With the CSI driver, mount a SecretProviderClass volume in ate-api-server (that's a patch too), turn on syncSecret and rotation, and keep the Reloader annotation. The longer-term fix is upstream: RDS IAM authentication, or ate-api-server reading its password from a mounted file and reconnecting, would take restarts out of rotation entirely.</aside>
+  <aside class="notes">The ExternalSecret writes into the Secret ate-setup already created. creationPolicy Merge means it updates only the keys it templates and leaves the schema key alone. The SecretStore has no auth block, so ESO uses its controller's Pod Identity role, which needs GetSecretValue on this cluster's two login secrets only. The template URL-encodes the password, because it sits inside a URL. The ESO Reloader Config lives outside the Deployment: it watches Secrets and rolls any Deployment in its list that reads the changed Secret through envFrom. So nothing goes into the ate-setup manifests, and a redeploy can't drop it. It restarts by stamping a last-reloaded annotation on the pod template. Upstream, ate-api-server reading its password from a mounted file on each new connection would take the restart out of rotation.</aside>
 </section>
 
 <!-- 12 -->
@@ -826,7 +829,7 @@ curl localhost:8001     <span class="c"># resumes</span></code></pre>
         <li>atelet's credential provider hostPaths are GKE paths. On AL2023 they're <code>/etc/eks/image-credential-provider</code></li>
         <li>On S3, snapshot transfers use the pod's credentials. GCS gets <b>per-actor</b> scoped tokens.</li>
         <li>On RDS, pre-create <code>substrate_owner</code> and grant it to the master user before <code>setup.sql</code></li>
-        <li>No RDS IAM authentication, so passwords sit in a Secret</li>
+        <li>ate-api-server reads both database passwords once at start, so a rotation needs a rolling restart</li>
         <li>ate-api-server calls the CSI controller over gRPC. The EFS add-on's controller only listens on a socket in its pod, so a second, Envoy-fronted controller serves Substrate</li>
       </ul>
     </div>
@@ -875,7 +878,7 @@ curl localhost:8001     <span class="c"># resumes</span></code></pre>
     <tr><td>1</td><td><b>Secrets Manager credential provider</b> plugin</td><td>Production secrets for actors without Kubernetes Secrets</td></tr>
     <tr><td>2</td><td><b>EKS profile in ate-setup</b>: S3 asset staging, <code>s3://</code> URLs, AL2023 credential provider paths, no GCP-only checks</td><td>Install on EKS with flags, no patches</td></tr>
     <tr><td>3</td><td><b>Per-actor S3 credentials</b> in the credential exchange: STS session policies scoped to the actor's prefix, or S3 Access Grants</td><td>Parity with GCS per-actor tokens. A compromised node can't read every snapshot.</td></tr>
-    <tr><td>4</td><td><b>RDS IAM authentication</b> for ate-api-server</td><td>No long-lived runtime DB passwords (bootstrap still needs an admin path)</td></tr>
+    <tr><td>4</td><td><b>Password file</b> for ate-api-server's database logins, re-read on each new connection</td><td>Secrets Manager rotation without restarting ate-api-server</td></tr>
     <tr><td>5</td><td><b>Actor JWT to AWS</b> token exchange (<code>AssumeRoleWithWebIdentity</code>)</td><td>Per-actor AWS access when an actor really needs it</td></tr>
     <tr><td>6</td><td><b>Metrics</b> overlay for Amazon Managed Service for Prometheus</td><td>Observability without the GKE CRD</td></tr>
     <tr><td>7</td><td><b>EFS CSI controller endpoint</b> Substrate can call: a TLS listener in the driver, or an add-on option</td><td>Per-actor EFS and S3 Files volumes with the add-on alone</td></tr>

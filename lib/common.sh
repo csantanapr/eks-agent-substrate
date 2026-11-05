@@ -98,6 +98,9 @@ ECR_REGISTRY="${ACCOUNT}.dkr.ecr.${AWS_REGION}.${AWS_DNS_SUFFIX}"
 # demos/efs: the file system's creation token and its security group.
 EFS_TOKEN="${CLUSTER_NAME}-actors"
 EFS_SG_NAME="${CLUSTER_NAME}-efs"
+# demos/db-rotation: the rotation Lambdas' stack and security group.
+ROTATION_STACK="${CLUSTER_NAME}-db-rotation"
+ROTATION_SG_NAME="${CLUSTER_NAME}-db-rotation"
 # demos/s3files: the bucket the S3 file system syncs with, and its security group.
 S3FILES_BUCKET="${CLUSTER_NAME}-files-${ACCOUNT}-${AWS_REGION}"
 S3FILES_SG_NAME="${CLUSTER_NAME}-s3files"

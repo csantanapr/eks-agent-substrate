@@ -25,6 +25,34 @@ master_arn=$(aws_ rds describe-db-instances --db-instance-identifier "$DB_ID" --
 admin=$(secret_json "$master_arn")
 owner=$(secret_json "$SECRET_PREFIX/ate-owner")
 rw=$(secret_json "$SECRET_PREFIX/ate-readwrite")
+# Secrets Manager rotation (demos/db-rotation) alternates each login between
+# USER and USER_clone. Make both with the attributes setup.sql requires
+# before it runs: setup.sql manages whichever one the secret names now, and
+# the rotation function only sets the other one's password.
+base() { field username | sed 's/_clone$//'; }
+owner_base=$(base <<<"$owner"); rw_base=$(base <<<"$rw")
+cat > "$WORK/db-alternates.sql" <<EOF
+DO \$\$
+DECLARE r record;
+BEGIN
+  FOR r IN SELECT * FROM (VALUES ('substrate_owner'), ('substrate_readwrite')) v(name) LOOP
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r.name) THEN
+      EXECUTE format('CREATE ROLE %I NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION', r.name);
+    END IF;
+  END LOOP;
+  FOR r IN SELECT * FROM (VALUES
+      ('$owner_base', 'substrate_owner'), ('${owner_base}_clone', 'substrate_owner'),
+      ('$rw_base', 'substrate_readwrite'), ('${rw_base}_clone', 'substrate_readwrite')) v(name, grp) LOOP
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r.name) THEN
+      EXECUTE format('CREATE ROLE %I LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION', r.name);
+    ELSE
+      EXECUTE format('ALTER ROLE %I NOINHERIT', r.name);
+    END IF;
+    EXECUTE format('GRANT %I TO %I', r.grp, r.name);
+  END LOOP;
+END
+\$\$;
+EOF
 
 log "Bootstrap roles and schema from an in-cluster Job"
 kubectl create namespace "$NS" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
@@ -43,6 +71,7 @@ print(json.dumps({"apiVersion": "v1", "kind": "Secret", "type": "Opaque",
 unset admin owner rw
 kubectl -n "$NS" create configmap setup \
   --from-file=setup.sql="$SUBSTRATE_SRC/pkg/postgressetup/setup.sql" \
+  --from-file=alternates.sql="$WORK/db-alternates.sql" \
   --from-file=rds-ca.pem="$WORK/rds-global-bundle.pem" \
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 
@@ -80,6 +109,7 @@ spec:
           "DO \\\$\\\$BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='substrate_owner') THEN
           CREATE ROLE substrate_owner NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION; END IF;
           EXECUTE format('GRANT substrate_owner TO %I', current_user); END\\\$\\\$;"
+          && psql --no-psqlrc -v ON_ERROR_STOP=1 -f /setup/alternates.sql
           && { printf '%s\\n' '\\getenv substrate_owner_user OWNER_USER' '\\getenv substrate_owner_password OWNER_PW'
           '\\getenv substrate_readwrite_user RW_USER' '\\getenv substrate_readwrite_password RW_PW';
           cat /setup/setup.sql; }
