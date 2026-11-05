@@ -1,0 +1,29 @@
+# Example EgressPolicy for an actor that gets a secret from AWS Secrets
+# Manager. demos/credprovider-aws/verify.sh builds this same policy for its
+# probe actor (https_rule and cp_uri in lib.sh) with your account and Region.
+#
+# The actor sends `Authorization: Bearer placeholder` to postman-echo.com.
+# atenet-egress terminates TLS, asks the credential provider registered for
+# secretsmanager.amazonaws.com for the secret at credentialUri, and replaces
+# the header with "Bearer " + the secret. The actor never holds the value.
+#
+# credentialUri:
+#   ate-secret://secretsmanager.amazonaws.com/accounts/<account>/regions/<region>/
+#     secrets/<name>/(stages/<stage>|versions/<version-id>)[/keys/<json-key>]
+# The provider serves only secrets its policy grants the actor's atespace,
+# and its IAM role reads only secrets tagged ate.dev/injectable=true.
+#
+# Apply it to an actor (111122223333 is a placeholder account ID):
+#   kubectl ate create egress-policy ACTOR -a ate-demo-credprovider -f egress-policy.example.yaml
+#
+# Learn more:
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/guides/egress-credential-injection.md
+#   https://github.com/csantanapr/credprovider-aws-secret-manager
+rules:
+- https:
+    hostnames: ["postman-echo.com"]
+    effects:
+      replaceHeaders:
+      - header: Authorization
+        prefix: "Bearer "
+        credentialUri: ate-secret://secretsmanager.amazonaws.com/accounts/111122223333/regions/us-west-2/secrets/ate/ate-demo-credprovider/demo-token/stages/AWSCURRENT

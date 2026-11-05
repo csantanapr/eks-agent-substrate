@@ -173,6 +173,8 @@ never holds the secret, so it is not in its memory, files or snapshots. The
 [credprovider-aws-secret-manager](https://github.com/csantanapr/credprovider-aws-secret-manager)
 plugin reads the secret for the gateway
 ([egress credential injection](https://github.com/agent-substrate/substrate/blob/main/docs/guides/egress-credential-injection.md)).
+[`egress-policy.example.yaml`](demos/credprovider-aws/egress-policy.example.yaml)
+is the EgressPolicy the demo gives its actor, with a placeholder account.
 
 ```bash
 git clone https://github.com/csantanapr/credprovider-aws-secret-manager ~/credprovider-aws-secret-manager
