@@ -29,7 +29,7 @@
 set -euo pipefail
 . "$(dirname "$0")/../../lib/common.sh"
 ensure_kubeconfig
-need helm
+need helm; need envsubst
 ESO_CHART_VERSION=2.14.0
 ESO_IMAGE="ghcr.io/external-secrets/external-secrets:v2.14.0@sha256:10608eb53e636e744903d5f3657a4d9c44e28d9d9c181b73e07bc7dd2e6884dc"
 RELOADER_VERSION=v0.3.0
@@ -120,43 +120,11 @@ ensure_pod_identity "$ESO_NS" deploy/external-secrets
 
 log "SecretStore and ExternalSecret in ate-system"
 # Merge into the Secret ate-setup made: only the two connection strings are
-# written; ATE_API_POSTGRES_SCHEMA stays as it is. The template builds each
-# connection string from the secret fields.
+# written; ATE_API_POSTGRES_SCHEMA stays as it is. The template in
+# external-secret.yaml builds each connection string from the secret fields.
 #   https://external-secrets.io/latest/api/externalsecret/
 #   https://external-secrets.io/latest/guides/templating/
-cat <<EOF | kubectl apply -f -
-apiVersion: external-secrets.io/v1
-kind: SecretStore
-metadata: { name: aws-secrets-manager, namespace: ate-system }
-spec:
-  provider:
-    aws: { service: SecretsManager, region: $AWS_REGION }   # no auth: the controller's Pod Identity
----
-apiVersion: external-secrets.io/v1
-kind: ExternalSecret
-metadata: { name: ate-api-server-db, namespace: ate-system }
-spec:
-  refreshInterval: 1m
-  secretStoreRef: { kind: SecretStore, name: aws-secrets-manager }
-  target:
-    name: ate-api-server-secret-envvars
-    creationPolicy: Merge
-    deletionPolicy: Retain
-    template:
-      engineVersion: v2   # the default mergePolicy Replace keeps the raw fields out of the Secret
-      data:
-        ATE_API_POSTGRES_OWNER_CONNECTION_STRING: >-
-          postgres://{{ .owner_user | urlquery }}:{{ .owner_password | urlquery }}@{{ .owner_host }}:5432/atepg?sslmode=verify-full&sslrootcert=/run/postgres-server-ca/server-ca.pem
-        ATE_API_POSTGRES_READ_WRITE_CONNECTION_STRING: >-
-          postgres://{{ .rw_user | urlquery }}:{{ .rw_password | urlquery }}@{{ .rw_host }}:5432/atepg?sslmode=verify-full&sslrootcert=/run/postgres-server-ca/server-ca.pem
-  data:
-  - { secretKey: owner_user,     remoteRef: { key: "$SECRET_PREFIX/ate-owner",     property: username } }
-  - { secretKey: owner_password, remoteRef: { key: "$SECRET_PREFIX/ate-owner",     property: password } }
-  - { secretKey: owner_host,     remoteRef: { key: "$SECRET_PREFIX/ate-owner",     property: host } }
-  - { secretKey: rw_user,        remoteRef: { key: "$SECRET_PREFIX/ate-readwrite", property: username } }
-  - { secretKey: rw_password,    remoteRef: { key: "$SECRET_PREFIX/ate-readwrite", property: password } }
-  - { secretKey: rw_host,        remoteRef: { key: "$SECRET_PREFIX/ate-readwrite", property: host } }
-EOF
+render_yaml "$ROOT/demos/db-rotation/external-secret.yaml" AWS_REGION SECRET_PREFIX | kubectl apply -f -
 kubectl -n ate-system wait externalsecret ate-api-server-db --for=condition=Ready --timeout=3m >/dev/null
 info "ExternalSecret ate-api-server-db is Ready"
 
@@ -173,19 +141,8 @@ kubectl -n "$RELOADER_NS" patch deployment reloader --type=strategic -p \
   '{"spec":{"template":{"spec":{"nodeSelector":{"ate.dev/pool":"system"}}}}}' >/dev/null
 kubectl -n "$RELOADER_NS" rollout status deploy/reloader --timeout=3m
 # A change to ate-api-server-secret-envvars rolls the Deployments that read
-# it through envFrom: ate-api-server only.
-cat <<EOF | kubectl apply -f -
-apiVersion: reloader.external-secrets.io/v1alpha1
-kind: Config
-metadata: { name: ate-api-server-db }
-spec:
-  notificationSources:
-  - type: KubernetesSecret
-    kubernetesSecret: { serverURL: https://kubernetes.default.svc }
-  destinationsToWatch:
-  - type: Deployment
-    deployment: { names: [ate-api-server] }
-EOF
+# it through envFrom: ate-api-server only (reloader-config.yaml).
+render_yaml "$ROOT/demos/db-rotation/reloader-config.yaml" | kubectl apply -f -
 
 log "Both users of each login, before the first rotation"
 # The rotation function would make USER_clone itself, with INHERIT, which

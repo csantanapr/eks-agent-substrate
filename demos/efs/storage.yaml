@@ -1,0 +1,45 @@
+# The CSIDriverConfig and the StorageClass for per-actor EFS volumes.
+# demos/efs/deploy.sh fills it in and applies it.
+#   CSIDriverConfig  tells ate-api-server where the EFS CSI driver's
+#                    controller listens (Substrate's own controller, behind
+#                    mTLS)
+#   StorageClass     provisioningMode efs-ap: one EFS access point per
+#                    volume, under basePath, owned by uid and gid
+#
+# Placeholders, filled in by render_yaml (lib/common.sh):
+#   SVC, NS            the controller's Service, efs-csi-controller-ate in
+#                      kube-system
+#   SC                 the StorageClass name, efs-ate
+#   fs                 the EFS file system id
+#   EFS_UID, EFS_GID   config.env
+#
+# Learn more:
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/guides/csi-volumes.md
+#   https://docs.aws.amazon.com/eks/latest/userguide/efs-csi.html
+
+apiVersion: ate.dev/v1
+kind: CSIDriverConfig
+metadata:
+  name: efs.csi.aws.com
+spec:
+  driverName: efs.csi.aws.com
+  controllerEndpoint: tcp://${SVC}.${NS}.svc.cluster.local:50052
+  tls:
+    enabled: true
+    usePodIdentity: true
+    serverName: ${SVC}.${NS}.svc
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: ${SC}
+provisioner: efs.csi.aws.com
+parameters:
+  provisioningMode: efs-ap
+  fileSystemId: ${fs}
+  directoryPerms: "700"
+  uid: "${EFS_UID}"
+  gid: "${EFS_GID}"
+  basePath: /ate
+reclaimPolicy: Delete
+volumeBindingMode: Immediate

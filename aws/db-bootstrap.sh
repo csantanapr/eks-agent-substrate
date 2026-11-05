@@ -22,7 +22,9 @@
 #   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/guides/postgres.md
 set -euo pipefail
 . "$(dirname "$0")/../lib/common.sh"
+need envsubst
 NS=ate-db-bootstrap
+# shellcheck disable=SC2034  # render_yaml reads IMAGE and host by name
 IMAGE=public.ecr.aws/docker/library/postgres:18-alpine@sha256:10a5c69a83035ab5239f5620d708520e8b28f5aa1f2b20143e6024532edadfb5
 secret_json() { aws_ secretsmanager get-secret-value --secret-id "$1" --query SecretString --output text; }
 field() { python3 -c 'import sys,json;print(json.load(sys.stdin)[sys.argv[1]])' "$1"; }
@@ -30,6 +32,7 @@ field() { python3 -c 'import sys,json;print(json.load(sys.stdin)[sys.argv[1]])' 
 
 log "Wait for $DB_ID to be available"
 aws_ rds wait db-instance-available --db-instance-identifier "$DB_ID"
+# shellcheck disable=SC2034
 host=$(aws_ rds describe-db-instances --db-instance-identifier "$DB_ID" --query 'DBInstances[0].Endpoint.Address' --output text)
 master_arn=$(aws_ rds describe-db-instances --db-instance-identifier "$DB_ID" --query 'DBInstances[0].MasterUserSecret.SecretArn' --output text)
 admin=$(secret_json "$master_arn")
@@ -88,54 +91,10 @@ kubectl -n "$NS" create configmap setup \
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 
 kubectl -n "$NS" delete job bootstrap --ignore-not-found >/dev/null
-# PGSSLMODE=verify-full: psql checks that the server certificate chains to
-# the RDS CA bundle and matches the host name.
-cat <<EOF | kubectl apply -f - >/dev/null
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: bootstrap
-  namespace: $NS
-spec:
-  backoffLimit: 2
-  template:
-    spec:
-      restartPolicy: Never
-      nodeSelector: { ate.dev/pool: system }
-      securityContext: { runAsNonRoot: true, runAsUser: 70, seccompProfile: { type: RuntimeDefault } }
-      containers:
-      - name: psql
-        image: $IMAGE
-        securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: [ALL] } }
-        envFrom: [{ secretRef: { name: creds } }]
-        env:
-        - { name: PGHOST, value: "$host" }
-        - { name: PGDATABASE, value: atepg }
-        - { name: PGSSLMODE, value: verify-full }
-        - { name: PGSSLROOTCERT, value: /setup/rds-ca.pem }
-        command: ["sh", "-c"]
-        args:
-        # RDS's master user is rds_superuser, not a superuser: it may only
-        # create a schema owned by a role it can SET ROLE to, so make the
-        # owner role first and grant it to the master user.
-        - >-
-          psql --no-psqlrc -v ON_ERROR_STOP=1 -c
-          "DO \\\$\\\$BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='substrate_owner') THEN
-          CREATE ROLE substrate_owner NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION; END IF;
-          EXECUTE format('GRANT substrate_owner TO %I', current_user); END\\\$\\\$;"
-          && psql --no-psqlrc -v ON_ERROR_STOP=1 -f /setup/alternates.sql
-          && { printf '%s\\n' '\\getenv substrate_owner_user OWNER_USER' '\\getenv substrate_owner_password OWNER_PW'
-          '\\getenv substrate_readwrite_user RW_USER' '\\getenv substrate_readwrite_password RW_PW';
-          cat /setup/setup.sql; }
-          | psql --no-psqlrc --single-transaction -v ON_ERROR_STOP=1
-          -v substrate_schema=substrate
-          -v substrate_owner_role=substrate_owner
-          -v substrate_readwrite_role=substrate_readwrite
-          -f -
-          && psql --no-psqlrc -c '\dn substrate' -c '\du substrate*'
-        volumeMounts: [{ name: setup, mountPath: /setup }]
-      volumes: [{ name: setup, configMap: { name: setup } }]
-EOF
+# The Job is aws/db-bootstrap-job.yaml. PGSSLMODE=verify-full: psql checks
+# that the server certificate chains to the RDS CA bundle and matches the
+# host name.
+render_yaml "$ROOT/aws/db-bootstrap-job.yaml" NS IMAGE host | kubectl apply -f - >/dev/null
 kubectl -n "$NS" wait --for=condition=complete job/bootstrap --timeout=180s \
   || { kubectl -n "$NS" logs job/bootstrap; exit 1; }
 kubectl -n "$NS" logs job/bootstrap

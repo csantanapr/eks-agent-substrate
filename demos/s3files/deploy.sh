@@ -26,6 +26,7 @@
 #   https://docs.aws.amazon.com/AmazonS3/latest/userguide/Versioning.html
 set -euo pipefail
 . "$(dirname "$0")/../../lib/common.sh"
+need envsubst
 ensure_kubeconfig
 kubectl get csidriverconfig efs.csi.aws.com >/dev/null 2>&1 || die "run demos/efs/deploy.sh first"
 NS=kube-system
@@ -176,23 +177,9 @@ ensure_pod_identity "$NS" ds/efs-csi-node
 log "StorageClass $SC"
 have_fs=$(kubectl get storageclass "$SC" -o jsonpath='{.parameters.fileSystemId}' 2>/dev/null || true)
 if kubectl get storageclass "$SC" >/dev/null 2>&1 && [ "$have_fs" != "$fs" ]; then kubectl delete storageclass "$SC"; fi
-# provisioningMode s3files-ap makes one S3 Files access point per volume.
-cat <<EOF | kubectl apply -f -
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
-metadata:
-  name: $SC
-provisioner: efs.csi.aws.com
-parameters:
-  provisioningMode: s3files-ap
-  fileSystemId: $fs
-  directoryPerms: "700"
-  uid: "$EFS_UID"
-  gid: "$EFS_GID"
-  basePath: /ate
-reclaimPolicy: Delete
-volumeBindingMode: Immediate
-EOF
+# provisioningMode s3files-ap makes one S3 Files access point per volume
+# (storageclass.yaml).
+render_yaml "$ROOT/demos/s3files/storageclass.yaml" SC fs EFS_UID EFS_GID | kubectl apply -f -
 
 log "Counter templates with the data volume on S3 Files"
 digest=$(aws_ ecr describe-images --repository-name "$ECR_PREFIX/counter" \

@@ -45,8 +45,9 @@ EKS (Amazon Linux 2023, private subnets)
 - On your machine: `aws` (v2), `eksctl` 0.230 or newer, `kubectl`, `docker`
   with buildx (builds `linux/amd64` images; on arm64 it uses emulation),
   `go` 1.27+, `git`, `jq`, `curl`, `openssl`, `python3` with PyYAML.
-- bash 4+ and GNU `sed` and `sort`. On macOS: `brew install bash gnu-sed
-  coreutils` and put the GNU tools first on `PATH`.
+- bash 4+, GNU `sed` and `sort`, and GNU `envsubst` (gettext). On macOS:
+  `brew install bash gnu-sed coreutils gettext` and put the GNU tools first
+  on `PATH`.
 
 ## Configure
 

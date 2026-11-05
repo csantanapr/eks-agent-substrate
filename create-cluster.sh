@@ -35,7 +35,7 @@
 #   https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-options.html
 set -euo pipefail
 . "$(dirname "$0")/lib/common.sh"
-need eksctl; need aws; need kubectl
+need eksctl; need aws; need kubectl; need envsubst
 
 # Nested virtualization passes Intel VT-x through to a regular (not bare
 # metal) instance, so Kata can start microVMs there. Only some families have it.
@@ -108,7 +108,7 @@ else
   info "created $lt_id"
 fi
 
-# The eksctl config: the API endpoint (public, limited to
+# The eksctl config, cluster.yaml: the API endpoint (public, limited to
 # EKS_PUBLIC_ACCESS_CIDRS, and private inside the VPC), the add-ons, and one
 # managed node group per role. The vpc-cni add-on enforces NetworkPolicy only
 # with enableNetworkPolicy on. The gvisor and microvm groups carry a
@@ -118,76 +118,20 @@ fi
 #   https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/
 cidrs=""
 for c in ${EKS_PUBLIC_ACCESS_CIDRS:-0.0.0.0/0}; do cidrs+="\"$c\", "; done
-cat > "$WORK/cluster.yaml" <<EOF
-apiVersion: eksctl.io/v1alpha5
-kind: ClusterConfig
-metadata:
-  name: ${CLUSTER_NAME}
-  region: ${AWS_REGION}
-  version: "${KUBERNETES_VERSION}"
-  tags:
-$(tags_yaml 4)
-vpc:
-  clusterEndpoints: { publicAccess: true, privateAccess: true }
-  publicAccessCIDRs: [${cidrs%, }]
-iam:
-  withOIDC: false
-addons:
-  - name: vpc-cni
-    # Substrate ships NetworkPolicies (default deny for ate-system, one per
-    # WorkerPool); the VPC CNI enforces them only with this on.
-    configurationValues: '{"enableNetworkPolicy": "true"}'
-  - name: coredns
-  - name: kube-proxy
-  - name: eks-pod-identity-agent
-  - name: aws-ebs-csi-driver
-    useDefaultPodIdentityAssociations: true
-managedNodeGroups:
-  - name: system
-    amiFamily: AmazonLinux2023
-    instanceType: ${SYSTEM_INSTANCE_TYPE}
-    desiredCapacity: ${SYSTEM_NODES}
-    minSize: ${SYSTEM_NODES}
-    maxSize: $((SYSTEM_NODES + 1))
-    volumeSize: 100
-    volumeType: gp3
-    privateNetworking: true
-    disableIMDSv1: true
-    disablePodIMDS: true
-    labels: { ate.dev/pool: system }
-    tags:
-$(tags_yaml 6)
-  - name: gvisor
-    amiFamily: AmazonLinux2023
-    instanceType: ${GVISOR_INSTANCE_TYPE}
-    desiredCapacity: ${GVISOR_NODES}
-    minSize: 1
-    maxSize: $((GVISOR_NODES + 2))
-    volumeSize: 200
-    volumeType: gp3
-    privateNetworking: true
-    disableIMDSv1: true
-    disablePodIMDS: true
-    labels: { ate.dev/pool: gvisor }
-    taints:
-      - { key: ate.dev/sandboxClass, value: gvisor, effect: NoSchedule }
-    tags:
-$(tags_yaml 6)
-  - name: microvm
-    amiFamily: AmazonLinux2023
-    instanceTypes: [${MICROVM_INSTANCE_TYPE}]
-    desiredCapacity: ${MICROVM_NODES}
-    minSize: 1
-    maxSize: $((MICROVM_NODES + 2))
-    privateNetworking: true
-    # IMDS settings, disk and nested virtualization come from the template.
-    launchTemplate: { id: ${lt_id}, version: "${lt_version}" }
-    labels: { ate.dev/pool: microvm }
-    taints:
-      - { key: ate.dev/sandboxClass, value: microvm, effect: NoSchedule }
-    tags:
-$(tags_yaml 6)
-EOF
+# The values cluster.yaml needs beyond config.env. A tag placeholder sits
+# where the first tag line goes, so that line loses tags_yaml's indent.
+# shellcheck disable=SC2034  # render_yaml reads these by name
+{
+  PUBLIC_ACCESS_CIDRS="${cidrs%, }"
+  CLUSTER_TAGS="$(tags_yaml 4 | sed '1s/^ *//')"
+  NODE_TAGS="$(tags_yaml 6 | sed '1s/^ *//')"
+  SYSTEM_MAX_NODES=$((SYSTEM_NODES + 1))
+  GVISOR_MAX_NODES=$((GVISOR_NODES + 2))
+  MICROVM_MAX_NODES=$((MICROVM_NODES + 2))
+}
+render_yaml "$ROOT/cluster.yaml" CLUSTER_NAME AWS_REGION KUBERNETES_VERSION CLUSTER_TAGS PUBLIC_ACCESS_CIDRS \
+  SYSTEM_INSTANCE_TYPE SYSTEM_NODES SYSTEM_MAX_NODES GVISOR_INSTANCE_TYPE GVISOR_NODES GVISOR_MAX_NODES \
+  MICROVM_INSTANCE_TYPE MICROVM_NODES MICROVM_MAX_NODES NODE_TAGS lt_id lt_version > "$WORK/cluster.yaml"
 
 # eksctl turns the config into CloudFormation stacks: one for the cluster and
 # its VPC, one per node group.
@@ -236,25 +180,12 @@ done
 log "Default StorageClass: encrypted gp3"
 # EKS ships only a non-default gp2 class, so a PVC without storageClassName
 # (the OpenClaw gateway's) would stay Pending. A StorageClass tells a CSI
-# driver, here the EBS CSI driver, how to make the volume behind a PVC.
+# driver, here the EBS CSI driver, how to make the volume behind a PVC. The
+# class is storageclass-gp3.yaml, plus one tag parameter per tag.
 #   https://kubernetes.io/docs/concepts/storage/storage-classes/
 #   https://docs.aws.amazon.com/eks/latest/userguide/ebs-csi.html
 {
-  cat <<'EOF'
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
-metadata:
-  name: gp3
-  annotations:
-    storageclass.kubernetes.io/is-default-class: "true"
-provisioner: ebs.csi.aws.com
-volumeBindingMode: WaitForFirstConsumer
-allowVolumeExpansion: true
-reclaimPolicy: Delete
-parameters:
-  type: gp3
-  encrypted: "true"
-EOF
+  render_yaml "$ROOT/storageclass-gp3.yaml"
   i=0; while IFS= read -r kv; do i=$((i + 1)); printf '  tagSpecification_%d: "%s"\n' "$i" "$kv"; done < <(tags_kv)
 } > "$WORK/storageclass.yaml"
 # StorageClass parameters are immutable; replacing the class leaves existing

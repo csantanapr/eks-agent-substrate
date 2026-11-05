@@ -28,7 +28,7 @@ set -euo pipefail
 . "$(dirname "$0")/../../lib/common.sh"
 . "$ROOT/demos/credprovider-aws/lib.sh"
 ensure_kubeconfig
-for t in docker jq go git python3; do need "$t"; done
+for t in docker jq go git python3 envsubst; do need "$t"; done
 CREDPROVIDER_DIR="${CREDPROVIDER_DIR:-$HOME/credprovider-aws-secret-manager}"
 [ -f "$CREDPROVIDER_DIR/Dockerfile" ] && [ -d "$CREDPROVIDER_DIR/config" ] \
   || die "no credprovider-aws-secret-manager checkout at $CREDPROVIDER_DIR; set CREDPROVIDER_DIR"
@@ -129,22 +129,10 @@ info "${PROBE_IMAGE#"$ECR_REGISTRY"/}"
 
 phase "Provider in ate-system"
 log "Secret policy: $CP_ATESPACE may resolve ate/$CP_ATESPACE/*"
-# The live account goes only into the cluster, never into a tracked file.
-policy_yaml=$(cat <<EOF
-apiVersion: v1
-kind: ConfigMap
-metadata: { name: $CP_POLICY_CM, namespace: $CP_NS }
-data:
-  secret-policy.yaml: |
-    # Default deny: $CP_DENIED_ATESPACE and every other atespace resolve nothing.
-    policies:
-    - atespace: $CP_ATESPACE
-      allowedSecrets:
-      - account: "$ACCOUNT"
-        region: $AWS_REGION
-        namePrefix: ate/$CP_ATESPACE/
-EOF
-)
+# The policy is secret-policy.yaml. The live account goes only into the
+# cluster, never into a tracked file.
+policy_yaml=$(render_yaml "$ROOT/demos/credprovider-aws/secret-policy.yaml" \
+  CP_POLICY_CM CP_NS CP_DENIED_ATESPACE CP_ATESPACE ACCOUNT AWS_REGION)
 kubectl apply -f - <<<"$policy_yaml" >/dev/null
 policy_sha=$(sha256 <<<"$policy_yaml")
 

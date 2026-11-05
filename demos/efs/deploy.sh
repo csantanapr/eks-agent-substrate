@@ -31,6 +31,7 @@
 #   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/guides/csi-deployment.md
 set -euo pipefail
 . "$(dirname "$0")/../../lib/common.sh"
+need envsubst
 ensure_kubeconfig
 NS=kube-system
 SVC=efs-csi-controller-ate
@@ -161,35 +162,8 @@ if kubectl get storageclass "$SC" >/dev/null 2>&1 && [ "$have_uid" != "$EFS_UID"
 fi
 # The CSIDriverConfig tells ate-api-server where the driver's controller
 # listens and to use TLS. provisioningMode efs-ap makes one access point per
-# volume, under basePath.
-cat <<EOF | kubectl apply -f -
-apiVersion: ate.dev/v1
-kind: CSIDriverConfig
-metadata:
-  name: efs.csi.aws.com
-spec:
-  driverName: efs.csi.aws.com
-  controllerEndpoint: tcp://$SVC.$NS.svc.cluster.local:50052
-  tls:
-    enabled: true
-    usePodIdentity: true
-    serverName: $SVC.$NS.svc
----
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
-metadata:
-  name: $SC
-provisioner: efs.csi.aws.com
-parameters:
-  provisioningMode: efs-ap
-  fileSystemId: $fs
-  directoryPerms: "700"
-  uid: "$EFS_UID"
-  gid: "$EFS_GID"
-  basePath: /ate
-reclaimPolicy: Delete
-volumeBindingMode: Immediate
-EOF
+# volume, under basePath. Both are in storage.yaml.
+render_yaml "$ROOT/demos/efs/storage.yaml" SVC NS SC fs EFS_UID EFS_GID | kubectl apply -f -
 
 log "Counter templates with the data volume on EFS"
 digest=$(aws_ ecr describe-images --repository-name "$ECR_PREFIX/counter" \

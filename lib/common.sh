@@ -1,6 +1,7 @@
 # shellcheck shell=bash disable=SC2034
 # Shared helpers for the top-level scripts. Sourced, never run. Needs bash 4+
-# (macOS: brew install bash) and GNU sed/sort (brew install gnu-sed coreutils).
+# (macOS: brew install bash), GNU sed/sort (brew install gnu-sed coreutils)
+# and GNU envsubst for render_yaml (brew install gettext).
 #
 # Loads config.env, then config.local.env when present (gitignored: your own
 # profile, region, tags). Exposes:
@@ -12,6 +13,7 @@
 #               ~/.kube/config is never read or changed
 #   tags_*      the TAGS list, plus the owner tag, in each format the AWS CLI
 #               and eksctl want
+#   render_yaml a YAML file of the repository with its placeholders filled in
 #
 # Every script sources this file first, so read it before the others. It
 # only defines settings and helpers; the scripts that call role_for_sa and
@@ -141,6 +143,28 @@ pinned_image() {
   printf '%s/%s:%s@%s' "$SUBSTRATE_IMAGE_REPO" "$1" "$SUBSTRATE_TAG" "$d"
 }
 export GOTOOLCHAIN
+
+# render_yaml FILE NAME...: prints FILE with each ${NAME} replaced by the
+# value of the shell variable NAME, for the NAMEs given only. Any other $ text
+# in the file (the $$ quoting of SQL, a $word) stays as it is. The comment and
+# blank lines at the top of FILE are its header for readers; they are left
+# out. Needs GNU envsubst (gettext); a script that calls it runs
+# `need envsubst` first.
+render_yaml() {
+  local _rf="$1" _rv _rfmt="" _renv=()
+  shift
+  [ -f "$_rf" ] || die "render_yaml: no file $_rf"
+  for _rv in "$@"; do
+    [[ "$_rv" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || die "render_yaml: '$_rv' is not a variable name"
+    [ -n "${!_rv+set}" ] || die "render_yaml: $_rv is not set (for $_rf)"
+    _rfmt+="\${$_rv} "
+    _renv+=("$_rv=${!_rv}")
+  done
+  [[ "$(envsubst --version 2>/dev/null)" == *"GNU gettext"* ]] || die "render_yaml needs GNU envsubst (gettext)"
+  # The values reach envsubst through its own environment only.
+  awk 'body || !/^(#.*)?$/ { body = 1; print }' "$_rf" \
+    | env ${_renv[@]+"${_renv[@]}"} envsubst "$_rfmt"
+}
 
 # --- tags -------------------------------------------------------------------
 # TAGS is a space-separated list of key=value pairs (config.env). Every

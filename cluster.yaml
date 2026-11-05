@@ -1,0 +1,91 @@
+# The eksctl cluster config: the EKS cluster, its add-ons, and one managed
+# node group per role (system, gvisor, microvm). create-cluster.sh fills it
+# in, writes it to .work/cluster.yaml and runs eksctl on that file.
+#
+# Placeholders, filled in by render_yaml (lib/common.sh):
+#   CLUSTER_NAME, AWS_REGION, KUBERNETES_VERSION   config.env
+#   PUBLIC_ACCESS_CIDRS   EKS_PUBLIC_ACCESS_CIDRS (config.env), each one quoted,
+#                         joined by commas
+#   CLUSTER_TAGS, NODE_TAGS   one "key": "value" line per tag: TAGS
+#                         (config.env) plus the owner tag. The first line goes
+#                         where the placeholder is; the others come indented
+#                         to match.
+#   SYSTEM_INSTANCE_TYPE, SYSTEM_NODES, and the same two for GVISOR_ and
+#                         MICROVM_   config.env
+#   SYSTEM_MAX_NODES, GVISOR_MAX_NODES, MICROVM_MAX_NODES   the node count
+#                         plus one (system) or two (gvisor, microvm)
+#   lt_id, lt_version     the microvm launch template that create-cluster.sh
+#                         makes first
+#
+# Learn more:
+#   https://docs.aws.amazon.com/eks/latest/eksctl/creating-and-managing-clusters.html
+#   https://schema.eksctl.io/
+
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+metadata:
+  name: ${CLUSTER_NAME}
+  region: ${AWS_REGION}
+  version: "${KUBERNETES_VERSION}"
+  tags:
+    ${CLUSTER_TAGS}
+vpc:
+  clusterEndpoints: { publicAccess: true, privateAccess: true }
+  publicAccessCIDRs: [${PUBLIC_ACCESS_CIDRS}]
+iam:
+  withOIDC: false
+addons:
+  - name: vpc-cni
+    # Substrate ships NetworkPolicies (default deny for ate-system, one per
+    # WorkerPool); the VPC CNI enforces them only with this on.
+    configurationValues: '{"enableNetworkPolicy": "true"}'
+  - name: coredns
+  - name: kube-proxy
+  - name: eks-pod-identity-agent
+  - name: aws-ebs-csi-driver
+    useDefaultPodIdentityAssociations: true
+managedNodeGroups:
+  - name: system
+    amiFamily: AmazonLinux2023
+    instanceType: ${SYSTEM_INSTANCE_TYPE}
+    desiredCapacity: ${SYSTEM_NODES}
+    minSize: ${SYSTEM_NODES}
+    maxSize: ${SYSTEM_MAX_NODES}
+    volumeSize: 100
+    volumeType: gp3
+    privateNetworking: true
+    disableIMDSv1: true
+    disablePodIMDS: true
+    labels: { ate.dev/pool: system }
+    tags:
+      ${NODE_TAGS}
+  - name: gvisor
+    amiFamily: AmazonLinux2023
+    instanceType: ${GVISOR_INSTANCE_TYPE}
+    desiredCapacity: ${GVISOR_NODES}
+    minSize: 1
+    maxSize: ${GVISOR_MAX_NODES}
+    volumeSize: 200
+    volumeType: gp3
+    privateNetworking: true
+    disableIMDSv1: true
+    disablePodIMDS: true
+    labels: { ate.dev/pool: gvisor }
+    taints:
+      - { key: ate.dev/sandboxClass, value: gvisor, effect: NoSchedule }
+    tags:
+      ${NODE_TAGS}
+  - name: microvm
+    amiFamily: AmazonLinux2023
+    instanceTypes: [${MICROVM_INSTANCE_TYPE}]
+    desiredCapacity: ${MICROVM_NODES}
+    minSize: 1
+    maxSize: ${MICROVM_MAX_NODES}
+    privateNetworking: true
+    # IMDS settings, disk and nested virtualization come from the template.
+    launchTemplate: { id: ${lt_id}, version: "${lt_version}" }
+    labels: { ate.dev/pool: microvm }
+    taints:
+      - { key: ate.dev/sandboxClass, value: microvm, effect: NoSchedule }
+    tags:
+      ${NODE_TAGS}
