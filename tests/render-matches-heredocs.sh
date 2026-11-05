@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Proof for moving the inline manifests into YAML files: for each of the
-# eight, the heredoc its script had at commit 5bc5d6e and the render_yaml
-# call the script makes now print the same text, for one fixed set of test
-# values. Each new output must also parse as YAML.
+# Proof for moving the inline manifests into YAML files: for each one, the
+# heredoc its script had at commit 5bc5d6e and the render_yaml call the script
+# makes now print the same text, for one fixed set of test values. Each YAML
+# file must also parse as YAML as it is in the repository (the file opened in
+# an editor), and so must its output.
 #
 #   tests/render-matches-heredocs.sh          IDENTICAL or DIFFERENT per manifest
 #
@@ -32,6 +33,8 @@ SITES=(
   "reloader-config|demos/db-rotation/deploy.sh:177|demos/db-rotation/deploy.sh|demos/db-rotation/reloader-config.yaml|"
   "efs-storage|demos/efs/deploy.sh:165|demos/efs/deploy.sh|demos/efs/storage.yaml|"
   "s3files-storageclass|demos/s3files/deploy.sh:180|demos/s3files/deploy.sh|demos/s3files/storageclass.yaml|"
+  "efs-actor-template|demos/efs/deploy.sh:206|demos/efs/deploy.sh|demos/efs/actor-template.yaml|"
+  "s3files-actor-template|demos/s3files/deploy.sh:207|demos/s3files/deploy.sh|demos/s3files/actor-template.yaml|"
 )
 
 # The test values: fake names, ids and tags, each one different, so that a
@@ -59,14 +62,17 @@ test_values() {
   host=talk-test-pg.c1abcdefgh.eu-south-2.rds.amazonaws.com
   CP_POLICY_CM=cm-under-test
   CP_NS=cp-ns-under-test
-  CP_ATESPACE=atespace-granted
-  CP_DENIED_ATESPACE=atespace-denied
+  CP_ATESPACE="atespace-granted"
+  CP_DENIED_ATESPACE="atespace-denied"
   SECRET_PREFIX=secret-prefix-under-test
   SVC=svc-under-test
   SC=sc-under-test
   fs="fs-0a1b2c3d4e5f6a7b8"
   EFS_UID=1001
   EFS_GID=1002
+  atespace="atespace-under-test"
+  workload="workload-under-test"
+  COUNTER_IMAGE=111122223333.dkr.ecr.eu-south-2.amazonaws.com/talk-test/counter@sha256:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
 }
 stubs() {
   aws()     { echo "stub: aws $*" >&2; return 99; }
@@ -169,25 +175,34 @@ if [ -n "${KEEP:-}" ]; then
 else
   tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 fi
+# yaml_docs FILE: the number of YAML documents in FILE, or the parser's
+# error and a nonzero exit when FILE does not parse.
+yaml_docs() {
+  python3 -c 'import sys, yaml; print(sum(1 for d in yaml.safe_load_all(open(sys.argv[1])) if d is not None))' "$1" 2>&1
+}
+
 bad=0
 for site in "${SITES[@]}"; do
   IFS='|' read -r id old new file prep <<<"$site"
+  # The file as it is in the repository, before render_yaml fills it in.
+  raw=$(yaml_docs "$ROOT/$file") && raw="raw file parses, $raw YAML docs" \
+    || { raw="RAW FILE DOES NOT PARSE: $(tail -n 2 <<<"$raw" | tr '\n' ' ')"; bad=1; }
   old_output "${old%%:*}" "${old##*:}" > "$tmp/$id.old"
   new_output "$new" "$file" "$prep" > "$tmp/$id.new"
-  docs=$(python3 -c 'import sys, yaml; print(sum(1 for d in yaml.safe_load_all(open(sys.argv[1])) if d is not None))' "$tmp/$id.new" 2>&1) \
+  docs=$(yaml_docs "$tmp/$id.new") \
     || { docs="does not parse: ${docs##*$'\n'}"; bad=1; }
   sum=$(python3 -c 'import hashlib, sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest()[:12])' "$tmp/$id.new")
   st=0; out=$(compare "$tmp/$id.old" "$tmp/$id.new") || st=$?
   case "$st" in
-    0) printf 'IDENTICAL  %-21s %s:%s -> %s (%s lines, sha256 %s, %s YAML docs)\n' \
-         "$id" "${old%%:*}" "${old##*:}" "$file" "$(wc -l < "$tmp/$id.new")" "$sum" "$docs" ;;
-    1) printf 'IDENTICAL  %-21s %s:%s -> %s (apart from added comment lines; %s YAML docs)\n' \
-         "$id" "${old%%:*}" "${old##*:}" "$file" "$docs" ;;
-    *) printf 'DIFFERENT  %-21s %s:%s -> %s\n%s\n' "$id" "${old%%:*}" "${old##*:}" "$file" "$out"; bad=1 ;;
+    0) printf 'IDENTICAL  %-22s %s:%s -> %s (%s lines, sha256 %s, %s YAML docs; %s)\n' \
+         "$id" "${old%%:*}" "${old##*:}" "$file" "$(wc -l < "$tmp/$id.new")" "$sum" "$docs" "$raw" ;;
+    1) printf 'IDENTICAL  %-22s %s:%s -> %s (apart from added comment lines; %s YAML docs; %s)\n' \
+         "$id" "${old%%:*}" "${old##*:}" "$file" "$docs" "$raw" ;;
+    *) printf 'DIFFERENT  %-22s %s:%s -> %s (%s)\n%s\n' "$id" "${old%%:*}" "${old##*:}" "$file" "$raw" "$out"; bad=1 ;;
   esac
 done
 if [ "$bad" = 0 ]; then
-  echo "all ${#SITES[@]} manifests render as their heredocs did at $BASE"
+  echo "all ${#SITES[@]} manifests render as their heredocs did at $BASE, and all ${#SITES[@]} YAML files parse as they are"
 else
   echo "FAILED"
   exit 1
