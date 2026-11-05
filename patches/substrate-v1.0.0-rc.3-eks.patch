@@ -86,10 +86,10 @@ index 7819a26f..82e97254 100644
 +	return nil
 +}
 diff --git a/manifests/ate-install/base/kustomization.yaml b/manifests/ate-install/base/kustomization.yaml
-index 765aaf93..3f1dd65a 100644
+index 765aaf93..a53b6e16 100644
 --- a/manifests/ate-install/base/kustomization.yaml
 +++ b/manifests/ate-install/base/kustomization.yaml
-@@ -32,6 +32,55 @@ resources:
+@@ -32,6 +32,65 @@ resources:
    - ../ate-controller.yaml
    - ../atelet.yaml
    - ../atenet-router.yaml
@@ -130,6 +130,16 @@ index 765aaf93..3f1dd65a 100644
 +      spec:
 +        template:
 +          spec:
++            # Worker pods run only on the gvisor and microvm node groups
++            # (create-cluster.sh labels them ate.dev/pool), so atelet does too.
++            affinity:
++              nodeAffinity:
++                requiredDuringSchedulingIgnoredDuringExecution:
++                  nodeSelectorTerms:
++                  - matchExpressions:
++                    - key: ate.dev/pool
++                      operator: In
++                      values: [gvisor, microvm]
 +            initContainers:
 +            - name: objectstore-plugin
 +              env:

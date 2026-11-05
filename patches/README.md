@@ -15,7 +15,7 @@ unchanged to v1.0.0-rc.2, where `fetch.sh` uses it with a warning.
 |---|---|
 | `cmd/ate-setup/internal/config/config.go` | With `ATE_INSTALL_STORAGE_BACKEND=s3`, no Google service account is required for snapshot transfers. |
 | `cmd/ate-setup/internal/steps/microvm.go` | With `ATE_INSTALL_STORAGE_BACKEND=s3`, the microVM guest assets are uploaded with the AWS CLI to `ATE_ASSET_BUCKET`, and the `microvm` SandboxConfig points at `s3://` URLs. |
-| `manifests/ate-install/base/kustomization.yaml` | The `objectstore-plugin` sidecars of ate-api-server and atelet use S3 with the AWS SDK default credential chain (EKS Pod Identity). atelet uses the EKS AL2023 image credential provider (`/etc/eks/image-credential-provider`) for ECR pulls. The GKE `PodMonitoring` is left out. `REPLACE_WITH_AWS_REGION` is filled in by `fetch.sh`. |
+| `manifests/ate-install/base/kustomization.yaml` | The `objectstore-plugin` sidecars of ate-api-server and atelet use S3 with the AWS SDK default credential chain (EKS Pod Identity). atelet uses the EKS AL2023 image credential provider (`/etc/eks/image-credential-provider`) for ECR pulls, and runs only on the gvisor and microvm node groups (`ate.dev/pool`), where the worker pods are. The GKE `PodMonitoring` is left out. `REPLACE_WITH_AWS_REGION` is filled in by `fetch.sh`. |
 
 These are the gaps an EKS profile in `ate-setup` would close upstream.
 
