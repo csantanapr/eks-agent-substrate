@@ -118,7 +118,7 @@ step "2. The actor holds only the placeholder"
 env_out=$(curl -sG -m 30 "http://127.0.0.1:8021/readfile" --data-urlencode "path=/proc/self/environ")
 [ -z "$(jq -r '.error // ""' <<<"$env_out")" ] || die "cannot read the actor's environment: $(jq -r .error <<<"$env_out")"
 # Captured first: a pipe into grep -q could end early and hide a match.
-actor_env=$(jq -r '.content' <<<"$env_out")
+actor_env=$(jq -r '.content' <<<"$env_out" | tr '\0' '\n')
 holds_secret <<<"$actor_env" && die "the actor's environment holds the value"
 template=$(kubectl ate get actor-template "$CP_TEMPLATE" -a "$CP_ATESPACE" -o json)
 holds_secret <<<"$template" && die "the template holds the value"
