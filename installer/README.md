@@ -25,6 +25,66 @@ only runs them, in the checkout you point it at.
 | 5 | Provision | Runs `./create-cluster.sh`, `./deploy.sh` and the chosen demos. A live checklist per script, built from the scripts' own `== <step>` lines (`log()` in `lib/common.sh`) and the Timings table each prints at exit; a scrollable log pane; elapsed time; on a failure, the failing step and the log path, and `r` to run again (the scripts are idempotent) |
 | 6 | Done | What was created, how to reach it (`.work/kubeconfig`, `kubectl ate`), verify commands, the step times, and Teardown: `t`, then type the cluster name, runs `./clean.sh --yes` and `./delete-cluster.sh --yes` |
 
+## Install a second cluster, step by step
+
+This is how the `substrate-tui` cluster was made, and how to make it again.
+It uses a second checkout, so the main checkout's `config.local.env`,
+`.work/` and cluster are not touched.
+
+1. From the main checkout, add a second checkout next to it. `--detach` is
+   needed because `main` is already checked out in the first one.
+
+   ```bash
+   cd /path/to/eks-talk
+   git worktree add --detach ../eks-talk-tui main
+   ```
+
+2. Build the installer.
+
+   ```bash
+   cd installer
+   GOTOOLCHAIN=local go build -o installer .
+   ```
+
+3. Run it against the second checkout. `--profile` is your AWS CLI profile.
+
+   ```bash
+   ./installer --repo ../../eks-talk-tui --cluster substrate-tui --region us-west-2 --profile eks-sandbox
+   ```
+
+4. In the installer:
+   - **Welcome:** `enter`.
+   - **Check your setup:** every row should be green. Fix what is not
+     (a missing tool, an expired AWS session, the vCPU quota), press `r`
+     to check again, then `enter`.
+   - **Settings:** keep the defaults or change them (`↑↓`, `enter` to
+     edit), then `n`.
+   - **Review:** read the `config.local.env` it will write and the commands
+     it will run, then `y`. Nothing in AWS changes before this.
+   - **Provision:** about 30 minutes for the cluster and the deploy, then the
+     counter check (about 10 minutes). On a failure, read the step it names,
+     fix it, and press `r`; the scripts pick up where they stopped.
+   - **Done:** `export KUBECONFIG=../../eks-talk-tui/.work/kubeconfig` and the
+     verify commands it prints. `q` quits.
+
+5. Tear it down when you are done, either from the installer:
+
+   ```bash
+   ./installer --repo ../../eks-talk-tui --done    # then t, and type substrate-tui
+   ```
+
+   or with the scripts in that checkout:
+
+   ```bash
+   cd ../../eks-talk-tui && ./clean.sh --yes && ./delete-cluster.sh --yes
+   ```
+
+   Then remove the second checkout from the main one:
+   `git worktree remove ../eks-talk-tui`.
+
+Two checkouts on one host must not run `demos/counter/verify.sh` at the same
+time: both use local ports 127.0.0.1:8001 and 8002.
+
 ## Build and run
 
 Go 1.27 or newer, and everything the scripts need (the Check screen lists it).

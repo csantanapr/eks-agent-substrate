@@ -239,6 +239,14 @@ S3 buckets. It ends by running `aws/inventory.sh`, which lists anything left
 and fails if there is; `delete-cluster.sh` runs it first and refuses to start
 until `clean.sh` has finished. Run `aws/inventory.sh --all` any time.
 
+## Optional: the interactive installer (proof of concept)
+
+[`installer/`](installer/README.md) is a terminal UI that checks your setup,
+writes `config.local.env`, runs these same scripts with a live checklist,
+and tears down from its Done screen. The scripts above stay the supported
+path. [Install a second cluster, step by step](installer/README.md#install-a-second-cluster-step-by-step)
+has the exact commands.
+
 ## How it is built, and why
 
 ![Agent Substrate on Amazon EKS: every AWS service, the EKS cluster and the Agent Substrate components](slides/agent-substrate-on-eks.png)
@@ -253,7 +261,7 @@ The editable source is [`slides/agent-substrate-on-eks.drawio`](slides/agent-sub
 | Identity | One IAM role per ServiceAccount through EKS Pod Identity, scoped to its buckets, repositories or model. Actors get no AWS identity. |
 | S3 | Block Public Access, BucketOwnerEnforced, default encryption, a TLS-only bucket policy, a lifecycle rule for incomplete uploads. A separate read-only bucket for microVM guest assets. |
 | RDS | Private subnets, port 5432 open only to the cluster security group, TLS verify-full, separate owner (migrations) and readwrite (runtime) logins in Secrets Manager, master password managed by RDS. |
-| Bedrock | An in-cluster agentgateway signs requests with its Pod Identity role, which may invoke one inference profile only. Each actor's EgressPolicy allows only the gateway and swaps a placeholder token for a signed actor JWT. |
+| Bedrock | An in-cluster agentgateway signs requests with its Pod Identity role, which may invoke only the inference profiles it serves: `claude` (the default) and the newest `claude-haiku`, `claude-sonnet` and `claude-opus`. Each actor's EgressPolicy allows only the gateway and swaps a placeholder token for a signed actor JWT. |
 
 For production, also: Multi-AZ RDS with longer backup retention and deletion
 protection (`DB_MULTI_AZ`, `DB_BACKUP_DAYS`, `DB_DELETION_PROTECTION`), a
@@ -287,5 +295,6 @@ client identity (pass it through `substrate/install.sh`).
 | `llm-gateway/` | agentgateway with the Bedrock backend |
 | `demos/` | The counter and OpenClaw demos; per-actor EFS and S3 Files volumes; DB login rotation; Secrets Manager credential injection |
 | `slides/` | The talk deck (open `slides/index.html`) |
+| `installer/` | Interactive terminal installer over the scripts (proof of concept) |
 | `.agents/skills/` | Agent skill for deploying and troubleshooting this repo; `.claude/skills` and `.kiro/skills` link to it |
 | `.work/` | Generated: kubeconfig, Substrate clone, tools (gitignored) |
