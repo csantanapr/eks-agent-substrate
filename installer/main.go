@@ -72,6 +72,12 @@ func main() {
 	if err != nil {
 		fail(err)
 	}
+	// Run go the way the scripts do: lib/common.sh exports the checkout's
+	// GOTOOLCHAIN ("local" in config.env). Without it, a go.mod in a parent
+	// directory can make the Go check try to download another toolchain.
+	if v := r.Effective("GOTOOLCHAIN"); v != "" {
+		os.Setenv("GOTOOLCHAIN", v)
+	}
 	opt := ui.Options{
 		Repo: r, RepoRev: gitRev(dir), Redact: *redact, Auto: *auto, AutoQuit: *auto && *dry,
 		Seed:        map[string]string{"CLUSTER_NAME": *cluster, "AWS_REGION": *region, "AWS_PROFILE": *profile},
