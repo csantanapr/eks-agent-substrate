@@ -1012,10 +1012,10 @@ curl localhost:8001     <span class="c"># resumes</span></code></pre>
 <section class="slide">
   <h2>Where AWS can help the project next</h2>
   <div class="grid3">
-    <div class="card"><h3 class="accent">Install with flags, no patches</h3><ul>
-      <li><b>EKS profile</b> in <code>ate-setup</code></li>
-      <li>Reference <b>blueprint</b>: eksctl, Terraform or CDK</li>
-      <li><b>Metrics</b> for Amazon Managed Service for Prometheus</li>
+    <div class="card"><h3 class="accent">Neutral install seams</h3><ul>
+      <li><code>ate-setup deploy --component</code>: install one piece at a time</li>
+      <li><code>ate-setup render</code>: hand the manifests to your own tooling</li>
+      <li>The <b>EKS blueprint</b> stays outside the project: eksctl, Terraform or CDK</li>
     </ul></div>
     <div class="card"><h3 class="accent">Per-actor AWS access</h3><ul>
       <li><b>Per-actor S3 credentials</b> for snapshot transfers</li>
@@ -1027,7 +1027,7 @@ curl localhost:8001     <span class="c"># resumes</span></code></pre>
       <li><b>EFS CSI endpoint</b> Substrate can call</li>
     </ul></div>
   </div>
-  <aside class="notes">Most rough edges on the last slide have a fix the project can take, and AWS can help with each one. Install: an EKS profile in ate-setup, with S3 asset staging, s3:// URLs, the AL2023 credential provider paths and no GCP-only checks, so you install on EKS with flags and no patches. A reference blueprint, in eksctl, Terraform or CDK, with the IAM and buckets from this talk, so a blank account gets to a running install in one command. A metrics overlay for Amazon Managed Service for Prometheus, for observability without the GKE CRD. Per-actor access: per-actor S3 credentials in the credential exchange, with STS session policies scoped to the actor's prefix or S3 Access Grants; that gives parity with the GCS per-actor tokens, so a compromised node can't read every snapshot. And an actor JWT to AWS token exchange with AssumeRoleWithWebIdentity, for per-actor AWS access when an actor really needs it. Plugins and drivers: the Secrets Manager credential provider is built as credprovider-aws-secret-manager; next is donating it to agent-substrate-plugins, for production actor secrets without Kubernetes Secrets. A password file for ate-api-server's database logins, re-read on each new connection, so Secrets Manager rotation needs no restart. And an EFS CSI controller endpoint Substrate can call, a TLS listener in the driver or an add-on option, so per-actor EFS and S3 Files volumes work with the add-on alone.</aside>
+  <aside class="notes">Most rough edges on the last slide have a fix the project can take, and AWS can help with each one. Install: the project wants ate-setup to stay vendor neutral, so the ask is for neutral seams, not an EKS mode. ate-setup deploy --component installs one component at a time, so a platform can own pieces like the database or object storage itself. ate-setup render prints the manifests instead of applying them, so Helm, kustomize, Terraform or CDK can take them from there. Both are open upstream. Everything AWS-specific stays outside the project: a reference blueprint in eksctl, Terraform or CDK, like the repo for this talk, with the IAM, buckets, RDS and node groups, so a blank account gets to a running install in one command. Metrics for Amazon Managed Service for Prometheus belong in that blueprint too. Per-actor access: per-actor S3 credentials in the credential exchange, with STS session policies scoped to the actor's prefix or S3 Access Grants; that gives parity with the GCS per-actor tokens, so a compromised node can't read every snapshot. And an actor JWT to AWS token exchange with AssumeRoleWithWebIdentity, for per-actor AWS access when an actor really needs it. Plugins and drivers: the Secrets Manager credential provider is built as credprovider-aws-secret-manager; next is donating it to agent-substrate-plugins, for production actor secrets without Kubernetes Secrets. A password file for ate-api-server's database logins, re-read on each new connection, so Secrets Manager rotation needs no restart. And an EFS CSI controller endpoint Substrate can call, a TLS listener in the driver or an add-on option, so per-actor EFS and S3 Files volumes work with the add-on alone.</aside>
 </section>
 
 <!-- installer -->
@@ -1061,7 +1061,7 @@ curl localhost:8001     <span class="c"># resumes</span></code></pre>
   <div class="thanks">
     <div>
       <h1>Thank you</h1>
-      <p class="big muted">Agent Substrate runs on EKS today.<br>Help us make it boring: plugins, installer profile, per-actor credentials.</p>
+      <p class="big muted">Agent Substrate runs on EKS today.<br>Help us make it boring: plugins, neutral install seams, per-actor credentials.</p>
       <p><span class="pill">github.com/agent-substrate/substrate</span><span class="pill">agent-substrate-plugins</span></p>
       <div class="speaker">
         <img src="carlos-santana.jpg" alt="Carlos Santana">
@@ -1076,7 +1076,7 @@ curl localhost:8001     <span class="c"># resumes</span></code></pre>
       <figcaption>Scripts, demos and slides<br><b>github.com/csantanapr/eks-agent-substrate</b></figcaption>
     </figure>
   </div>
-  <aside class="notes">Agent Substrate runs on EKS today. Scan the code for the scripts, both demos and these slides: two commands create the cluster and deploy everything, and two more tear it down. If you want to help make it boring, the places to start are the plugins repository, an EKS installer profile and per-actor credentials. Thank you.</aside>
+  <aside class="notes">Agent Substrate runs on EKS today. Scan the code for the scripts, both demos and these slides: two commands create the cluster and deploy everything, and two more tear it down. If you want to help make it boring, the places to start are the plugins repository, the neutral ate-setup seams (deploy --component and render) and per-actor credentials. Thank you.</aside>
 </section>
 
 </div>
