@@ -128,6 +128,13 @@ kubectl -n "$NS" rollout status "deploy/$SVC" --timeout=5m
 ensure_pod_identity "$NS" "deploy/$SVC"
 
 log "Agent Substrate with the ExternalVolumes preview"
+# The reinstall rolls the worker pods, which crashes the actors running on
+# them. Suspend those first; the next request resumes them.
+kubectl ate get actors -A -o json 2>/dev/null \
+  | jq -r '.actors[]? | select(.status.state == "ACTOR_STATE_RUNNING") | "\(.metadata.atespace) \(.metadata.name)"' \
+  | while read -r atespace actor; do
+      kubectl ate suspend actor "$actor" -a "$atespace" >/dev/null && info "suspended $atespace/$actor"
+    done
 bash "$ROOT/substrate/install.sh" --preview=ExternalVolumes
 
 log "CSIDriverConfig and StorageClass $SC"

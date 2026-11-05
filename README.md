@@ -128,7 +128,9 @@ Things to know:
   `s3files:ClientRootAccess` (the script grants it only when `EFS_UID=0`). A
   non-root image is better.
 - Turning on the preview reinstalls Substrate, and that rolls the worker
-  pods: actors running at the time end up `CRASHED`. Restore them with
+  pods. `demos/efs/deploy.sh` suspends running actors first, so they don't
+  crash; the next request resumes them. An actor started during the
+  reinstall can still end up `CRASHED`: restore it with
   `kubectl ate revert actor NAME -a ATESPACE`.
 - Deleting an actor deletes its access point but keeps the files under it
   (the driver's default, `--delete-access-point-root-dir=false`).
