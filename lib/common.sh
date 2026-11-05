@@ -144,9 +144,11 @@ pinned_image() {
 }
 export GOTOOLCHAIN
 
-# render_yaml FILE NAME...: prints FILE with each ${NAME} replaced by the
-# value of the shell variable NAME, for the NAMEs given only. Any other $ text
-# in the file (the $$ quoting of SQL, a $word) stays as it is. The comment and
+# render_yaml FILE NAME...: prints FILE with each ${NAME} or $NAME replaced by
+# the value of the shell variable NAME, for the NAMEs given only. Any other $
+# text in the file (the $$ quoting of SQL, a $word) stays as it is. The files
+# use $NAME only where ${NAME} would break the YAML before it is filled in:
+# unquoted inside [ ] or { }. The comment and
 # blank lines at the top of FILE are its header for readers; they are left
 # out. Needs GNU envsubst (gettext); a script that calls it runs
 # `need envsubst` first.

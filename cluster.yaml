@@ -16,6 +16,8 @@
 #                         plus one (system) or two (gvisor, microvm)
 #   lt_id, lt_version     the microvm launch template that create-cluster.sh
 #                         makes first
+# Inside [ ] or { }, an unquoted placeholder has no braces (a dollar sign and
+# the name), so this file parses as YAML before it is filled in too.
 #
 # Learn more:
 #   https://docs.aws.amazon.com/eks/latest/eksctl/creating-and-managing-clusters.html
@@ -31,7 +33,7 @@ metadata:
     ${CLUSTER_TAGS}
 vpc:
   clusterEndpoints: { publicAccess: true, privateAccess: true }
-  publicAccessCIDRs: [${PUBLIC_ACCESS_CIDRS}]
+  publicAccessCIDRs: [$PUBLIC_ACCESS_CIDRS]
 iam:
   withOIDC: false
 addons:
@@ -77,13 +79,13 @@ managedNodeGroups:
       ${NODE_TAGS}
   - name: microvm
     amiFamily: AmazonLinux2023
-    instanceTypes: [${MICROVM_INSTANCE_TYPE}]
+    instanceTypes: [$MICROVM_INSTANCE_TYPE]
     desiredCapacity: ${MICROVM_NODES}
     minSize: 1
     maxSize: ${MICROVM_MAX_NODES}
     privateNetworking: true
     # IMDS settings, disk and nested virtualization come from the template.
-    launchTemplate: { id: ${lt_id}, version: "${lt_version}" }
+    launchTemplate: { id: $lt_id, version: "${lt_version}" }
     labels: { ate.dev/pool: microvm }
     taints:
       - { key: ate.dev/sandboxClass, value: microvm, effect: NoSchedule }
