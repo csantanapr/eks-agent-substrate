@@ -98,15 +98,14 @@
     <div>
       <ol>
         <li>Agent Substrate in one slide</li>
-        <li>The reference architecture on AWS</li>
-        <li>Cluster: EKS 1.37, three node groups</li>
-        <li>Two sandbox classes: gVisor and microVM</li>
-        <li>Snapshots on S3, state on RDS</li>
-        <li>Identity: EKS Pod Identity for every AWS caller</li>
-        <li>Inference on Amazon Bedrock</li>
+        <li>The architecture on AWS</li>
+        <li>Cluster and sandboxes: EKS 1.37, gVisor, microVM</li>
+        <li>Snapshots on S3, one IAM role per component</li>
+        <li>State on RDS, with rotating logins</li>
+        <li>Actor secrets and Bedrock, through the egress gateway</li>
         <li>Per-actor volumes: Amazon EFS and S3 Files</li>
-        <li>Demo</li>
-        <li>Where AWS can help the project</li>
+        <li>Two demos</li>
+        <li>Lessons, where AWS can help, production checklist</li>
       </ol>
     </div>
     <div class="card">
@@ -115,9 +114,10 @@
       <span class="pill">m8i (nested virt)</span><span class="pill">S3</span><span class="pill">RDS for PostgreSQL 18</span>
       <span class="pill">Secrets Manager</span><span class="pill">ECR</span><span class="pill">Bedrock</span>
       <span class="pill">EFS</span><span class="pill">S3 Files</span></p>
-      <p class="muted">Published release images from <code>ghcr.io/agent-substrate/substrate</code>, plus a small local installer patch for S3 and EKS paths. No public application endpoints: every Service is ClusterIP and every demo goes through a port forward.</p>
+      <p class="muted">No public application endpoints: every Service is ClusterIP.</p>
     </div>
   </div>
+  <aside class="notes">The path for the next half hour: what Agent Substrate is, how it maps onto AWS, then the pieces one at a time (the cluster and its two sandbox classes, snapshots and identity, state and rotating logins, secrets and inference through the egress gateway, per-actor volumes), two demos, and what we learned. Everything shown runs on the published release images from ghcr.io/agent-substrate/substrate, plus a small local installer patch for S3 and EKS paths. No application endpoint is public: every Service is ClusterIP and every demo goes through a port forward.</aside>
 </section>
 
 <!-- 3 -->
@@ -653,6 +653,101 @@ ate-setup deploy ate-system \
   <aside class="notes">The ExternalSecret writes into the Secret ate-setup already created. creationPolicy Merge means it updates only the keys it templates and leaves the schema key alone. The SecretStore has no auth block, so ESO uses its controller's Pod Identity role, which needs GetSecretValue on this cluster's two login secrets only. The template URL-encodes the password, because it sits inside a URL. The ESO Reloader Config lives outside the Deployment: it watches Secrets and rolls any Deployment in its list that reads the changed Secret through envFrom. So nothing goes into the ate-setup manifests, and a redeploy can't drop it. It restarts by stamping a last-reloaded annotation on the pod template. Upstream, ate-api-server reading its password from a mounted file on each new connection would take the restart out of rotation.</aside>
 </section>
 
+<!-- 16 -->
+<section class="slide">
+  <h2>Actors use API keys they never hold</h2>
+  <div class="fill">
+    <svg viewBox="0 0 1240 560" role="img" aria-label="An actor sends a request with a placeholder header; atenet-egress asks the Secrets Manager credential provider for the secret over mTLS; the provider checks its atespace policy and reads the secret with GetSecretValue using its Pod Identity role; atenet-egress sends the request on with the real header">
+      <defs>
+        <marker id="sm1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#9aa7b4"/></marker>
+        <marker id="sm2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#ff9900"/></marker>
+      </defs>
+      <rect x="20" y="120" width="240" height="190" rx="14" fill="#161d26" stroke="#3ecf8e" stroke-width="2"/>
+      <text x="40" y="156" fill="#3ecf8e" font-size="22" font-weight="700">Actor</text>
+      <text x="40" y="184" fill="#e8edf2" font-size="16">gVisor or microVM</text>
+      <text x="40" y="216" fill="#9aa7b4" font-size="15">holds only a placeholder:</text>
+      <text x="40" y="238" fill="#9aa7b4" font-size="15">the secret is never in its</text>
+      <text x="40" y="260" fill="#9aa7b4" font-size="15">memory, files or snapshots</text>
+
+      <rect x="340" y="120" width="300" height="190" rx="14" fill="#161d26" stroke="#4aa3ff" stroke-width="2"/>
+      <text x="360" y="156" fill="#4aa3ff" font-size="22" font-weight="700">atenet-egress</text>
+      <text x="360" y="184" fill="#e8edf2" font-size="16">terminates TLS</text>
+      <text x="360" y="208" fill="#e8edf2" font-size="16">matches the EgressPolicy rule</text>
+      <text x="360" y="232" fill="#e8edf2" font-size="16">replaces the header</text>
+      <text x="360" y="264" fill="#9aa7b4" font-size="15">the only way out for actors</text>
+
+      <rect x="980" y="120" width="240" height="190" rx="14" fill="#161d26" stroke="#e8edf2" stroke-width="2"/>
+      <text x="1000" y="156" fill="#e8edf2" font-size="22" font-weight="700">External API</text>
+      <text x="1000" y="184" fill="#9aa7b4" font-size="16">GitHub, a SaaS API,</text>
+      <text x="1000" y="208" fill="#9aa7b4" font-size="16">any HTTPS host</text>
+      <text x="1000" y="240" fill="#e8edf2" font-size="16">sees the real secret</text>
+
+      <rect x="340" y="370" width="300" height="160" rx="14" fill="#161d26" stroke="#b18cff" stroke-width="2"/>
+      <text x="360" y="404" fill="#b18cff" font-size="18" font-weight="700">aws-sm-credential-provider</text>
+      <text x="360" y="432" fill="#e8edf2" font-size="16">mTLS: admits only atenet-egress</text>
+      <text x="360" y="456" fill="#e8edf2" font-size="16">atespace policy, default deny</text>
+      <text x="360" y="480" fill="#e8edf2" font-size="16">30s cache for AWSCURRENT</text>
+      <text x="360" y="508" fill="#9aa7b4" font-size="15">ate-system · plugin, own repo</text>
+
+      <rect x="760" y="370" width="300" height="160" rx="14" fill="#161d26" stroke="#ff9900" stroke-width="2"/>
+      <text x="780" y="404" fill="#ff9900" font-size="20" font-weight="700">AWS Secrets Manager</text>
+      <text x="780" y="432" fill="#e8edf2" font-size="16">GetSecretValue with the</text>
+      <text x="780" y="456" fill="#e8edf2" font-size="16">provider's Pod Identity role</text>
+      <text x="780" y="480" fill="#e8edf2" font-size="16">only secrets tagged</text>
+      <text x="780" y="502" fill="#e8edf2" font-size="16">ate.dev/injectable=true</text>
+
+      <path d="M260,215 L338,215" stroke="#9aa7b4" stroke-width="3" fill="none" marker-end="url(#sm1)"/>
+      <text x="299" y="200" text-anchor="middle" fill="#3ecf8e" font-size="16" font-weight="700">1</text>
+      <text x="20" y="402" fill="#3ecf8e" font-size="16">1  Authorization: Bearer placeholder</text>
+
+      <path d="M490,310 L490,368" stroke="#9aa7b4" stroke-width="3" fill="none" marker-end="url(#sm1)"/>
+      <text x="504" y="345" fill="#4aa3ff" font-size="16" font-weight="700">2</text>
+      <text x="20" y="430" fill="#4aa3ff" font-size="16">2  FetchSecret(uri, actor ID)</text>
+
+      <path d="M640,430 L758,430" stroke="#9aa7b4" stroke-width="3" fill="none" marker-end="url(#sm1)"/>
+      <text x="699" y="420" text-anchor="middle" fill="#b18cff" font-size="16" font-weight="700">3</text>
+      <path d="M758,480 L642,480" stroke="#ff9900" stroke-width="3" stroke-dasharray="8 6" fill="none" marker-end="url(#sm2)"/>
+      <text x="699" y="502" text-anchor="middle" fill="#ff9900" font-size="16" font-weight="700">4</text>
+      <text x="20" y="458" fill="#b18cff" font-size="16">3  GetSecretValue</text>
+      <text x="20" y="486" fill="#ff9900" font-size="16">4  the value, to the gateway only</text>
+
+      <path d="M640,215 L978,215" stroke="#e8edf2" stroke-width="3" fill="none" marker-end="url(#sm1)"/>
+      <text x="809" y="200" text-anchor="middle" fill="#e8edf2" font-size="16">5  Authorization: Bearer &lt;secret&gt;</text>
+    </svg>
+  </div>
+  <aside class="notes">This is how an agent uses an API key without ever holding it. The actor sends its request with a placeholder in the Authorization header. Every request out of an actor goes through atenet-egress, which terminates TLS and matches the actor's EgressPolicy. The rule names a secret by URI, so the gateway asks the credential provider for it, over mTLS, passing the actor's identity. The provider is a small plugin we wrote, credprovider-aws-secret-manager, running in ate-system. It admits only the egress gateway, checks a default-deny policy that maps each atespace to the secrets it may use, and then calls GetSecretValue with its own Pod Identity role. That role can read only secrets tagged ate.dev/injectable=true, so even a bug in the policy can't reach the database logins. The value goes back to the gateway, which swaps it into the header and sends the request on. The actor never sees the secret, so it's not in its memory, its files, or its snapshots in S3. A 30-second cache keeps Secrets Manager calls per secret, not per request, and a rotation reaches actors within that window, with no redeploy.</aside>
+</section>
+
+<!-- 16b -->
+<section class="slide">
+  <h2>Actor secrets: the wiring and its three gates</h2>
+  <div class="grid2" style="grid-template-columns:1.25fr 1fr">
+<pre><code><span class="c"># EgressPolicy on the actor</span>
+<span class="k">rules</span>:
+- <span class="k">https</span>:
+    <span class="k">hostnames</span>: [<span class="s">"api.github.com"</span>]
+    <span class="k">effects</span>:
+      <span class="k">replaceHeaders</span>:
+      - <span class="k">header</span>: Authorization
+        <span class="k">prefix</span>: <span class="s">"Bearer "</span>
+        <span class="k">credentialUri</span>: <span class="s">ate-secret://secretsmanager.amazonaws.com/</span>
+          <span class="s">accounts/&lt;id&gt;/regions/us-west-2/</span>
+          <span class="s">secrets/ate/team-a/github/stages/AWSCURRENT</span>
+---
+<span class="c"># provider policy: atespace -&gt; secrets, default deny</span>
+<span class="k">policies</span>:
+- <span class="k">atespace</span>: team-a
+  <span class="k">allowedSecrets</span>:
+  - { <span class="k">account</span>: <span class="s">"&lt;id&gt;"</span>, <span class="k">region</span>: us-west-2, <span class="k">namePrefix</span>: ate/team-a/ }</code></pre>
+    <div>
+      <div class="card"><h3>Three gates</h3><ul><li>mTLS: only atenet-egress may ask</li><li>Provider policy: the atespace must be granted the secret</li><li>IAM: <code>GetSecretValue</code> on <code>ate/*</code> with tag <code>ate.dev/injectable=true</code></li></ul></div>
+      <div class="card" style="margin-top:1rem"><h3>On EKS</h3><ul><li>Pod Identity role, no keys</li><li>NetworkPolicy admits only atenet-egress</li><li>Registered next to the bundled <code>k8s.io</code> provider</li></ul></div>
+      <div class="card" style="margin-top:1rem"><h3>Rotation</h3><ul><li><code>AWSCURRENT</code> cached 30s</li><li>Rotate in Secrets Manager; actors pick it up, no redeploy</li></ul></div>
+    </div>
+  </div>
+  <aside class="notes">Three pieces of configuration. The EgressPolicy on the actor names the host, the header and the secret by URI: account, Region, secret name and stage. The provider's own policy maps each atespace to the secrets it may use, by account, Region and name prefix, and everything else is denied. And the provider's IAM role only reads secrets under ate/ that carry the ate.dev/injectable tag, so that's a second gate in IAM. On EKS the provider gets its role through Pod Identity, ships a NetworkPolicy that only lets the egress gateway in, and is registered with the gateway next to the bundled Kubernetes Secrets provider, so both work at once. The full example policy is demos/credprovider-aws/egress-policy.example.yaml in the repo, and the plugin is github.com/csantanapr/credprovider-aws-secret-manager.</aside>
+</section>
+
 <!-- 12 -->
 <section class="slide">
   <h2>Actors reach Bedrock through a gateway, with no AWS credentials</h2>
@@ -907,101 +1002,6 @@ curl localhost:8001     <span class="c"># resumes</span></code></pre>
     </div>
   </div>
   <aside class="notes">Left: what works on EKS with the rc.3 release, using the published images on a stock EKS 1.37 cluster with AL2023 nodes. S3 snapshots and microVM assets, RDS with verify-full TLS, ECR pulls through atelet's credential provider, and Bedrock through the LLM gateway all use Pod Identity. gVisor and microVM both suspend and resume, NetworkPolicy is enforced by the VPC CNI, actor secrets come from Secrets Manager and are injected on egress, and per-actor EFS and S3 Files volumes work across nodes and zones, behind the preview gate. Right: the rough edges. ate-setup treats every non-kind cluster as GKE: it wants a GCP transfer service account, uploads assets with gcloud, and writes gs:// asset URLs; this repo carries a small installer patch for that. The base install applies a GKE PodMonitoring. atelet's credential provider hostPaths are GKE paths; on AL2023 they are /etc/eks/image-credential-provider. On S3, snapshot transfers use the pod's credentials, where GCS gets per-actor scoped tokens. On RDS, pre-create substrate_owner and grant it to the master user before setup.sql. ate-api-server reads both database passwords once at start, so a rotation needs a rolling restart. And ate-api-server calls the CSI controller over gRPC, while the EFS add-on's controller only listens on a socket inside its pod, so a second, Envoy-fronted controller serves Substrate. Most of these come back on the next slide.</aside>
-</section>
-
-<!-- 16 -->
-<section class="slide">
-  <h2>Actors use API keys they never hold</h2>
-  <div class="fill">
-    <svg viewBox="0 0 1240 560" role="img" aria-label="An actor sends a request with a placeholder header; atenet-egress asks the Secrets Manager credential provider for the secret over mTLS; the provider checks its atespace policy and reads the secret with GetSecretValue using its Pod Identity role; atenet-egress sends the request on with the real header">
-      <defs>
-        <marker id="sm1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#9aa7b4"/></marker>
-        <marker id="sm2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#ff9900"/></marker>
-      </defs>
-      <rect x="20" y="120" width="240" height="190" rx="14" fill="#161d26" stroke="#3ecf8e" stroke-width="2"/>
-      <text x="40" y="156" fill="#3ecf8e" font-size="22" font-weight="700">Actor</text>
-      <text x="40" y="184" fill="#e8edf2" font-size="16">gVisor or microVM</text>
-      <text x="40" y="216" fill="#9aa7b4" font-size="15">holds only a placeholder:</text>
-      <text x="40" y="238" fill="#9aa7b4" font-size="15">the secret is never in its</text>
-      <text x="40" y="260" fill="#9aa7b4" font-size="15">memory, files or snapshots</text>
-
-      <rect x="340" y="120" width="300" height="190" rx="14" fill="#161d26" stroke="#4aa3ff" stroke-width="2"/>
-      <text x="360" y="156" fill="#4aa3ff" font-size="22" font-weight="700">atenet-egress</text>
-      <text x="360" y="184" fill="#e8edf2" font-size="16">terminates TLS</text>
-      <text x="360" y="208" fill="#e8edf2" font-size="16">matches the EgressPolicy rule</text>
-      <text x="360" y="232" fill="#e8edf2" font-size="16">replaces the header</text>
-      <text x="360" y="264" fill="#9aa7b4" font-size="15">the only way out for actors</text>
-
-      <rect x="980" y="120" width="240" height="190" rx="14" fill="#161d26" stroke="#e8edf2" stroke-width="2"/>
-      <text x="1000" y="156" fill="#e8edf2" font-size="22" font-weight="700">External API</text>
-      <text x="1000" y="184" fill="#9aa7b4" font-size="16">GitHub, a SaaS API,</text>
-      <text x="1000" y="208" fill="#9aa7b4" font-size="16">any HTTPS host</text>
-      <text x="1000" y="240" fill="#e8edf2" font-size="16">sees the real secret</text>
-
-      <rect x="340" y="370" width="300" height="160" rx="14" fill="#161d26" stroke="#b18cff" stroke-width="2"/>
-      <text x="360" y="404" fill="#b18cff" font-size="18" font-weight="700">aws-sm-credential-provider</text>
-      <text x="360" y="432" fill="#e8edf2" font-size="16">mTLS: admits only atenet-egress</text>
-      <text x="360" y="456" fill="#e8edf2" font-size="16">atespace policy, default deny</text>
-      <text x="360" y="480" fill="#e8edf2" font-size="16">30s cache for AWSCURRENT</text>
-      <text x="360" y="508" fill="#9aa7b4" font-size="15">ate-system · plugin, own repo</text>
-
-      <rect x="760" y="370" width="300" height="160" rx="14" fill="#161d26" stroke="#ff9900" stroke-width="2"/>
-      <text x="780" y="404" fill="#ff9900" font-size="20" font-weight="700">AWS Secrets Manager</text>
-      <text x="780" y="432" fill="#e8edf2" font-size="16">GetSecretValue with the</text>
-      <text x="780" y="456" fill="#e8edf2" font-size="16">provider's Pod Identity role</text>
-      <text x="780" y="480" fill="#e8edf2" font-size="16">only secrets tagged</text>
-      <text x="780" y="502" fill="#e8edf2" font-size="16">ate.dev/injectable=true</text>
-
-      <path d="M260,215 L338,215" stroke="#9aa7b4" stroke-width="3" fill="none" marker-end="url(#sm1)"/>
-      <text x="299" y="200" text-anchor="middle" fill="#3ecf8e" font-size="16" font-weight="700">1</text>
-      <text x="20" y="402" fill="#3ecf8e" font-size="16">1  Authorization: Bearer placeholder</text>
-
-      <path d="M490,310 L490,368" stroke="#9aa7b4" stroke-width="3" fill="none" marker-end="url(#sm1)"/>
-      <text x="504" y="345" fill="#4aa3ff" font-size="16" font-weight="700">2</text>
-      <text x="20" y="430" fill="#4aa3ff" font-size="16">2  FetchSecret(uri, actor ID)</text>
-
-      <path d="M640,430 L758,430" stroke="#9aa7b4" stroke-width="3" fill="none" marker-end="url(#sm1)"/>
-      <text x="699" y="420" text-anchor="middle" fill="#b18cff" font-size="16" font-weight="700">3</text>
-      <path d="M758,480 L642,480" stroke="#ff9900" stroke-width="3" stroke-dasharray="8 6" fill="none" marker-end="url(#sm2)"/>
-      <text x="699" y="502" text-anchor="middle" fill="#ff9900" font-size="16" font-weight="700">4</text>
-      <text x="20" y="458" fill="#b18cff" font-size="16">3  GetSecretValue</text>
-      <text x="20" y="486" fill="#ff9900" font-size="16">4  the value, to the gateway only</text>
-
-      <path d="M640,215 L978,215" stroke="#e8edf2" stroke-width="3" fill="none" marker-end="url(#sm1)"/>
-      <text x="809" y="200" text-anchor="middle" fill="#e8edf2" font-size="16">5  Authorization: Bearer &lt;secret&gt;</text>
-    </svg>
-  </div>
-  <aside class="notes">This is how an agent uses an API key without ever holding it. The actor sends its request with a placeholder in the Authorization header. Every request out of an actor goes through atenet-egress, which terminates TLS and matches the actor's EgressPolicy. The rule names a secret by URI, so the gateway asks the credential provider for it, over mTLS, passing the actor's identity. The provider is a small plugin we wrote, credprovider-aws-secret-manager, running in ate-system. It admits only the egress gateway, checks a default-deny policy that maps each atespace to the secrets it may use, and then calls GetSecretValue with its own Pod Identity role. That role can read only secrets tagged ate.dev/injectable=true, so even a bug in the policy can't reach the database logins. The value goes back to the gateway, which swaps it into the header and sends the request on. The actor never sees the secret, so it's not in its memory, its files, or its snapshots in S3. A 30-second cache keeps Secrets Manager calls per secret, not per request, and a rotation reaches actors within that window, with no redeploy.</aside>
-</section>
-
-<!-- 16b -->
-<section class="slide">
-  <h2>Actor secrets: the wiring and its three gates</h2>
-  <div class="grid2" style="grid-template-columns:1.25fr 1fr">
-<pre><code><span class="c"># EgressPolicy on the actor</span>
-<span class="k">rules</span>:
-- <span class="k">https</span>:
-    <span class="k">hostnames</span>: [<span class="s">"api.github.com"</span>]
-    <span class="k">effects</span>:
-      <span class="k">replaceHeaders</span>:
-      - <span class="k">header</span>: Authorization
-        <span class="k">prefix</span>: <span class="s">"Bearer "</span>
-        <span class="k">credentialUri</span>: <span class="s">ate-secret://secretsmanager.amazonaws.com/</span>
-          <span class="s">accounts/&lt;id&gt;/regions/us-west-2/</span>
-          <span class="s">secrets/ate/team-a/github/stages/AWSCURRENT</span>
----
-<span class="c"># provider policy: atespace -&gt; secrets, default deny</span>
-<span class="k">policies</span>:
-- <span class="k">atespace</span>: team-a
-  <span class="k">allowedSecrets</span>:
-  - { <span class="k">account</span>: <span class="s">"&lt;id&gt;"</span>, <span class="k">region</span>: us-west-2, <span class="k">namePrefix</span>: ate/team-a/ }</code></pre>
-    <div>
-      <div class="card"><h3>Three gates</h3><ul><li>mTLS: only atenet-egress may ask</li><li>Provider policy: the atespace must be granted the secret</li><li>IAM: <code>GetSecretValue</code> on <code>ate/*</code> with tag <code>ate.dev/injectable=true</code></li></ul></div>
-      <div class="card" style="margin-top:1rem"><h3>On EKS</h3><ul><li>Pod Identity role, no keys</li><li>NetworkPolicy admits only atenet-egress</li><li>Registered next to the bundled <code>k8s.io</code> provider</li></ul></div>
-      <div class="card" style="margin-top:1rem"><h3>Rotation</h3><ul><li><code>AWSCURRENT</code> cached 30s</li><li>Rotate in Secrets Manager; actors pick it up, no redeploy</li></ul></div>
-    </div>
-  </div>
-  <aside class="notes">Three pieces of configuration. The EgressPolicy on the actor names the host, the header and the secret by URI: account, Region, secret name and stage. The provider's own policy maps each atespace to the secrets it may use, by account, Region and name prefix, and everything else is denied. And the provider's IAM role only reads secrets under ate/ that carry the ate.dev/injectable tag, so that's a second gate in IAM. On EKS the provider gets its role through Pod Identity, ships a NetworkPolicy that only lets the egress gateway in, and is registered with the gateway next to the bundled Kubernetes Secrets provider, so both work at once. The full example policy is demos/credprovider-aws/egress-policy.example.yaml in the repo, and the plugin is github.com/csantanapr/credprovider-aws-secret-manager.</aside>
 </section>
 
 <!-- 17 -->
