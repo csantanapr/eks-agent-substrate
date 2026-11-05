@@ -675,12 +675,13 @@ func (m *Model) addLog(s string) {
 
 var accountRe = regexp.MustCompile(`\b[0-9]{12}\b`)
 
-// redact masks the AWS account id: 1357xxxx4534.
+// redact replaces any AWS account id with the documentation placeholder
+// 111122223333.
 func (m Model) redact(s string) string {
 	if !m.opt.Redact {
 		return s
 	}
-	return accountRe.ReplaceAllStringFunc(s, func(a string) string { return a[:4] + "xxxx" + a[8:] })
+	return accountRe.ReplaceAllString(s, "111122223333")
 }
 
 // View implements tea.Model.

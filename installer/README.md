@@ -50,7 +50,7 @@ directory's `.work/`, so a second checkout drives a second cluster.
 | `--speed N` | 60 | `--dry-run` replays N times faster (long gaps are capped at 1.5 s) |
 | `--auto` | off | walk the screens on their own; with `--dry-run`, a hands-off demo that quits at Done. It never starts a teardown |
 | `--done` | off | open on the Done screen of the checkout's last install (read from `.work/installer/`), with its summary and Teardown |
-| `--redact` | off | mask the AWS account id on screen and in snapshots (`1357xxxx4534`) |
+| `--redact` | off | replace the AWS account id with `111122223333` on screen and in snapshots |
 | `--snapshot-size WxH` | `126x33` | the size snapshots are drawn at |
 | `--html DIR` | | rewrite `NAME.html` from every `NAME.ansi` in DIR, then exit |
 
@@ -93,8 +93,9 @@ To come back to a finished install later (its summary, or Teardown):
 ## Screenshots
 
 ```bash
-INSTALLER_SNAPSHOT_DIR=/tmp/shots go run . --dry-run --redact
-node docs/render.mjs /tmp/shots docs 02-check=check 04-review=review
+INSTALLER_SNAPSHOT_DIR=/tmp/shots go run . --dry-run --auto --redact
+node docs/render.mjs /tmp/shots docs 01-welcome=welcome 02-check=check \
+  03-settings=settings 04-review=review 05-provision-016=provision 06-done=done
 ```
 
 With `INSTALLER_SNAPSHOT_DIR` set, the installer writes each screen as it
@@ -103,8 +104,8 @@ first shows it (`01-welcome`, `02-check`, `03-settings`, `04-review`, one
 `s`), as `NAME.ansi` and as `NAME.html`: a 1920x1080 page with the screen in
 a terminal window. `docs/render.mjs` turns the pages into PNGs with headless
 Chromium (Playwright from the talk-video-record skill). The PNGs in `docs/`
-come from the live install of `substrate-tui` (`--redact`); `done.png` was
-drawn by `--done` from that install's record, after a layout fix:
+come from the command above: a `--dry-run` replay of the live install of
+`substrate-tui`, with the account id and local paths replaced:
 
 | File | Screen |
 |---|---|

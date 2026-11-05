@@ -258,7 +258,7 @@ func TestReopenLastRun(t *testing.T) {
 
 func TestRedact(t *testing.T) {
 	m := Model{opt: Options{Redact: true}}
-	if got := m.redact("substrate-tui-snap-135728714534-us-west-2"); got != "substrate-tui-snap-1357xxxx4534-us-west-2" {
+	if got := m.redact("substrate-tui-snap-444455556666-us-west-2"); got != "substrate-tui-snap-111122223333-us-west-2" {
 		t.Error(got)
 	}
 }

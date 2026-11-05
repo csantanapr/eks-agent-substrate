@@ -83,7 +83,7 @@
 {"k":"line","t":895692,"id":"create-cluster","s":"2026-11-05 20:34:16 [ℹ]  waiting for CloudFormation stack \"eksctl-substrate-tui-nodegroup-system\""}
 {"k":"line","t":909098,"id":"create-cluster","s":"2026-11-05 20:34:29 [ℹ]  waiting for CloudFormation stack \"eksctl-substrate-tui-nodegroup-gvisor\""}
 {"k":"line","t":909115,"id":"create-cluster","s":"2026-11-05 20:34:29 [ℹ]  waiting for the control plane to become ready"}
-{"k":"line","t":909454,"id":"create-cluster","s":"2026-11-05 20:34:29 [✔]  saved kubeconfig as \"/local/home/carrlos/eks-talk-tui/.work/kubeconfig\""}
+{"k":"line","t":909454,"id":"create-cluster","s":"2026-11-05 20:34:29 [✔]  saved kubeconfig as \"/path/to/eks-talk/.work/kubeconfig\""}
 {"k":"line","t":909454,"id":"create-cluster","s":"2026-11-05 20:34:29 [ℹ]  no tasks"}
 {"k":"line","t":909454,"id":"create-cluster","s":"2026-11-05 20:34:29 [✔]  all EKS cluster resources for \"substrate-tui\" have been created"}
 {"k":"line","t":909499,"id":"create-cluster","s":"2026-11-05 20:34:30 [ℹ]  nodegroup \"system\" has 2 node(s)"}
@@ -116,7 +116,7 @@
 {"k":"line","t":990561,"id":"create-cluster","s":"2026-11-05 20:35:51 [ℹ]  addon \"aws-ebs-csi-driver\" active"}
 {"k":"line","t":990768,"id":"create-cluster","s":"2026-11-05 20:35:51 [ℹ]  creating addon: metrics-server"}
 {"k":"line","t":1028481,"id":"create-cluster","s":"2026-11-05 20:36:29 [ℹ]  addon \"metrics-server\" active"}
-{"k":"line","t":1029024,"id":"create-cluster","s":"2026-11-05 20:36:29 [ℹ]  kubectl command should work with \"/local/home/carrlos/eks-talk-tui/.work/kubeconfig\", try 'kubectl --kubeconfig=/local/home/carrlos/eks-talk-tui/.work/kubeconfig get nodes'"}
+{"k":"line","t":1029024,"id":"create-cluster","s":"2026-11-05 20:36:29 [ℹ]  kubectl command should work with \"/path/to/eks-talk/.work/kubeconfig\", try 'kubectl --kubeconfig=/path/to/eks-talk/.work/kubeconfig get nodes'"}
 {"k":"line","t":1029024,"id":"create-cluster","s":"2026-11-05 20:36:29 [✔]  EKS cluster \"substrate-tui\" in \"us-west-2\" region is ready"}
 {"k":"line","t":1030314,"id":"create-cluster"}
 {"k":"line","t":1030314,"id":"create-cluster","s":"\u001b[1;36m== Tag the node group Auto Scaling groups (EKS does not copy node group tags to them)\u001b[0m"}
@@ -141,7 +141,7 @@
 {"k":"line","t":1035910,"id":"create-cluster","s":"ip-192-168-147-207.us-west-2.compute.internal   Ready    \u003cnone\u003e   3m43s   v1.37.1-eks-73860fb   microvm"}
 {"k":"line","t":1035910,"id":"create-cluster","s":"ip-192-168-147-73.us-west-2.compute.internal    Ready    \u003cnone\u003e   3m47s   v1.37.1-eks-73860fb   system"}
 {"k":"line","t":1035911,"id":"create-cluster","s":"ip-192-168-148-107.us-west-2.compute.internal   Ready    \u003cnone\u003e   3m50s   v1.37.1-eks-73860fb   gvisor"}
-{"k":"line","t":1035912,"id":"create-cluster","s":"   kubeconfig: /local/home/carrlos/eks-talk-tui/.work/kubeconfig"}
+{"k":"line","t":1035912,"id":"create-cluster","s":"   kubeconfig: /path/to/eks-talk/.work/kubeconfig"}
 {"k":"line","t":1035912,"id":"create-cluster","s":"   next: ./deploy.sh"}
 {"k":"line","t":1035918,"id":"create-cluster"}
 {"k":"line","t":1035918,"id":"create-cluster","s":"\u001b[1;36m== Timings: create-cluster.sh\u001b[0m"}
@@ -173,7 +173,7 @@
 {"k":"line","t":1074683,"id":"deploy","s":"\u001b[1;36m== Secrets Manager: Substrate's database logins\u001b[0m"}
 {"k":"line","t":1076234,"id":"deploy","s":"   substrate-tui/ate-owner"}
 {"k":"line","t":1077808,"id":"deploy","s":"   substrate-tui/ate-readwrite"}
-{"k":"line","t":1077870,"id":"deploy","s":"   RDS CA bundle: /local/home/carrlos/eks-talk-tui/.work/rds-global-bundle.pem"}
+{"k":"line","t":1077870,"id":"deploy","s":"   RDS CA bundle: /path/to/eks-talk/.work/rds-global-bundle.pem"}
 {"k":"line","t":1078370,"id":"deploy","s":"   Agent Substrate v1.0.0-rc.3"}
 {"k":"line","t":1078371,"id":"deploy"}
 {"k":"line","t":1078372,"id":"deploy","s":"\u001b[1;36m== Clone https://github.com/agent-substrate/substrate.git at v1.0.0-rc.3\u001b[0m"}
@@ -245,7 +245,7 @@
 {"k":"line","t":1555287,"id":"deploy","s":"  ateapi.postgres.readWrite.connectionString  \u003cset\u003e                                                                                                                                                                  (from ATE_API_POSTGRES_READ_WRITE_CONNECTION_STRING)"}
 {"k":"line","t":1555287,"id":"deploy","s":"  ateapi.postgres.readWrite.role              substrate_readwrite                                                                                                                                                    (from default)"}
 {"k":"line","t":1555287,"id":"deploy","s":"  ateapi.postgres.schema                      \"\"                                                                                                                                                                     (from default)"}
-{"k":"line","t":1555287,"id":"deploy","s":"  ateapi.postgres.serverCAFile                /local/home/carrlos/eks-talk-tui/.work/rds-global-bundle.pem                                                                                                           (from --ateapi-postgres-server-ca-file)"}
+{"k":"line","t":1555287,"id":"deploy","s":"  ateapi.postgres.serverCAFile                /path/to/eks-talk/.work/rds-global-bundle.pem                                                                                                           (from --ateapi-postgres-server-ca-file)"}
 {"k":"line","t":1555287,"id":"deploy","s":"  ateapi.postgres.storageClass                \"\"                                                                                                                                                                     (from default)"}
 {"k":"line","t":1555287,"id":"deploy","s":"  atenet.dataplane                            envoy                                                                                                                                                                  (from default)"}
 {"k":"line","t":1555287,"id":"deploy","s":"  atenet.egress.additionalExtprocService      \"\"                                                                                                                                                                     (from default)"}
@@ -271,7 +271,7 @@
 {"k":"line","t":1555288,"id":"deploy","s":"  kindCluster.name                            kind                                                                                                                                                                   (from default)"}
 {"k":"line","t":1555288,"id":"deploy","s":"  ko.defaultPlatforms                         \"\"                                                                                                                                                                     (from default)"}
 {"k":"line","t":1555288,"id":"deploy","s":"  ko.dockerRepo                               \"\"                                                                                                                                                                     (from default)"}
-{"k":"line","t":1555288,"id":"deploy","s":"  kubeconfig                                  /local/home/carrlos/eks-talk-tui/.work/kubeconfig                                                                                                                      (from KUBECONFIG)"}
+{"k":"line","t":1555288,"id":"deploy","s":"  kubeconfig                                  /path/to/eks-talk/.work/kubeconfig                                                                                                                      (from KUBECONFIG)"}
 {"k":"line","t":1555288,"id":"deploy","s":"  namespace                                   ate-system                                                                                                                                                             (from default)"}
 {"k":"line","t":1555288,"id":"deploy","s":"  otlpEndpoint                                \"\"                                                                                                                                                                     (from default)"}
 {"k":"line","t":1555288,"id":"deploy","s":"  podcert.workersPerSigner                    0                                                                                                                                                                      (from default)"}
@@ -286,14 +286,14 @@
 {"k":"line","t":1555288,"id":"deploy","s":"  storage.transferGSAName                     \"\"                                                                                                                                                                     (from default)"}
 {"k":"line","t":1555288,"id":"deploy","s":"\u001b[1;36m[step]: deploy_ate_system\u001b[0m"}
 {"k":"line","t":1555288,"id":"deploy","s":"\u001b[1;36m[step]: prepare_microvm_deps\u001b[0m"}
-{"k":"line","t":1555288,"id":"deploy","s":"Assembling microVM assets into /local/home/carrlos/eks-talk-tui/.work/substrate-v1.0.0-rc.3/bin/microvm-assets/amd64 (arch=amd64)..."}
+{"k":"line","t":1555288,"id":"deploy","s":"Assembling microVM assets into /path/to/eks-talk/.work/substrate-v1.0.0-rc.3/bin/microvm-assets/amd64 (arch=amd64)..."}
 {"k":"line","t":1555289,"id":"deploy","s":"\u003e\u003e Downloading kata-static 4.3.1 (amd64)..."}
 {"k":"line","t":1562323,"id":"deploy","s":"\u003e\u003e Downloading cloud-hypervisor v53.0 (cloud-hypervisor-static)..."}
-{"k":"line","t":1562884,"id":"deploy","s":"\u003e\u003e Assets assembled in /local/home/carrlos/eks-talk-tui/.work/substrate-v1.0.0-rc.3/bin/microvm-assets/amd64."}
-{"k":"line","t":1562952,"id":"deploy","s":"Assembling microVM assets into /local/home/carrlos/eks-talk-tui/.work/substrate-v1.0.0-rc.3/bin/microvm-assets/arm64 (arch=arm64)..."}
+{"k":"line","t":1562884,"id":"deploy","s":"\u003e\u003e Assets assembled in /path/to/eks-talk/.work/substrate-v1.0.0-rc.3/bin/microvm-assets/amd64."}
+{"k":"line","t":1562952,"id":"deploy","s":"Assembling microVM assets into /path/to/eks-talk/.work/substrate-v1.0.0-rc.3/bin/microvm-assets/arm64 (arch=arm64)..."}
 {"k":"line","t":1562952,"id":"deploy","s":"\u003e\u003e Downloading kata-static 4.3.1 (arm64)..."}
 {"k":"line","t":1571201,"id":"deploy","s":"\u003e\u003e Downloading cloud-hypervisor v53.0 (cloud-hypervisor-static-aarch64)..."}
-{"k":"line","t":1571764,"id":"deploy","s":"\u003e\u003e Assets assembled in /local/home/carrlos/eks-talk-tui/.work/substrate-v1.0.0-rc.3/bin/microvm-assets/arm64."}
+{"k":"line","t":1571764,"id":"deploy","s":"\u003e\u003e Assets assembled in /path/to/eks-talk/.work/substrate-v1.0.0-rc.3/bin/microvm-assets/arm64."}
 {"k":"line","t":1571800,"id":"deploy","s":"Uploading assets to s3://substrate-tui-assets-111122223333-us-west-2/microvm-assets/ ..."}
 {"k":"line","t":1572348,"id":"deploy","s":"   amd64/cloud-hypervisor -\u003e s3://substrate-tui-assets-111122223333-us-west-2/microvm-assets/amd64/448af3d4e59b22c2987f7df94c213ad40fb53a10d437e42b5ee6c4fce7c29ecc"}
 {"k":"line","t":1573595,"id":"deploy","s":"   amd64/virtiofsd -\u003e s3://substrate-tui-assets-111122223333-us-west-2/microvm-assets/amd64/15b2e72a78cc08a9bd8a6943e89fb69c88cb3cbeb63069efceade835342ac7d4"}
@@ -326,7 +326,7 @@
 {"k":"line","t":1585855,"id":"deploy","s":"  | jwtProviders:"}
 {"k":"line","t":1585855,"id":"deploy","s":"  | - audiences:"}
 {"k":"line","t":1585855,"id":"deploy","s":"  |   - api.ate-system.svc"}
-{"k":"line","t":1585855,"id":"deploy","s":"  |   issuer: https://oidc.eks.us-west-2.amazonaws.com/id/3FFD61CC9F148D4E0C80BFF2BE2DB790"}
+{"k":"line","t":1585855,"id":"deploy","s":"  |   issuer: https://oidc.eks.us-west-2.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE"}
 {"k":"line","t":1585855,"id":"deploy","s":"  |   name: kubernetes"}
 {"k":"line","t":1586255,"id":"deploy","s":"\u001b[1;36m[step]: create_podcertificate_controller_cas\u001b[0m"}
 {"k":"line","t":1586861,"id":"deploy","s":"  created pool secret podcertificate-controller-system/service-dns-ca-pool"}
@@ -361,7 +361,7 @@
 {"k":"line","t":1626427,"id":"deploy","s":"  (rollout status deployment/atenet-egress took 6.007s)"}
 {"k":"line","t":1626433,"id":"deploy","s":"  (rollout status daemonset/atelet took 0.006s)"}
 {"k":"line","t":1626439,"id":"deploy","s":"  (rollout status deployment/k8s-credential-provider took 0.006s)"}
-{"k":"line","t":1626440,"id":"deploy","s":"recorded this configuration in /home/carrlos/.cache/ate-setup/installs/arn-aws-eks-us-west-2-111122223333-cluster-substrate-tui.yaml"}
+{"k":"line","t":1626440,"id":"deploy","s":"recorded this configuration in ~/.cache/ate-setup/installs/arn-aws-eks-us-west-2-111122223333-cluster-substrate-tui.yaml"}
 {"k":"line","t":1627546,"id":"deploy","s":"   ate-system/deploy/ate-api-server has Pod Identity credentials"}
 {"k":"line","t":1628686,"id":"deploy","s":"   ate-system/ds/atelet has Pod Identity credentials"}
 {"k":"line","t":1629235,"id":"deploy","s":"NAME                                      READY   STATUS    RESTARTS   AGE"}
@@ -419,7 +419,7 @@
 {"k":"line","t":1696105,"id":"deploy","s":"   OpenClaw demo skipped: set OPENCLAW_DIR or OPENCLAW_REPO in config.local.env"}
 {"k":"line","t":1696109,"id":"deploy"}
 {"k":"line","t":1696109,"id":"deploy","s":"\u001b[1;36m== Done. Everything is ClusterIP; reach it with port forwards.\u001b[0m"}
-{"k":"line","t":1696110,"id":"deploy","s":"   export KUBECONFIG=/local/home/carrlos/eks-talk-tui/.work/kubeconfig PATH=/local/home/carrlos/eks-talk-tui/.work/bin:$PATH"}
+{"k":"line","t":1696110,"id":"deploy","s":"   export KUBECONFIG=/path/to/eks-talk/.work/kubeconfig PATH=/path/to/eks-talk/.work/bin:$PATH"}
 {"k":"line","t":1696110,"id":"deploy","s":"   kubectl ate get actors -A"}
 {"k":"line","t":1696110,"id":"deploy","s":"   demos/counter/verify.sh          # suspend/resume on gVisor and microVM"}
 {"k":"line","t":1696110,"id":"deploy","s":"   demos/openclaw/deploy.sh verify  # the OpenClaw agent, when deployed"}
