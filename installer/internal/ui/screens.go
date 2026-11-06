@@ -307,7 +307,7 @@ func (m Model) settingsView(w, h int) string {
 	}
 	for i := 0; i < len(m.fields); i++ {
 		f := m.fields[i]
-		if f.section == "Demos" {
+		if f.kind == fDemo {
 			break
 		}
 		if f.section != section {
@@ -327,20 +327,25 @@ func (m Model) settingsView(w, h int) string {
 			i++
 			continue
 		}
-		left = append(left, "    "+sBold.Render(pad(f.label, 20))+cell(i, 40))
+		left = append(left, "    "+sBold.Render(pad(f.label, 22))+cell(i, 40))
 		if msg, bad := m.errs[f.key]; bad {
-			left = append(left, "    "+pad("", 20)+sRed.Render(" "+cut(msg, 40)))
+			left = append(left, "    "+pad("", 22)+sRed.Render(" "+cut(msg, 40)))
 		}
 	}
-	left = append(left, "    "+sBold.Render(pad("Sandbox classes", 20))+" "+sGreen.Render(iconDone)+sText.Render(" gVisor  ")+sGreen.Render(iconDone)+sText.Render(" microVM  ")+sMuted.Render("(both, always)"))
+	left = append(left, "    "+sBold.Render(pad("Sandbox classes", 22))+" "+sGreen.Render(iconDone)+sText.Render(" gVisor  ")+sGreen.Render(iconDone)+sText.Render(" microVM  ")+sMuted.Render("(both, always)"))
 
 	var right []string
-	right = append(right, "", "", "", "  "+sSection.Render("Demos"))
+	right = append(right, "", "")
+	section = ""
 	for i, f := range m.fields {
 		if f.kind != fDemo {
 			continue
 		}
-		d := demoByID(f.key)
+		if f.section != section {
+			section = f.section
+			right = append(right, "", "  "+sSection.Render(section))
+		}
+		d := m.demo(f.key)
 		box := "[ ]"
 		st := sText
 		switch {
@@ -369,7 +374,7 @@ func (m Model) settingsView(w, h int) string {
 	right = append(right, "", "  "+sSection.Render("About this setting"))
 	var help string
 	if f.kind == fDemo {
-		d := demoByID(f.key)
+		d := m.demo(f.key)
 		help = d.Note
 		if d.Disabled != "" {
 			help = "Not available here: " + d.Disabled + "."

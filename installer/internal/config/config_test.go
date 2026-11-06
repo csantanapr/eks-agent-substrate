@@ -77,11 +77,11 @@ func TestParseRepoConfig(t *testing.T) {
 	if len(f.Entries) == 0 {
 		t.Skip("no config.env next to installer/")
 	}
+	// These are empty in config.env on purpose: no profile, no OpenClaw.
+	emptyOK := map[string]bool{"AWS_PROFILE": true, "OPENCLAW_DIR": true, "OPENCLAW_REPO": true, "OPENCLAW_REF": true}
 	for _, k := range Managed {
-		if k == "AWS_PROFILE" {
-			continue
-		}
-		if v, ok := f.Get(k); !ok || v == "" {
+		v, ok := f.Get(k)
+		if !ok || (v == "" && !emptyOK[k]) {
 			t.Errorf("config.env has no %s", k)
 		}
 	}
@@ -89,10 +89,12 @@ func TestParseRepoConfig(t *testing.T) {
 
 func TestRender(t *testing.T) {
 	defaults, _ := Parse(strings.NewReader(sample))
-	existing, _ := Parse(strings.NewReader("OPENCLAW_DIR=/src/oc\nCLUSTER_NAME=old\nDB_MULTI_AZ=true\n"))
+	existing, _ := Parse(strings.NewReader("OPENCLAW_DIR=/src/oc\nWHATSAPP_PEER=+15550100\nCLUSTER_NAME=old\nDB_MULTI_AZ=true\n"))
 	values := map[string]string{
 		"CLUSTER_NAME": "substrate-tui", "AWS_REGION": "us-west-2", "AWS_PROFILE": "eks-sandbox",
 		"TAGS": "project=agent-substrate auto-delete=no", "MICROVM_INSTANCE_TYPE": "m8i.2xlarge",
+		// The OpenClaw choice: the managed OPENCLAW_DIR is cleared, not kept.
+		"OPENCLAW_DIR": "", "OPENCLAW_REPO": "https://example.com/aoa.git", "OPENCLAW_REF": "eks",
 	}
 	got, err := Render(defaults, existing, values, []string{"header line"})
 	if err != nil {
@@ -104,9 +106,11 @@ CLUSTER_NAME=substrate-tui
 AWS_REGION=us-west-2
 AWS_PROFILE=eks-sandbox
 TAGS="project=agent-substrate auto-delete=no"
+OPENCLAW_REPO=https://example.com/aoa.git
+OPENCLAW_REF=eks
 
 # Kept from the previous config.local.env
-OPENCLAW_DIR=/src/oc
+WHATSAPP_PEER=+15550100
 DB_MULTI_AZ=true
 `
 	if got != want {

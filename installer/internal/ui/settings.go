@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -33,7 +35,7 @@ func settingsFields() []field {
 		{kind: fText, key: "AWS_PROFILE", label: "AWS profile", section: "Cluster"},
 		{kind: fText, key: "KUBERNETES_VERSION", label: "Kubernetes version", section: "Cluster"},
 		{kind: fText, key: "TAGS", label: "Tags", section: "Cluster"},
-		{kind: fText, key: "EKS_PUBLIC_ACCESS_CIDRS", label: "API access CIDRs", section: "Cluster"},
+		{kind: fText, key: "EKS_PUBLIC_ACCESS_CIDRS", label: "Kube API access CIDRs", section: "Cluster"},
 	}
 	for _, g := range []string{"system", "gvisor", "microvm"} {
 		up := strings.ToUpper(g)
@@ -43,7 +45,7 @@ func settingsFields() []field {
 	}
 	f = append(f, field{kind: fText, key: "SUBSTRATE_TAG", label: "Release tag", section: "Agent Substrate"})
 	for _, d := range plan.Demos {
-		f = append(f, field{kind: fDemo, key: d.ID, label: d.Title, section: "Demos"})
+		f = append(f, field{kind: fDemo, key: d.ID, label: d.Title, section: d.Section})
 	}
 	return f
 }
@@ -56,13 +58,51 @@ func validateOne(values map[string]string, key string) map[string]string {
 	return nil
 }
 
-func demoByID(id string) plan.Demo {
+// demo returns the choice with id, disabled when this host cannot run it.
+func (m Model) demo(id string) plan.Demo {
 	for _, d := range plan.Demos {
 		if d.ID == id {
+			if why := m.unavail[id]; why != "" {
+				d.Disabled = why
+			}
 			return d
 		}
 	}
 	return plan.Demo{}
+}
+
+// setOpenClaw sets the config keys deploy.sh reads to deploy OpenClaw: off
+// clears them; on keeps an OPENCLAW_DIR or OPENCLAW_REPO the config already
+// names, else clones plan.OpenClawRepo at plan.OpenClawRef into .work/.
+func (m Model) setOpenClaw(on bool) {
+	if !on {
+		m.values["OPENCLAW_DIR"], m.values["OPENCLAW_REPO"], m.values["OPENCLAW_REF"] = "", "", ""
+		return
+	}
+	if m.values["OPENCLAW_DIR"] == "" && m.values["OPENCLAW_REPO"] == "" {
+		m.values["OPENCLAW_REPO"], m.values["OPENCLAW_REF"] = plan.OpenClawRepo, plan.OpenClawRef
+	}
+}
+
+// credproviderDir is the provider checkout demos/credprovider-aws/deploy.sh
+// builds from: CREDPROVIDER_DIR, else ~/credprovider-aws-secret-manager.
+// toolbox.sh passes CREDPROVIDER_DIR into the toolbox.
+func credproviderDir() string {
+	if d := os.Getenv("CREDPROVIDER_DIR"); d != "" {
+		return d
+	}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, "credprovider-aws-secret-manager")
+}
+
+// isCredproviderCheckout reports what deploy.sh checks: a Dockerfile and a
+// config/ directory.
+func isCredproviderCheckout(dir string) bool {
+	if st, err := os.Stat(filepath.Join(dir, "Dockerfile")); err != nil || st.IsDir() {
+		return false
+	}
+	st, err := os.Stat(filepath.Join(dir, "config"))
+	return err == nil && st.IsDir()
 }
 
 func (m Model) settingsKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -103,7 +143,7 @@ func (m Model) settingsKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "enter", " ", "space":
 		if f.kind == fDemo {
-			d := demoByID(f.key)
+			d := m.demo(f.key)
 			switch {
 			case d.Locked:
 				m.msg = d.Title + ": " + d.Note
@@ -111,6 +151,9 @@ func (m Model) settingsKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.msg = d.Title + ": " + d.Disabled
 			default:
 				m.demos[f.key] = !m.demos[f.key]
+				if f.key == "openclaw" {
+					m.setOpenClaw(m.demos["openclaw"])
+				}
 				if f.key == "s3files" && m.demos["s3files"] {
 					m.demos["efs"] = true
 				}

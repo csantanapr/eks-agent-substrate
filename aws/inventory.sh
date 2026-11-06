@@ -79,8 +79,9 @@ sgs=$(aws_ ec2 describe-security-groups --filters "Name=group-name,Values=$ROTAT
 # repositories are under ECR_PREFIX, listed above).
 aws_exists iam get-role --role-name "${IAM_PREFIX}-aws-sm-credential-provider" \
   && found "IAM role ${IAM_PREFIX}-aws-sm-credential-provider"
-for s in demo-token untagged-token; do
-  # The name has no cluster in it: count it only when it is ours.
+for s in "$CLUSTER_NAME-demo-token" "$CLUSTER_NAME-untagged-token" demo-token untagged-token; do
+  # The last two are the older names without the cluster in them: count
+  # them only when they are ours.
   name="ate/ate-demo-credprovider/$s"
   aws_exists secretsmanager describe-secret --secret-id "$name" || continue
   owner=$(aws_ secretsmanager describe-secret --secret-id "$name" \

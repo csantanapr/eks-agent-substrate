@@ -176,7 +176,8 @@ func TestPlanMatchesScripts(t *testing.T) {
 		}
 		return false
 	}
-	all := append(Install(map[string]bool{"counter-verify": true, "s3files": true, "db-rotation": true}), Teardown()...)
+	all := append(Install(map[string]bool{"counter-verify": true, "s3files": true, "db-rotation": true,
+		"credprovider-aws": true, "openclaw": true}), Teardown()...)
 	for _, c := range all {
 		for _, r := range c.Rows {
 			ok := false

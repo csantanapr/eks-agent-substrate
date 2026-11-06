@@ -18,9 +18,9 @@ everything it does can also be done by running those scripts yourself.
 |---|---|---|
 | 1 | Welcome | What it creates (EKS, node groups, S3, RDS, Secrets Manager, ECR, Pod Identity, Bedrock), about 45 minutes, a rough hourly cost |
 | 2 | Check your setup | aws, kubectl, eksctl, helm, go, docker, jq, envsubst and PyYAML with versions; `aws sts get-caller-identity` (account and role); the Region; whether the cluster name is free; nested virtualization on the microVM instance type; the EC2 vCPU quota (L-1216C47A) against what the node groups need. All read-only |
-| 3 | Settings | Cluster name, Region, profile, Kubernetes version, tags, API access CIDRs, instance type and count per node group, the Substrate release tag, demos. Defaults come from the checkout's `config.env` (then its `config.local.env`); the help panel shows the comment above each key in `config.env` |
+| 3 | Settings | Cluster name, Region, profile, Kubernetes version, tags, Kube API access CIDRs, instance type and count per node group, the Substrate release tag, then two lists of choices: Demos (counter check, OpenClaw always-on agent) and Plugins (EFS volumes, S3 Files volumes, login rotation, Secrets Manager credential provider). OpenClaw clones always-on-agent (branch eks) into `.work/` unless `OPENCLAW_DIR` names a checkout; the credential provider is offered when its checkout is at `CREDPROVIDER_DIR` (default `~/credprovider-aws-secret-manager`). Defaults come from the checkout's `config.env` (then its `config.local.env`); the help panel shows the comment above each key in `config.env` |
 | 4 | Review | The exact `config.local.env` it will write, and the commands it will run, in order. Nothing has changed until you press `y` |
-| 5 | Provision | Runs `./create-cluster.sh`, `./deploy.sh` and the chosen demos. A live checklist per script, built from the scripts' own `== <step>` lines (`log()` in `lib/common.sh`) and the Timings table each prints at exit; a scrollable log pane; elapsed time; on a failure, the failing step and the log path, and `r` to run again (the scripts are idempotent) |
+| 5 | Provision | Runs `./create-cluster.sh`, `./deploy.sh` and the chosen demos and plugins. A live checklist per script, built from the scripts' own `== <step>` lines (`log()` in `lib/common.sh`) and the Timings table each prints at exit; a scrollable log pane; elapsed time; on a failure, the failing step and the log path, and `r` to run again (the scripts are idempotent) |
 | 6 | Done | What was created, how to reach it (`.work/kubeconfig`, `kubectl ate`), verify commands, the step times, and Teardown: `t`, then type the cluster name, runs `./clean.sh --yes` and `./delete-cluster.sh --yes`. The teardown shows on the Provision screen, with steps 5 and 6 named Teardown and Removed; `q` quits when it ends |
 
 ### 1. Welcome
@@ -260,8 +260,6 @@ reach it before relying on these hashes.
 - Both sandbox classes (gVisor and microVM) are always installed, and
   `deploy.sh` always deploys the counter demo: the scripts have no switch
   for either yet. The ingress SPIFFE IDs are not asked.
-- The Secrets Manager credential provider demo (account-wide secret names)
-  and the OpenClaw demo (needs `OPENCLAW_DIR`) are listed but not offered.
 - The cost estimate knows m8i on-demand prices in us-west-2 only.
 - `demos/counter/verify.sh` binds 127.0.0.1:8001 and 8002, so two checkouts
   on one host must not run it at the same time; the installer does not

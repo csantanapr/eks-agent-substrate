@@ -25,8 +25,11 @@ CP_POOL_NS=ate-demo-credprovider
 CP_TEMPLATE=probe
 # The demo secret, tagged ate.dev/injectable=true, and one without the tag,
 # which the provider's IAM policy does not let it read.
-CP_SECRET="ate/$CP_ATESPACE/demo-token"
-CP_UNTAGGED_SECRET="ate/$CP_ATESPACE/untagged-token"
+# Both carry the cluster name, so clusters in one account and Region do not
+# share them. CP_LEGACY_SECRETS are the older names, which clean.sh removes.
+CP_SECRET="ate/$CP_ATESPACE/$CLUSTER_NAME-demo-token"
+CP_UNTAGGED_SECRET="ate/$CP_ATESPACE/$CLUSTER_NAME-untagged-token"
+CP_LEGACY_SECRETS=("ate/$CP_ATESPACE/demo-token" "ate/$CP_ATESPACE/untagged-token")
 CP_INJECTABLE_TAG=ate.dev/injectable
 
 # A public HTTPS endpoint that echoes the request headers it received.

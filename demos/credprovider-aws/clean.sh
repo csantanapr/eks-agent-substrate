@@ -93,7 +93,7 @@ if owned_role "$CP_ROLE"; then
 fi
 
 log "Secrets Manager"
-for name in "$CP_SECRET" "$CP_UNTAGGED_SECRET"; do
+for name in "$CP_SECRET" "$CP_UNTAGGED_SECRET" "${CP_LEGACY_SECRETS[@]}"; do
   # The names carry the atespace but not the cluster, so another cluster in
   # this account and Region can own a secret with the same name. Leave it.
   owner=$(secret_owner "$name"); rc=$?

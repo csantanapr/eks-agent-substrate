@@ -37,9 +37,17 @@ func (c Command) Display() string {
 	return s
 }
 
-// Demo is an optional step on the Settings screen.
+// Sections of the Settings screen's choices.
+const (
+	SectionDemos   = "Demos"
+	SectionPlugins = "Plugins"
+)
+
+// Demo is an optional step on the Settings screen: a demo, or a plugin that
+// adds an AWS integration to the install.
 type Demo struct {
 	ID       string
+	Section  string // SectionDemos or SectionPlugins
 	Title    string
 	Note     string
 	Default  bool
@@ -47,16 +55,25 @@ type Demo struct {
 	Locked   bool   // always on (deploy.sh runs it)
 }
 
-// Demos are the demo choices, in the order they run.
+// Demos are the choices, in the order the Settings screen shows them.
 var Demos = []Demo{
-	{ID: "counter", Title: "Counter on gVisor and microVM", Note: "deploy.sh always deploys it", Default: true, Locked: true},
-	{ID: "counter-verify", Title: "Counter suspend/resume check", Note: "demos/counter/verify.sh, about 10 min", Default: true},
-	{ID: "efs", Title: "Amazon EFS volumes per actor", Note: "demos/efs, about 10 min"},
-	{ID: "s3files", Title: "Amazon S3 Files volumes per actor", Note: "demos/s3files, needs EFS"},
-	{ID: "db-rotation", Title: "Secrets Manager login rotation", Note: "demos/db-rotation"},
-	{ID: "credprovider-aws", Title: "Secrets Manager credential provider", Disabled: "its secret names are account-wide; run it from one checkout only"},
-	{ID: "openclaw", Title: "OpenClaw always-on agent", Disabled: "needs OPENCLAW_DIR in config.local.env"},
+	{ID: "counter", Section: SectionDemos, Title: "Counter on gVisor and microVM", Note: "deploy.sh always deploys it", Default: true, Locked: true},
+	{ID: "counter-verify", Section: SectionDemos, Title: "Counter suspend/resume check", Note: "demos/counter/verify.sh, about 10 min", Default: true},
+	{ID: "openclaw", Section: SectionDemos, Title: "OpenClaw always-on agent",
+		Note: "demos/openclaw: an always-on gateway, and an actor per conversation that thinks with Bedrock. Clones the always-on-agent repository (branch eks) into .work/, unless OPENCLAW_DIR names a checkout. About 10 min."},
+	{ID: "efs", Section: SectionPlugins, Title: "Amazon EFS volumes per actor", Note: "demos/efs, about 10 min"},
+	{ID: "s3files", Section: SectionPlugins, Title: "Amazon S3 Files volumes per actor", Note: "demos/s3files, needs EFS"},
+	{ID: "db-rotation", Section: SectionPlugins, Title: "Secrets Manager login rotation", Note: "demos/db-rotation"},
+	{ID: "credprovider-aws", Section: SectionPlugins, Title: "Secrets Manager credential provider",
+		Note: "demos/credprovider-aws: builds the provider from its checkout (CREDPROVIDER_DIR, default ~/credprovider-aws-secret-manager), then checks it injects an actor's secret and refuses the rest. About 5 min."},
 }
+
+// OpenClawRepo and OpenClawRef are what the OpenClaw choice clones when
+// OPENCLAW_DIR is empty.
+const (
+	OpenClawRepo = "https://github.com/csantanapr/always-on-agent.git"
+	OpenClawRef  = "eks"
+)
 
 var createCluster = Command{
 	ID: "create-cluster", Title: "Create the EKS cluster", Args: []string{"./create-cluster.sh"},
@@ -144,6 +161,26 @@ var dbRotation = []Command{
 	{ID: "db-rotation-verify", Title: "Check the login rotation", Args: []string{"demos/db-rotation/verify.sh"}, Minutes: 5, Summary: "rotate a login and watch the rollout"},
 }
 
+var credprovider = []Command{
+	{ID: "credprovider-aws", Title: "Secrets Manager credential provider", Args: []string{"demos/credprovider-aws/deploy.sh"}, Minutes: 4, Summary: "the provider, its IAM role, demo secrets, probe actors", Rows: []Row{
+		{Title: "IAM role for the provider", Match: []string{"IAM role for the provider"}},
+		{Title: "Demo secrets", Match: []string{"Secrets Manager: the demo secrets"}},
+		{Title: "ECR repositories", Match: []string{"ECR repositories"}},
+		{Title: "Provider image", Match: []string{"Provider image from"}},
+		{Title: "Probe actor image", Match: []string{"Probe actor image"}},
+		{Title: "Secret policy", Match: []string{"Secret policy:"}},
+		{Title: "Provider in ate-system", Match: []string{"aws-sm-credential-provider (config/"}},
+		{Title: "Register with the egress gateway", Match: []string{"atenet-egress serves"}},
+		{Title: "Probe worker pool and templates", Match: []string{"Worker pool credprovider-probe"}},
+	}},
+	{ID: "credprovider-aws-verify", Title: "Check the credential provider", Args: []string{"demos/credprovider-aws/verify.sh"}, Minutes: 2, Summary: "inject a secret; refuse an untagged one and an unlisted atespace"},
+}
+
+var openclawVerify = Command{
+	ID: "openclaw-verify", Title: "Check the OpenClaw demo", Args: []string{"demos/openclaw/deploy.sh", "verify"},
+	Minutes: 2, Summary: "the actor, the gateway, and the gateway-to-actor path",
+}
+
 // Install returns the commands for an install with the chosen demos.
 func Install(demos map[string]bool) []Command {
 	cmds := []Command{createCluster, deploy}
@@ -158,6 +195,13 @@ func Install(demos map[string]bool) []Command {
 	}
 	if demos["db-rotation"] {
 		cmds = append(cmds, dbRotation...)
+	}
+	if demos["credprovider-aws"] {
+		cmds = append(cmds, credprovider...)
+	}
+	// deploy.sh deploys OpenClaw when config.local.env names it; this checks it.
+	if demos["openclaw"] {
+		cmds = append(cmds, openclawVerify)
 	}
 	return cmds
 }
@@ -189,7 +233,8 @@ func Teardown() []Command {
 // ByID returns the command with id from the full catalog (install and
 // teardown), for replaying a recorded log.
 func ByID(id string) (Command, bool) {
-	all := append(Install(map[string]bool{"counter-verify": true, "s3files": true, "db-rotation": true}), Teardown()...)
+	all := append(Install(map[string]bool{"counter-verify": true, "s3files": true, "db-rotation": true,
+		"credprovider-aws": true, "openclaw": true}), Teardown()...)
 	for _, c := range all {
 		if c.ID == id {
 			return c, true

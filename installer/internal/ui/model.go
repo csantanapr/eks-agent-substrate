@@ -82,14 +82,15 @@ type Model struct {
 	screen screen
 	w, h   int
 
-	values map[string]string
-	demos  map[string]bool
-	fields []field
-	cursor int
-	edit   bool
-	input  textinput.Model
-	errs   map[string]string
-	msg    string
+	values  map[string]string
+	demos   map[string]bool
+	unavail map[string]string // choices this host cannot run, and why
+	fields  []field
+	cursor  int
+	edit    bool
+	input   textinput.Model
+	errs    map[string]string
+	msg     string
 	// msgUntil, when set, clears msg after that time (short notices).
 	msgUntil time.Time
 
@@ -141,8 +142,19 @@ func New(opt Options) Model {
 			m.values[k] = v
 		}
 	}
+	m.unavail = map[string]string{}
+	if !opt.DryRun {
+		if dir := credproviderDir(); !isCredproviderCheckout(dir) {
+			m.unavail["credprovider-aws"] = "no credprovider-aws-secret-manager checkout at " + dir + "; clone it there or set CREDPROVIDER_DIR"
+		}
+	}
 	for _, d := range plan.Demos {
+		d = m.demo(d.ID)
 		m.demos[d.ID] = d.Default && d.Disabled == ""
+		if d.ID == "openclaw" {
+			// deploy.sh deploys OpenClaw when the config names a checkout.
+			m.demos[d.ID] = m.values["OPENCLAW_DIR"] != "" || m.values["OPENCLAW_REPO"] != ""
+		}
 		if opt.Demos != nil && d.Disabled == "" && !d.Locked {
 			m.demos[d.ID] = opt.Demos[d.ID]
 		}

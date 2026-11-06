@@ -14,7 +14,7 @@
 #              (NetworkPolicy and SPIFFE ID); default-deny atespace policy
 #   IAM        its Pod Identity role may read only secrets under ate/ that are
 #              tagged ate.dev/injectable=true and owned by this deployment
-#   secrets    ate/ate-demo-credprovider/demo-token (random, injectable) and
+#   secrets    ate/ate-demo-credprovider/<cluster>-demo-token (random, injectable) and
 #              .../untagged-token (not injectable), in Secrets Manager
 #   gateway    substrate/install.sh with the provider registered in
 #              .work/credential-providers/, so atenet-egress serves both k8s.io

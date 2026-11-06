@@ -167,6 +167,8 @@ var Managed = []string{
 	"GVISOR_INSTANCE_TYPE", "GVISOR_NODES",
 	"MICROVM_INSTANCE_TYPE", "MICROVM_NODES",
 	"TAGS", "EKS_PUBLIC_ACCESS_CIDRS", "SUBSTRATE_TAG",
+	// Set by the OpenClaw choice on the Settings screen.
+	"OPENCLAW_DIR", "OPENCLAW_REPO", "OPENCLAW_REF",
 }
 
 // Always lists the managed keys written even when they equal config.env, so
@@ -253,7 +255,7 @@ func Render(defaults, existing File, values map[string]string, header []string) 
 		}
 		fmt.Fprintf(&b, "%s=%s\n", k, Quote(v))
 	}
-	// Keys outside the installer's questions (OPENCLAW_DIR, DB_*, ...) that
+	// Keys outside the installer's questions (WHATSAPP_PEER, DB_*, ...) that
 	// the existing file set stay as they were.
 	var kept []Entry
 	seen := map[string]bool{}

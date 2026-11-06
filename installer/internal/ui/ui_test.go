@@ -171,7 +171,12 @@ func TestSettingsEditAndValidate(t *testing.T) {
 	if err != nil {
 		t.Skip(err)
 	}
+	// No provider checkout here, so that plugin cannot be chosen.
+	t.Setenv("CREDPROVIDER_DIR", t.TempDir())
 	m := New(Options{Repo: repo, Checks: []preflight.Result{}})
+	// Start with OpenClaw off, whatever this checkout's config says.
+	m.setOpenClaw(false)
+	m.demos["openclaw"] = false
 	m = press(t, m, "enter", "enter") // welcome -> check -> settings
 	if m.screen != sSettings {
 		t.Fatalf("screen %v", m.screen)
@@ -198,22 +203,80 @@ func TestSettingsEditAndValidate(t *testing.T) {
 	if !m.demos["s3files"] || !m.demos["efs"] {
 		t.Errorf("demos %v", m.demos)
 	}
+	// OpenClaw: on writes the repository to clone, off clears it again.
 	for m.fields[m.cursor].key != "openclaw" {
 		m = press(t, m, "down")
 	}
 	m = press(t, m, " ")
-	if m.demos["openclaw"] {
-		t.Error("a disabled demo cannot be chosen")
+	if !m.demos["openclaw"] || m.values["OPENCLAW_REPO"] != plan.OpenClawRepo || m.values["OPENCLAW_REF"] != plan.OpenClawRef {
+		t.Errorf("openclaw on: %v %q %q", m.demos["openclaw"], m.values["OPENCLAW_REPO"], m.values["OPENCLAW_REF"])
+	}
+	m = press(t, m, " ")
+	if m.demos["openclaw"] || m.values["OPENCLAW_REPO"] != "" {
+		t.Errorf("openclaw off: %v %q", m.demos["openclaw"], m.values["OPENCLAW_REPO"])
+	}
+	m = press(t, m, " ")
+	for m.fields[m.cursor].key != "credprovider-aws" {
+		m = press(t, m, "down")
+	}
+	m = press(t, m, " ")
+	if m.demos["credprovider-aws"] || !strings.Contains(m.msg, "CREDPROVIDER_DIR") {
+		t.Errorf("the provider plugin needs its checkout: %v %q", m.demos["credprovider-aws"], m.msg)
+	}
+	v := plan.StripANSI(m.render(126, 33))
+	for _, want := range []string{"Kube API access CIDRs", "Demos", "Plugins", "OpenClaw always-on agent", "Secrets Manager credential provider"} {
+		if !strings.Contains(v, want) {
+			t.Errorf("settings screen lacks %q", want)
+		}
+	}
+	if strings.Index(v, "OpenClaw") > strings.Index(v, "Plugins") {
+		t.Error("OpenClaw is listed under Demos, above Plugins")
 	}
 	m = press(t, m, "n")
 	if m.screen != sReview {
 		t.Fatalf("screen %v: %s", m.screen, m.msg)
 	}
+	if !strings.Contains(m.localText, "OPENCLAW_REPO="+plan.OpenClawRepo) {
+		t.Errorf("config.local.env lacks OPENCLAW_REPO:\n%s", m.localText)
+	}
 	var ids []string
 	for _, c := range m.cmds {
 		ids = append(ids, c.ID)
 	}
-	if got := strings.Join(ids, " "); got != "create-cluster deploy counter-verify efs efs-verify s3files s3files-verify" {
+	if got := strings.Join(ids, " "); got != "create-cluster deploy counter-verify efs efs-verify s3files s3files-verify openclaw-verify" {
+		t.Errorf("commands: %s", got)
+	}
+}
+
+// The provider plugin is offered when its checkout is there, and runs its
+// deploy and its check.
+func TestCredproviderPlugin(t *testing.T) {
+	repo, err := config.LoadRepo(filepath.Join("..", "..", ".."))
+	if err != nil {
+		t.Skip(err)
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "Dockerfile"), []byte("FROM scratch\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(dir, "config"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CREDPROVIDER_DIR", dir)
+	m := New(Options{Repo: repo, Checks: []preflight.Result{}})
+	m = press(t, m, "enter", "enter")
+	for m.fields[m.cursor].key != "credprovider-aws" {
+		m = press(t, m, "down")
+	}
+	m = press(t, m, " ")
+	if !m.demos["credprovider-aws"] {
+		t.Fatalf("not chosen: %q", m.msg)
+	}
+	var ids []string
+	for _, c := range plan.Install(m.demos) {
+		ids = append(ids, c.ID)
+	}
+	if got := strings.Join(ids, " "); !strings.Contains(got, "credprovider-aws credprovider-aws-verify") {
 		t.Errorf("commands: %s", got)
 	}
 }
