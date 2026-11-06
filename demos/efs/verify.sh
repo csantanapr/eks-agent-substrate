@@ -11,7 +11,7 @@
 # volume, so it lives on EFS (or S3 Files), not in the snapshot.
 #
 # Learn more:
-#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/guides/csi-volumes.md
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0/docs/guides/csi-volumes.md
 #   https://docs.aws.amazon.com/efs/latest/ug/efs-access-points.html
 set -euo pipefail
 . "$(dirname "$0")/../../lib/common.sh"

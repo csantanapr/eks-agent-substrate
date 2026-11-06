@@ -249,13 +249,13 @@ Things to know:
 
 ## Move to a new release
 
-Set `SUBSTRATE_TAG` in `config.local.env` (for example `v1.0.0-rc.3`, or
+Set `SUBSTRATE_TAG` in `config.local.env` (for example `v1.0.1`, or
 `latest` for the newest tag), or pass it for one run, then reinstall on the
 same cluster:
 
 ```bash
 ./clean.sh                                # removes the installed release
-SUBSTRATE_TAG=v1.0.0-rc.3 ./deploy.sh     # installs the new one
+SUBSTRATE_TAG=v1.0.1 ./deploy.sh     # installs the new one
 ```
 
 `clean.sh` removes the release the cluster runs (it records the tag at install

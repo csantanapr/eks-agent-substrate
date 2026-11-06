@@ -13,9 +13,9 @@
 # suspend).
 #
 # Learn more:
-#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/get-started/quickstart.md
-#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/reference/kubectl-ate.md
-#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/guides/upgrade.md
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0/docs/get-started/quickstart.md
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0/docs/reference/kubectl-ate.md
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0/docs/guides/upgrade.md
 set -euo pipefail
 . "$(dirname "$0")/../lib/common.sh"
 need git; need go

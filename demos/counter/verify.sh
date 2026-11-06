@@ -9,8 +9,8 @@
 # another worker.
 #
 # Learn more:
-#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/concepts/architecture.md
-#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/reference/kubectl-ate.md
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0/docs/concepts/architecture.md
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0/docs/reference/kubectl-ate.md
 set -euo pipefail
 . "$(dirname "$0")/../../lib/common.sh"
 PIDS=()

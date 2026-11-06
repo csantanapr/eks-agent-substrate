@@ -18,8 +18,8 @@
 # gVisor runs them on a user-space kernel, a microVM on its own guest kernel.
 #
 # Learn more:
-#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/reference/sandbox-classes.md
-#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/cmd/ate-setup/commands.md
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0/docs/reference/sandbox-classes.md
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0/cmd/ate-setup/commands.md
 #   https://gvisor.dev/docs/
 #   https://katacontainers.io/
 set -euo pipefail

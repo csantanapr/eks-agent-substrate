@@ -15,8 +15,8 @@
 # the way out.
 #
 # Learn more:
-#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/guides/egress-credential-injection.md
-#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/guides/actor-jwts.md
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0/docs/guides/egress-credential-injection.md
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0/docs/guides/actor-jwts.md
 set -euo pipefail
 . "$(dirname "$0")/../../lib/common.sh"
 

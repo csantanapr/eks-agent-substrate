@@ -354,6 +354,6 @@ func Validate(values map[string]string) map[string]string {
 	if strings.TrimSpace(values["EKS_PUBLIC_ACCESS_CIDRS"]) == "" {
 		bad["EKS_PUBLIC_ACCESS_CIDRS"] = "at least one CIDR (0.0.0.0/0 is any address)"
 	}
-	check("SUBSTRATE_TAG", stageRe.MatchString(values["SUBSTRATE_TAG"]), "a release tag such as v1.0.0-rc.3, or latest")
+	check("SUBSTRATE_TAG", stageRe.MatchString(values["SUBSTRATE_TAG"]), "a release tag such as v1.0.0, or latest")
 	return bad
 }

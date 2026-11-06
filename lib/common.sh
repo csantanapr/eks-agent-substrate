@@ -38,7 +38,7 @@ die()  { printf '\033[1;31mERROR\033[0m %s\n' "$*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || die "$1 is required but not on PATH"; }
 
 # SUBSTRATE_TAG from the environment wins over the files, so a new release
-# can be tried with `SUBSTRATE_TAG=v1.0.0-rc.3 ./deploy.sh`.
+# can be tried with `SUBSTRATE_TAG=v1.0.1 ./deploy.sh`.
 _env_tag="${SUBSTRATE_TAG:-}"
 # shellcheck source=../config.env
 . "$ROOT/config.env"

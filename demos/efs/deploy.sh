@@ -27,8 +27,8 @@
 # Learn more:
 #   https://docs.aws.amazon.com/eks/latest/userguide/efs-csi.html
 #   https://docs.aws.amazon.com/efs/latest/ug/efs-access-points.html
-#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/guides/csi-volumes.md
-#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/guides/csi-deployment.md
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0/docs/guides/csi-volumes.md
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0/docs/guides/csi-deployment.md
 set -euo pipefail
 . "$(dirname "$0")/../../lib/common.sh"
 need envsubst
@@ -151,7 +151,7 @@ log "Agent Substrate with the ExternalVolumes preview"
 # The reinstall rolls the worker pods, so actors running on them crash;
 # demos/counter/verify.sh reverts its own. Later installs keep the gate.
 # A preview gate turns on a feature that is off by default.
-#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/dev/preview-gates.md
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0/docs/dev/preview-gates.md
 bash "$ROOT/substrate/install.sh" --preview=ExternalVolumes
 
 log "CSIDriverConfig and StorageClass $SC"

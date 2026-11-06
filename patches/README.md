@@ -5,11 +5,12 @@
 The release images are not changed: the patch touches only the installer and
 the install manifests it renders.
 
-## substrate-v1.0.0-rc.3-eks.patch
+## substrate-v1.0.0-eks.patch
 
-In v1.0.0-rc.3, `ate-setup` treats every cluster that is not kind as GKE with
+In v1.0.0, `ate-setup` treats every cluster that is not kind as GKE with
 Cloud Storage. The patch makes it install on EKS with Amazon S3. It applies
-unchanged to v1.0.0-rc.2, where `fetch.sh` uses it with a warning.
+unchanged to v1.0.0-rc.2 and v1.0.0-rc.3, where `fetch.sh` uses it with a
+warning.
 
 | File | Change |
 |---|---|

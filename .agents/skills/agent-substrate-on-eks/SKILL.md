@@ -95,8 +95,8 @@ actor-template NAME -a ATESPACE -o json | jq .status`.
   profile, tags: `config.local.env`, then the script that owns it
   (`create-cluster.sh` for nodes, `deploy.sh` for the rest). Node group
   changes on an existing cluster need eksctl directly or a delete and create.
-- A new Substrate release (for example rc.3): keep the cluster, run
-  `./clean.sh --yes`, then `SUBSTRATE_TAG=v1.0.0-rc.3 ./deploy.sh` (or set it in
+- A new Substrate release (for example v1.0.1): keep the cluster, run
+  `./clean.sh --yes`, then `SUBSTRATE_TAG=v1.0.1 ./deploy.sh` (or set it in
   `config.local.env`; `latest` picks the newest tag). `clean.sh` removes the
   release recorded in `.work/installed-substrate-tag`; worker images are
   resolved to the new tag's digest. If `fetch.sh` reports that no patch

@@ -17,8 +17,8 @@
 # demos/counter/verify.sh checks the install end to end.
 #
 # Learn more:
-#   https://github.com/agent-substrate/substrate/tree/v1.0.0-rc.3
-#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/concepts/architecture.md
+#   https://github.com/agent-substrate/substrate/tree/v1.0.0
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0/docs/concepts/architecture.md
 set -euo pipefail
 . "$(dirname "$0")/lib/common.sh"
 for t in aws kubectl git go docker jq python3 curl; do need "$t"; done

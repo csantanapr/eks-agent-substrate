@@ -11,7 +11,7 @@
 # source mounts the CA that ate-api-server's client certificate chains to.
 #
 # Learn more:
-#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/guides/csi-deployment.md
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0/docs/guides/csi-deployment.md
 #   https://github.com/kubernetes-sigs/aws-efs-csi-driver
 #   https://kubernetes.io/docs/concepts/storage/projected-volumes/
 apiVersion: v1

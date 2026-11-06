@@ -182,7 +182,7 @@ func TestValidate(t *testing.T) {
 		"CLUSTER_NAME": "substrate-tui", "AWS_REGION": "us-west-2", "AWS_PROFILE": "eks-sandbox", "KUBERNETES_VERSION": "1.37",
 		"SYSTEM_INSTANCE_TYPE": "m8i.xlarge", "SYSTEM_NODES": "2", "GVISOR_INSTANCE_TYPE": "m8i.2xlarge", "GVISOR_NODES": "2",
 		"MICROVM_INSTANCE_TYPE": "m8i.2xlarge", "MICROVM_NODES": "2", "TAGS": "project=agent-substrate auto-delete=no",
-		"EKS_PUBLIC_ACCESS_CIDRS": "0.0.0.0/0", "SUBSTRATE_TAG": "v1.0.0-rc.3",
+		"EKS_PUBLIC_ACCESS_CIDRS": "0.0.0.0/0", "SUBSTRATE_TAG": "v1.0.0",
 	}
 	if bad := Validate(good); len(bad) != 0 {
 		t.Fatalf("good values rejected: %v", bad)

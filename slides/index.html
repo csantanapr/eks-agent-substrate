@@ -132,7 +132,7 @@
   <aside class="notes">
     <p>This talk has <b>two goals</b>.</p>
     <ul>
-      <li>Show that <b>Agent Substrate v1.0.0-rc.3 runs on EKS</b> with the AWS services you already use.</li>
+      <li>Show that <b>Agent Substrate v1.0.0 runs on EKS</b> with the AWS services you already use.</li>
       <li>Be clear about what still needs a <b>small patch</b> today.</li>
       <li>Lay out <b>where AWS can contribute back</b>, so a production install needs no patch.</li>
     </ul>
@@ -159,7 +159,7 @@
     </div>
     <div class="card">
       <h3>Everything shown runs on</h3>
-      <p><span class="pill">Agent Substrate v1.0.0-rc.3</span><span class="pill">EKS 1.37</span><span class="pill">Amazon Linux 2023</span>
+      <p><span class="pill">Agent Substrate v1.0.0</span><span class="pill">EKS 1.37</span><span class="pill">Amazon Linux 2023</span>
       <span class="pill">m8i (nested virt)</span><span class="pill">S3</span><span class="pill">RDS for PostgreSQL 18</span>
       <span class="pill">Secrets Manager</span><span class="pill">ECR</span><span class="pill">Bedrock</span>
       <span class="pill">EFS</span><span class="pill">S3 Files</span></p>
@@ -367,7 +367,7 @@
 <section class="slide">
   <h2>Every Substrate dependency maps to an AWS service</h2>
   <table>
-    <tr><th>Agent Substrate needs</th><th>On AWS</th><th>Status in rc.3</th></tr>
+    <tr><th>Agent Substrate needs</th><th>On AWS</th><th>Status in v1.0.0</th></tr>
     <tr><td>Kubernetes with PodCertificate + ClusterTrustBundle</td><td>EKS 1.37 (both GA)</td><td class="ok">works, no flags</td></tr>
     <tr><td>Snapshot object store</td><td>Amazon S3 via <code>objectstore-plugin</code> (<code>ATE_STORAGE_BACKEND=s3</code>)</td><td class="ok">works</td></tr>
     <tr><td>microVM guest assets</td><td>S3 asset bucket, read-only for atelet</td><td class="warn">works; stock installer stages to GCS, small patch for S3</td></tr>
@@ -770,7 +770,7 @@ export ATE_API_POSTGRES_READ_WRITE_CONNECTION_STRING=…
 
 ate-setup deploy ate-system \
   --image-repo ghcr.io/agent-substrate/substrate \
-  --image-tag v1.0.0-rc.3 \
+  --image-tag v1.0.0 \
   --snapshot-location s3://&lt;snapshots&gt;/ \
   --ateapi-postgres-server-ca-file global-bundle.pem \
   --sandbox-classes gvisor,microvm
@@ -1396,7 +1396,7 @@ curl localhost:8001     <span class="c"># resumes</span></code></pre>
   <h2>What works on EKS today, and the rough edges</h2>
   <div class="grid2">
     <div class="card roomy">
-      <h3 class="ok">Works with rc.3</h3>
+      <h3 class="ok">Works with v1.0.0</h3>
       <ul>
         <li>Published images on stock EKS 1.37 and AL2023</li>
         <li>gVisor and microVM suspend and resume</li>
@@ -1419,7 +1419,7 @@ curl localhost:8001     <span class="c"># resumes</span></code></pre>
     </div>
   </div>
   <aside class="notes">
-    <p><i>Left:</i> what <b>works on EKS with rc.3</b>. <i>Right:</i> the <b>rough edges</b>.</p>
+    <p><i>Left:</i> what <b>works on EKS with v1.0.0</b>. <i>Right:</i> the <b>rough edges</b>.</p>
     <ul>
       <li>Works with the <b>published images</b> on a <b>stock EKS 1.37</b> cluster with AL2023 nodes.</li>
       <li>These all use <b>Pod Identity</b>:

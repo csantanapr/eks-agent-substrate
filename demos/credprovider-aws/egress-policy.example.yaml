@@ -17,7 +17,7 @@
 #   kubectl ate create egress-policy ACTOR -a ate-demo-credprovider -f egress-policy.example.yaml
 #
 # Learn more:
-#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/guides/egress-credential-injection.md
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0/docs/guides/egress-credential-injection.md
 #   https://github.com/csantanapr/credprovider-aws-secret-manager
 rules:
 - https:

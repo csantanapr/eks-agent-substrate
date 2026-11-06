@@ -13,8 +13,8 @@
 # golden snapshot, which new actors restore from instead of a cold boot.
 #
 # Learn more:
-#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/reference/glossary.md
-#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/reference/sandbox-classes.md
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0/docs/reference/glossary.md
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0/docs/reference/sandbox-classes.md
 #   https://docs.aws.amazon.com/AmazonECR/latest/userguide/registry_auth.html
 set -euo pipefail
 . "$(dirname "$0")/../../lib/common.sh"

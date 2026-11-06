@@ -19,7 +19,7 @@
 #   https://kubernetes.io/docs/concepts/workloads/controllers/job/
 #   https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Appendix.PostgreSQL.CommonDBATasks.Roles.html
 #   https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/PostgreSQL.Concepts.General.SSL.html
-#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/guides/postgres.md
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0/docs/guides/postgres.md
 set -euo pipefail
 . "$(dirname "$0")/../lib/common.sh"
 need envsubst

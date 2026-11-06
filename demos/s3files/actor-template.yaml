@@ -20,7 +20,7 @@
 # name), so this file parses as YAML before it is filled in too.
 #
 # Learn more:
-#   https://github.com/agent-substrate/substrate/blob/v1.0.0-rc.3/docs/guides/csi-volumes.md
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0/docs/guides/csi-volumes.md
 #   https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-files-mounting-eks.html
 
 metadata: { atespace: $atespace, name: counter-s3files }
