@@ -67,8 +67,16 @@ func (m Model) header(w int) string {
 	if m.screen == sTeardown {
 		cur = int(sDone)
 	}
+	names := rail
+	if m.teardown && m.screen == sProvision {
+		// A teardown reuses the Provision screen; its last step is Removed.
+		names = append(append([]string{}, rail[:sProvision]...), "Teardown", "Removed")
+		if !m.running && m.exitCode == 0 {
+			cur = int(sDone)
+		}
+	}
 	var steps []string
-	for i, s := range rail {
+	for i, s := range names {
 		label := fmt.Sprintf("%d %s", i+1, s)
 		switch {
 		case i == cur:

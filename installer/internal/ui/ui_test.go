@@ -256,6 +256,28 @@ func TestReopenLastRun(t *testing.T) {
 	}
 }
 
+// A teardown names its steps Teardown and Removed, and a finished one
+// shows Removed as the current step.
+func TestTeardownRail(t *testing.T) {
+	m := Model{screen: sProvision, teardown: true, running: true, values: map[string]string{"CLUSTER_NAME": "c"}}
+	rail := func() string { return plan.StripANSI(strings.Split(m.header(160), "\n")[1]) }
+	if got := rail(); !strings.Contains(got, " 5 Teardown ") || !strings.Contains(got, "6 Removed") || strings.Contains(got, "Provision") {
+		t.Errorf("running: %q", got)
+	}
+	m.running = false
+	if got := rail(); !strings.Contains(got, iconDone+" Teardown") || !strings.Contains(got, " 6 Removed ") {
+		t.Errorf("finished: %q", got)
+	}
+	m.exitCode = 1
+	if got := rail(); !strings.Contains(got, " 5 Teardown ") {
+		t.Errorf("failed: %q", got)
+	}
+	m = Model{screen: sProvision, values: map[string]string{}}
+	if got := rail(); !strings.Contains(got, " 5 Provision ") || !strings.Contains(got, "6 Done") {
+		t.Errorf("install: %q", got)
+	}
+}
+
 func TestRedact(t *testing.T) {
 	m := Model{opt: Options{Redact: true}}
 	if got := m.redact("substrate-tui-snap-444455556666-us-west-2"); got != "substrate-tui-snap-111122223333-us-west-2" {
