@@ -86,11 +86,14 @@ else
   args+=(--user "$(id -u):$(id -g)" --group-add "$gid")
 fi
 
-# Credentials.
+# Credentials. Each run gets its own folder under .work/toolbox/creds/, so
+# runs side by side (two checkouts, or the installer and a script) do not
+# delete each other's credentials when one ends.
 refresher=
+run_creds=
 cleanup() {
   [ -z "$refresher" ] || kill "$refresher" 2>/dev/null || true
-  rm -f "$TB/creds/$PROFILE.json" "$TB/creds/config"
+  [ -z "$run_creds" ] || rm -rf "$run_creds"
 }
 trap cleanup EXIT
 helper=
@@ -99,16 +102,17 @@ if [ -n "$PROFILE" ] && command -v aws >/dev/null 2>&1; then
 fi
 if [ -n "$helper" ]; then
   mkdir -p "$TB/creds"; chmod 0700 "$TB/creds"
+  run_creds=$(mktemp -d "$TB/creds/run.XXXXXX")
   export_creds() {
-    local f="$TB/creds/$PROFILE.json"
+    local f="$run_creds/$PROFILE.json"
     (umask 077; aws configure export-credentials --profile "$PROFILE" --format process > "$f.new") && mv -f "$f.new" "$f"
   }
   export_creds || die "cannot get credentials for profile $PROFILE on the host"
   ( while sleep 120; do export_creds 2>/dev/null || true; done ) &
   refresher=$!
   (umask 077; printf '[profile %s]\nregion = %s\ncredential_process = cat %s\n' \
-    "$PROFILE" "$REGION" "$TB/creds/$PROFILE.json" > "$TB/creds/config")
-  args+=(-e AWS_CONFIG_FILE="$TB/creds/config" -e AWS_SHARED_CREDENTIALS_FILE="$TB/creds/none")
+    "$PROFILE" "$REGION" "$run_creds/$PROFILE.json" > "$run_creds/config")
+  args+=(-e AWS_CONFIG_FILE="$run_creds/config" -e AWS_SHARED_CREDENTIALS_FILE="$run_creds/none")
 elif [ -d "$HOME/.aws" ]; then
   args+=(-v "$HOME/.aws:$TB/home/.aws")
 fi
