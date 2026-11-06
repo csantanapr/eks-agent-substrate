@@ -140,9 +140,11 @@ log "aws-sm-credential-provider (config/ from the checkout)"
 # The plugin's kustomize base, with the ECR image, this Region, the system
 # node group, and the policy's hash, so a policy change rolls the pods (the
 # provider reads it only at start).
+# --expected-role-arn pins the provider to this deployment's role: it exits
+# at startup if its Pod Identity credentials resolve to any other role.
 kubectl kustomize "$CREDPROVIDER_DIR/config" | python3 -c '
 import sys, yaml
-image, region, sha = sys.argv[1:]
+image, region, sha, role = sys.argv[1:]
 docs = [d for d in yaml.safe_load_all(sys.stdin) if d]
 found = 0
 for d in docs:
@@ -156,10 +158,12 @@ for d in docs:
         c["image"] = image
         args = ["--region=" + region if a.startswith("--region=") else a for a in c["args"]]
         assert "--region=" + region in args, "no --region in the provider args"
+        args = [a for a in args if not a.startswith("--expected-role-arn=")] + ["--expected-role-arn=" + role]
         c["args"] = args
         found += 1
 assert found == 1, "want one provider container, found %d" % found
-print(yaml.safe_dump_all(docs))' "$PROVIDER_IMAGE" "$AWS_REGION" "$policy_sha" | kubectl apply -f -
+print(yaml.safe_dump_all(docs))' "$PROVIDER_IMAGE" "$AWS_REGION" "$policy_sha" \
+  "arn:$PARTITION:iam::$ACCOUNT:role/$CP_ROLE" | kubectl apply -f -
 # A pod that started before the association applied exits at startup (no
 # Pod Identity credentials); ensure_pod_identity restarts it.
 kubectl -n "$CP_NS" rollout status "deploy/$CP_SA" --timeout=2m >/dev/null 2>&1 \
