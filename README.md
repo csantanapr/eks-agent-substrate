@@ -102,6 +102,30 @@ AWS_REGION=us-west-2
 TAGS="project=my-substrate team=platform"
 ```
 
+### One checkout per cluster
+
+A checkout drives one cluster: its `config.local.env` names the cluster, and
+its `.work/` holds that cluster's state (kubeconfig, tools, install record).
+To run a second cluster, for example to try a change while your main one
+keeps running, use a second checkout with its own `config.local.env`. A git
+worktree is the quickest way to get one; it shares this checkout's history
+and takes seconds:
+
+```bash
+git worktree add --detach ../eks-talk-2 main   # --detach: main is checked out here already
+cd ../eks-talk-2
+printf 'CLUSTER_NAME=my-substrate-2\nAWS_PROFILE=my-profile\n' > config.local.env
+./create-cluster.sh && ./deploy.sh
+# later: ./clean.sh --yes && ./delete-cluster.sh --yes
+#        cd - && git worktree remove ../eks-talk-2
+```
+
+A plain `git clone` works the same. Use a different `CLUSTER_NAME` in each:
+S3 buckets, IAM roles, the RDS instance and the ECR repositories are all
+named from it. Two checkouts on one host must not run
+`demos/counter/verify.sh` at the same time: both use local ports 8001 and
+8002.
+
 ## Deploy
 
 ```bash

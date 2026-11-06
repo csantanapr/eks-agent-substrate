@@ -19,8 +19,12 @@ what goes wrong. Repository rules are in `AGENTS.md`; follow them.
    shared document.
 3. Check the tools: `aws`, `eksctl` (0.230+), `kubectl`, `docker` with buildx,
    `go` (1.27+), `git`, `jq`, `curl`, `openssl`, `python3 -c 'import yaml'`,
-   bash 4+ with GNU `sed`/`sort` (on macOS from Homebrew). The prerequisites
-   in `README.md` list quotas and Bedrock model access.
+   bash 4+ with GNU `sed`/`sort` (on macOS from Homebrew). If some are
+   missing and Docker is there, run every script as `./toolbox.sh <script>`
+   instead (README, "Run with only Docker"). The prerequisites in `README.md`
+   list quotas and Bedrock model access.
+   One checkout drives one cluster: for a second cluster, use a second
+   checkout (README, "One checkout per cluster").
 4. Use only `.work/kubeconfig`: `export KUBECONFIG=$PWD/.work/kubeconfig
    PATH=$PWD/.work/bin:$PATH`.
 

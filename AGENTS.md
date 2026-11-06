@@ -25,6 +25,16 @@ same skills. Add a new skill under `.agents/skills/` only.
   with it and `delete-cluster.sh` starts with it.
 - `.work/` is generated state: the kubeconfig, the patched Substrate clone,
   `ate-setup` and `kubectl-ate`. Never commit it.
+- One checkout drives one cluster (its `config.local.env` and `.work/`). For
+  a second cluster use a second checkout, a `git worktree` (README, "One
+  checkout per cluster"); never point two clusters at one checkout.
+- `toolbox.sh` runs any script inside `toolbox/Dockerfile`, which pins every
+  tool the scripts use; a host then needs only Docker, git and AWS
+  credentials. When a script needs a new tool, add it there, pinned by
+  sha256 (`toolbox/pins.sh`), and check the script both ways.
+- `installer/` is an optional terminal UI over the same scripts (Go, its own
+  `go.mod`); `installer/run.sh` runs it in the toolbox. It adds no install
+  logic of its own.
 
 ## Rules
 
@@ -62,9 +72,10 @@ same skills. Add a new skill under `.agents/skills/` only.
 ## Checks before you finish
 
 ```bash
-for f in *.sh lib/*.sh aws/*.sh substrate/*.sh llm-gateway/*.sh demos/*/*.sh; do bash -n "$f"; done
-shellcheck -S warning -x *.sh lib/*.sh aws/*.sh substrate/*.sh llm-gateway/*.sh demos/*/*.sh
+for f in *.sh lib/*.sh aws/*.sh substrate/*.sh llm-gateway/*.sh demos/*/*.sh toolbox/*.sh installer/*.sh; do bash -n "$f"; done
+shellcheck -S warning -x *.sh lib/*.sh aws/*.sh substrate/*.sh llm-gateway/*.sh demos/*/*.sh toolbox/*.sh installer/*.sh
 grep -rnE '[0-9]{12}' --include='*.sh' --include='*.yaml' --include='*.md' . | grep -v 111122223333
+(cd installer && go test ./...)   # when installer/ changed
 ```
 
 On a live cluster, a change is done when `demos/counter/verify.sh` passes (and
