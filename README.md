@@ -50,6 +50,46 @@ EKS (Amazon Linux 2023, private subnets)
   `brew install bash gnu-sed coreutils gettext` and put the GNU tools first
   on `PATH`.
 
+Or skip those tools: see [Run with only Docker](#run-with-only-docker).
+
+### Run with only Docker
+
+[`toolbox.sh`](toolbox.sh) runs any script of this repository inside a
+container that has every tool above, pinned (see
+[`toolbox/Dockerfile`](toolbox/Dockerfile)). The host needs only Docker
+with buildx, git, and AWS credentials:
+
+```bash
+./toolbox.sh ./create-cluster.sh
+./toolbox.sh ./deploy.sh
+./toolbox.sh demos/counter/verify.sh
+./toolbox.sh ./clean.sh && ./toolbox.sh ./delete-cluster.sh
+./toolbox.sh kubectl get nodes -L ate.dev/pool     # any command
+./toolbox.sh                                        # a shell with every tool
+```
+
+- The first run builds the image, in under a minute. A changed
+  `toolbox/Dockerfile` builds a new one; `toolbox/pins.sh` prints the sha256
+  of each download after a version change.
+- The checkout is mounted at the same path and the scripts run as you, so
+  `.work/` and the logs look the same as without the toolbox. Go runs with
+  `GOPROXY=direct`, and its caches are in `.work/toolbox/`.
+- Image builds use the host's Docker through its socket, which gives the
+  container the same control of Docker that you have. `docker login` keeps
+  the ECR token in `.work/toolbox/home/.docker/`.
+- Credentials for `AWS_PROFILE`: when the profile uses `credential_process`
+  (a helper that exists only on the host), the host's `aws` CLI exports
+  short-lived credentials to a `0600` file under `.work/toolbox/creds/`
+  every 2 minutes while the script runs, and deletes it on exit. Any other
+  profile (SSO, static keys, assume-role) is read from `~/.aws`, mounted.
+- The credential provider checkout (`CREDPROVIDER_DIR`) and `OPENCLAW_DIR`
+  are mounted when they exist; add others with `TOOLBOX_MOUNTS`.
+- Tested on Linux (amd64). On macOS the container runs as root, because
+  Docker Desktop owns its socket.
+
+The interactive installer runs the same way:
+[`installer/run.sh`](installer/README.md#run-it-with-only-docker).
+
 ## Configure
 
 Defaults are in `config.env`. Put your own values in `config.local.env`

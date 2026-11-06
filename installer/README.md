@@ -107,6 +107,28 @@ It uses a second checkout, so the main checkout's `config.local.env`,
 Two checkouts on one host must not run `demos/counter/verify.sh` at the same
 time: both use local ports 127.0.0.1:8001 and 8002.
 
+## Run it with only Docker
+
+[`run.sh`](run.sh) builds the installer inside the toolbox
+([Run with only Docker](../README.md#run-with-only-docker)) and starts it
+there, so the host needs no Go, and the Check screen sees the toolbox's
+tools. It takes the installer's flags, mounts the `--repo` checkout, and
+passes credentials for `--profile`. From the main checkout:
+
+```bash
+cd /path/to/eks-talk
+git worktree add --detach ../eks-talk-tui main
+installer/run.sh --repo ../eks-talk-tui --cluster substrate-tui --region us-west-2 --profile eks-sandbox
+```
+
+The screens and keys are the same, Teardown included. Run the commands the
+Done screen prints through that checkout's own toolbox:
+
+```bash
+cd ../eks-talk-tui
+./toolbox.sh kubectl --kubeconfig .work/kubeconfig get nodes -L ate.dev/pool
+```
+
 ## Build and run
 
 Go 1.27 or newer, and everything the scripts need (the Check screen lists it).
