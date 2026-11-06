@@ -14,23 +14,46 @@ Kubernetes API endpoint is public by default (IAM authenticated); set
 
 ## What you get
 
-```
-EKS (Amazon Linux 2023, private subnets)
- ├─ system   node group   Substrate control plane, atenet, LLM gateway
- ├─ gvisor   node group   gVisor worker pods
- └─ microvm  node group   Kata + Cloud Hypervisor worker pods (nested virtualization)
-       │
-       ├─ Amazon S3          actor snapshots, microVM guest assets
-       ├─ Amazon RDS         PostgreSQL, TLS verify-full
-       ├─ Secrets Manager    database logins
-       ├─ Amazon ECR         demo images
-       └─ Amazon Bedrock     agent inference, through the in-cluster LLM gateway
-```
+![Agent Substrate on Amazon EKS: every AWS service, the EKS cluster and the Agent Substrate components](slides/agent-substrate-on-eks.png)
+
+One EKS cluster with three node groups: `system` for the Substrate control
+plane, atenet and the LLM gateway; `gvisor` for gVisor workers; `microvm` for
+Kata and Cloud Hypervisor workers on EC2 with nested virtualization. Around
+it: Amazon S3 for actor snapshots and microVM guest assets, Amazon RDS for
+PostgreSQL (TLS verify-full), Secrets Manager for the database logins, ECR
+for the demo images, and Bedrock for agent inference through the in-cluster
+LLM gateway. The editable diagram is
+[`slides/agent-substrate-on-eks.drawio`](slides/agent-substrate-on-eks.drawio)
+(open it in [draw.io](https://app.diagrams.net/)).
 
 | Demo | What it shows |
 |---|---|
 | counter, gVisor and microVM | An actor counts in memory, in a file and in its root filesystem. Suspend it: the worker is freed and the snapshot goes to S3. The next request resumes it and every count continues. |
 | OpenClaw always-on agent (optional) | An always-on gateway holds the chat channel (for example WhatsApp); each conversation's agent is an actor that suspends when idle and resumes on the next message. It thinks with Bedrock and holds no AWS credential. |
+
+## Quick start: the interactive installer
+
+The fastest way to deploy. It checks your setup, asks for the settings,
+shows the commands it will run, then runs the scripts below with a live
+checklist, about 45 minutes in all. Teardown is on its last screen. It runs
+inside the [toolbox](#run-with-only-docker), so you need only Docker with
+buildx, git, and AWS credentials for an account that meets the
+[prerequisites](#prerequisites):
+
+```bash
+git clone https://github.com/csantanapr/eks-agent-substrate.git
+cd eks-agent-substrate
+installer/run.sh --repo . --cluster my-substrate --region us-west-2 --profile my-profile
+```
+
+![The installer's Provision screen: a checklist of install steps with times on the left, and the live script log on the right](installer/docs/provision.png)
+
+Press `enter` through Welcome and Check your setup, `n` on Settings, and `y`
+on Review: nothing changes in AWS before that. On the Done screen, `t` and
+the cluster name tear everything down. The [installer README](installer/README.md)
+shows every screen, and how to run a second cluster next to a first one.
+
+To run the scripts yourself instead, read on.
 
 ## Prerequisites
 
@@ -303,22 +326,7 @@ S3 buckets. It ends by running `aws/inventory.sh`, which lists anything left
 and fails if there is; `delete-cluster.sh` runs it first and refuses to start
 until `clean.sh` has finished. Run `aws/inventory.sh --all` any time.
 
-## Optional: the interactive installer (proof of concept)
-
-[`installer/`](installer/README.md) is a terminal UI that checks your setup,
-writes `config.local.env`, runs these same scripts with a live checklist,
-and tears down from its Done screen. The scripts above stay the supported
-path. [Install a second cluster, step by step](installer/README.md#install-a-second-cluster-step-by-step)
-has the exact commands, and the [installer README](installer/README.md#screens)
-shows every screen.
-
-![The installer's Provision screen: a checklist of install steps with times on the left, and the live script log on the right](installer/docs/provision.png)
-
 ## How it is built, and why
-
-![Agent Substrate on Amazon EKS: every AWS service, the EKS cluster and the Agent Substrate components](slides/agent-substrate-on-eks.png)
-
-The editable source is [`slides/agent-substrate-on-eks.drawio`](slides/agent-substrate-on-eks.drawio); open it in [draw.io](https://app.diagrams.net/).
 
 | Area | Choice |
 |---|---|

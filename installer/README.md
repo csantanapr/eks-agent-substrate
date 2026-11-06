@@ -1,4 +1,4 @@
-# installer/: an interactive installer (proof of concept)
+# installer/: the interactive installer
 
 A full-screen terminal front end for this repository's scripts, written in
 Go with [Bubble Tea](https://github.com/charmbracelet/bubbletea),
@@ -7,10 +7,10 @@ Go with [Bubble Tea](https://github.com/charmbracelet/bubbletea),
 questions, writes `config.local.env`, runs the scripts and shows their
 progress.
 
-It is a proof of concept for a talk, not the supported install path.
-**`./create-cluster.sh` and then `./deploy.sh` stay the way to install**
-(see the top-level README). The installer changes none of the scripts; it
-only runs them, in the checkout you point it at.
+It is the fastest way to deploy (the top-level README's Quick start). It
+adds no install logic of its own: it runs `./create-cluster.sh`,
+`./deploy.sh` and the demo checks in the checkout you point it at, so
+everything it does can also be done by running those scripts yourself.
 
 ## Screens
 
