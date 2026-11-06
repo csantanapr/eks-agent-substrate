@@ -254,7 +254,7 @@ their repositories (`GOPROXY=direct GOSUMDB=off`): **`go.sum` was not checked
 against the Go checksum database.** Run `go mod verify` on a host that can
 reach it before relying on these hashes.
 
-## Not done (it is a proof of concept)
+## Not done yet
 
 - New clusters, or a cluster these scripts made, only: no cluster picker.
 - Both sandbox classes (gVisor and microVM) are always installed, and

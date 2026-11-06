@@ -519,7 +519,7 @@ func (m Model) toReview() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	header := []string{
-		"Written by the eks-talk installer (POC).",
+		"Written by the eks-talk installer.",
 		"lib/common.sh reads it after config.env.",
 		"Set here: what differs from config.env,",
 		"plus the cluster, Region and profile.",

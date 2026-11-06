@@ -1,8 +1,8 @@
 // Command installer is an interactive terminal installer for Agent Substrate
-// on Amazon EKS: a proof of concept that drives eks-talk's own scripts
-// (./create-cluster.sh, ./deploy.sh, the demos, ./clean.sh and
-// ./delete-cluster.sh). The scripts stay the way to install; this only asks
-// the questions, writes config.local.env and shows the run.
+// on Amazon EKS. It drives eks-talk's own scripts (./create-cluster.sh,
+// ./deploy.sh, the demos and plugins, ./clean.sh and ./delete-cluster.sh)
+// and adds no install logic of its own: it asks the questions, writes
+// config.local.env and shows the run.
 //
 //	go run . --repo /path/to/eks-talk           install
 //	go run . --dry-run                          replay a recorded run

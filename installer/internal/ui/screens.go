@@ -51,7 +51,7 @@ func (m Model) render(w, h int) string {
 }
 
 func (m Model) header(w int) string {
-	left := " " + sTitle.Render("◆ Agent Substrate on Amazon EKS") + "  " + sMuted.Render("installer · proof of concept")
+	left := " " + sTitle.Render("◆ Agent Substrate on Amazon EKS") + "  " + sMuted.Render("installer")
 	if m.opt.DryRun {
 		left += "  " + sKey.Render("DRY RUN")
 	}
@@ -153,7 +153,7 @@ func (m Model) welcome(w, h int) string {
 		"",
 		"  " + sText.Render("A front end for the eks-talk scripts in ") + sCode.Render(m.opt.Repo.Dir) + sMuted.Render(rev) + sText.Render("."),
 		"  " + sText.Render("It writes ") + sCode.Render("config.local.env") + sText.Render(" there, then runs ") + sCode.Render("./create-cluster.sh") + sText.Render(" and ") + sCode.Render("./deploy.sh") + sText.Render(";"),
-		"  " + sText.Render("those two scripts stay the way to install. Every step is idempotent: run it again after a failure."),
+		"  " + sText.Render("you can run the same scripts yourself. Every step is idempotent: run it again after a failure."),
 		"",
 		"  " + sSection.Render("What it creates in your AWS account"),
 		row("Amazon EKS", fmt.Sprintf("cluster %s, Kubernetes %s, three managed node groups", v["CLUSTER_NAME"], v["KUBERNETES_VERSION"])),
