@@ -176,9 +176,11 @@ if cluster_exists; then
 else
   # A failed create leaves its stack in ROLLBACK_COMPLETE, empty but holding
   # the name, so eksctl cannot create the cluster again until it is deleted.
+  # eksctl turns on termination protection, as on every stack it makes.
   stack="eksctl-$CLUSTER_NAME-cluster"
   if [ "$(aws_ cloudformation describe-stacks --stack-name "$stack" --query 'Stacks[0].StackStatus' --output text 2>/dev/null)" = ROLLBACK_COMPLETE ]; then
     log "Delete the stack a failed create left ($stack, ROLLBACK_COMPLETE)"
+    aws_ cloudformation update-termination-protection --no-enable-termination-protection --stack-name "$stack" >/dev/null
     aws_ cloudformation delete-stack --stack-name "$stack"
     aws_ cloudformation wait stack-delete-complete --stack-name "$stack"
   fi
