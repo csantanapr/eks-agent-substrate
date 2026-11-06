@@ -185,6 +185,7 @@ var credprovider = []Command{
 
 var openclaw = []Command{
 	{ID: "openclaw", Title: "OpenClaw demo", Args: []string{"demos/openclaw/deploy.sh"}, Minutes: 4, Summary: "the gateway (state on EFS), worker pool, agent template", Rows: []Row{
+		{Title: "StorageClass on EFS", Match: []string{"StorageClass efs-openclaw"}},
 		{Title: "Gateway state to EFS", Match: []string{"Move the gateway's state"}, Optional: true},
 		{Title: "Gateway, workers and agent", Match: []string{"Deploy the OpenClaw demo"}},
 	}},

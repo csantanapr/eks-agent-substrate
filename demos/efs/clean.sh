@@ -42,7 +42,7 @@ if cluster_exists; then
       info "$atespace/$tpl"
     done
   done
-  step kubectl delete storageclass efs-ate s3files-ate --ignore-not-found
+  step kubectl delete storageclass efs-ate s3files-ate efs-openclaw --ignore-not-found
   step kubectl delete csidriverconfig efs.csi.aws.com --ignore-not-found
   step kubectl -n kube-system delete deployment efs-csi-controller-ate --ignore-not-found
   step kubectl -n kube-system delete service efs-csi-controller-ate --ignore-not-found

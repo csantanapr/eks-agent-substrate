@@ -11,7 +11,7 @@
 #   demos/openclaw/deploy.sh [verify]
 #
 # Run it after demos/efs/deploy.sh: the gateway keeps its state on EFS
-# (StorageClass efs-ate), which every Availability Zone can mount, so the
+# (StorageClass efs-openclaw), which every Availability Zone can mount, so the
 # gateway can move to any system node. An EBS volume would pin it to one
 # zone. Each actor's egress policy allows only the LLM gateway, and swaps a
 # placeholder token for a signed actor JWT on the way out.
@@ -59,9 +59,16 @@ if [ "${1:-}" = verify ]; then
   exit 0
 fi
 
-export STORAGE_CLASS=efs-ate
-kubectl get storageclass "$STORAGE_CLASS" >/dev/null 2>&1 \
-  || die "no StorageClass $STORAGE_CLASS; run demos/efs/deploy.sh first (the gateway keeps its state on EFS)"
+log "StorageClass efs-openclaw for the gateway's state"
+# shellcheck disable=SC2034  # render_yaml reads SC and fs by name
+fs=$(kubectl get storageclass efs-ate -o jsonpath='{.parameters.fileSystemId}' 2>/dev/null || true)
+[ -n "$fs" ] || die "no StorageClass efs-ate; run demos/efs/deploy.sh first (the gateway keeps its state on EFS)"
+SC=efs-openclaw
+# StorageClass parameters are immutable: replace the class when they change.
+have_fs=$(kubectl get storageclass "$SC" -o jsonpath='{.parameters.fileSystemId}' 2>/dev/null || true)
+if [ -n "$have_fs" ] && [ "$have_fs" != "$fs" ]; then kubectl delete storageclass "$SC"; fi
+render_yaml "$ROOT/demos/openclaw/storageclass.yaml" SC fs | kubectl apply -f -
+export STORAGE_CLASS="$SC"
 # A claim's StorageClass cannot change. A gateway from an earlier install
 # has its state on EBS; replace that claim, which starts the gateway fresh.
 have_sc=$(kubectl -n openclaw get pvc openclaw-gateway-pvc -o jsonpath='{.spec.storageClassName}' 2>/dev/null || true)

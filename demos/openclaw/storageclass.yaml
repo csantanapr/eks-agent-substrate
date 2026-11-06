@@ -1,0 +1,29 @@
+# The StorageClass for the OpenClaw gateway's state, on the EFS file system
+# demos/efs/deploy.sh made. provisioningMode efs-ap: one access point per
+# volume, under basePath. The access point is owned by the gateway's user
+# (runAsUser 1000 in the always-on-agent gateway manifest); EFS ignores the
+# pod's fsGroup, and the gateway refuses a state directory it does not own.
+# demos/openclaw/deploy.sh fills it in and applies it.
+#
+# Placeholders, filled in by render_yaml (lib/common.sh):
+#   SC    the StorageClass name, efs-openclaw
+#   fs    the EFS file system id, from StorageClass efs-ate
+#
+# Learn more:
+#   https://docs.aws.amazon.com/eks/latest/userguide/efs-csi.html
+#   https://docs.aws.amazon.com/efs/latest/ug/efs-access-points.html
+
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: ${SC}
+provisioner: efs.csi.aws.com
+parameters:
+  provisioningMode: efs-ap
+  fileSystemId: ${fs}
+  directoryPerms: "700"
+  uid: "1000"
+  gid: "1000"
+  basePath: /openclaw
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
