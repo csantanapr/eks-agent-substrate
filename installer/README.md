@@ -23,7 +23,7 @@ only runs them, in the checkout you point it at.
 | 3 | Settings | Cluster name, Region, profile, Kubernetes version, tags, API access CIDRs, instance type and count per node group, the Substrate release tag, demos. Defaults come from the checkout's `config.env` (then its `config.local.env`); the help panel shows the comment above each key in `config.env` |
 | 4 | Review | The exact `config.local.env` it will write, and the commands it will run, in order. Nothing has changed until you press `y` |
 | 5 | Provision | Runs `./create-cluster.sh`, `./deploy.sh` and the chosen demos. A live checklist per script, built from the scripts' own `== <step>` lines (`log()` in `lib/common.sh`) and the Timings table each prints at exit; a scrollable log pane; elapsed time; on a failure, the failing step and the log path, and `r` to run again (the scripts are idempotent) |
-| 6 | Done | What was created, how to reach it (`.work/kubeconfig`, `kubectl ate`), verify commands, the step times, and Teardown: `t`, then type the cluster name, runs `./clean.sh --yes` and `./delete-cluster.sh --yes` |
+| 6 | Done | What was created, how to reach it (`.work/kubeconfig`, `kubectl ate`), verify commands, the step times, and Teardown: `t`, then type the cluster name, runs `./clean.sh --yes` and `./delete-cluster.sh --yes`. The teardown shows on the Provision screen, with steps 5 and 6 named Teardown and Removed; `q` quits when it ends |
 
 ## Install a second cluster, step by step
 
