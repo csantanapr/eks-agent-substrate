@@ -143,8 +143,11 @@ if cluster_exists; then
   addons=$(aws_ eks list-addons --cluster-name "$CLUSTER_NAME" --query 'addons[]' --output text)
   for a in vpc-cni coredns kube-proxy eks-pod-identity-agent aws-ebs-csi-driver; do
     if ! grep -qw "$a" <<<"$addons"; then
+      # Nodes need vpc-cni and kube-proxy to become Ready. coredns and the EBS
+      # CSI driver stay DEGRADED until nodes exist, so a failure here is only
+      # fatal after the node groups are up (checked below).
       log "Add the missing add-ons"
-      eksctl create addon -f "$WORK/cluster.yaml"
+      eksctl create addon -f "$WORK/cluster.yaml" || warn "some add-ons are not healthy yet; checking again after the node groups"
       break
     fi
   done
@@ -155,6 +158,20 @@ if cluster_exists; then
       eksctl create nodegroup -f "$WORK/cluster.yaml"
       break
     fi
+  done
+  addons=$(aws_ eks list-addons --cluster-name "$CLUSTER_NAME" --query 'addons[]' --output text)
+  for a in vpc-cni coredns kube-proxy eks-pod-identity-agent aws-ebs-csi-driver; do
+    if ! grep -qw "$a" <<<"$addons"; then
+      log "Add the add-ons still missing, now that nodes exist"
+      eksctl create addon -f "$WORK/cluster.yaml"
+      break
+    fi
+  done
+  log "Wait for every add-on to be ACTIVE"
+  for a in vpc-cni coredns kube-proxy eks-pod-identity-agent aws-ebs-csi-driver; do
+    aws_ eks wait addon-active --cluster-name "$CLUSTER_NAME" --addon-name "$a" \
+      || die "add-on $a is not ACTIVE; see: aws eks describe-addon --cluster-name $CLUSTER_NAME --addon-name $a"
+    info "$a"
   done
 else
   log "eksctl create cluster $CLUSTER_NAME ($KUBERNETES_VERSION, $AWS_REGION)"
