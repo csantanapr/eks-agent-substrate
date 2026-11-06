@@ -12,8 +12,6 @@ It is a proof of concept for a talk, not the supported install path.
 (see the top-level README). The installer changes none of the scripts; it
 only runs them, in the checkout you point it at.
 
-![The Provision screen during a live install](docs/provision.png)
-
 ## Screens
 
 | # | Screen | What happens |
@@ -24,6 +22,30 @@ only runs them, in the checkout you point it at.
 | 4 | Review | The exact `config.local.env` it will write, and the commands it will run, in order. Nothing has changed until you press `y` |
 | 5 | Provision | Runs `./create-cluster.sh`, `./deploy.sh` and the chosen demos. A live checklist per script, built from the scripts' own `== <step>` lines (`log()` in `lib/common.sh`) and the Timings table each prints at exit; a scrollable log pane; elapsed time; on a failure, the failing step and the log path, and `r` to run again (the scripts are idempotent) |
 | 6 | Done | What was created, how to reach it (`.work/kubeconfig`, `kubectl ate`), verify commands, the step times, and Teardown: `t`, then type the cluster name, runs `./clean.sh --yes` and `./delete-cluster.sh --yes`. The teardown shows on the Provision screen, with steps 5 and 6 named Teardown and Removed; `q` quits when it ends |
+
+### 1. Welcome
+
+![Welcome: what the install creates, how long it takes and what it costs](docs/welcome.png)
+
+### 2. Check your setup
+
+![Check your setup: tool versions, the AWS account and Region, nested virtualization and the vCPU quota, all passing](docs/check.png)
+
+### 3. Settings
+
+![Settings: cluster name, Region, profile, node groups and the Substrate release, with help for the selected key](docs/settings.png)
+
+### 4. Review
+
+![Review: the config.local.env it will write and the commands it will run](docs/review.png)
+
+### 5. Provision
+
+![Provision: a checklist of install steps with times on the left, and the live script log on the right](docs/provision.png)
+
+### 6. Done
+
+![Done: what was created, how to reach the cluster, the step times and Teardown](docs/done.png)
 
 ## Install a second cluster, step by step
 
@@ -165,16 +187,8 @@ first shows it (`01-welcome`, `02-check`, `03-settings`, `04-review`, one
 a terminal window. `docs/render.mjs` turns the pages into PNGs with headless
 Chromium (Playwright from the talk-video-record skill). The PNGs in `docs/`
 come from the command above: a `--dry-run` replay of the live install of
-`substrate-tui`, with the account id and local paths replaced:
-
-| File | Screen |
-|---|---|
-| [docs/welcome.png](docs/welcome.png) | Welcome |
-| [docs/check.png](docs/check.png) | Check your setup |
-| [docs/settings.png](docs/settings.png) | Settings |
-| [docs/review.png](docs/review.png) | Review |
-| [docs/provision.png](docs/provision.png) | Provision, mid-run |
-| [docs/done.png](docs/done.png) | Done |
+`substrate-tui`, with the account id and local paths replaced. They are shown
+under [Screens](#screens).
 
 ## Tests
 

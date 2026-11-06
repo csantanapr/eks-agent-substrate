@@ -245,7 +245,10 @@ until `clean.sh` has finished. Run `aws/inventory.sh --all` any time.
 writes `config.local.env`, runs these same scripts with a live checklist,
 and tears down from its Done screen. The scripts above stay the supported
 path. [Install a second cluster, step by step](installer/README.md#install-a-second-cluster-step-by-step)
-has the exact commands.
+has the exact commands, and the [installer README](installer/README.md#screens)
+shows every screen.
+
+![The installer's Provision screen: a checklist of install steps with times on the left, and the live script log on the right](installer/docs/provision.png)
 
 ## How it is built, and why
 
