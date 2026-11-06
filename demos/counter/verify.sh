@@ -34,12 +34,13 @@ roundtrip() { # actor atespace template localport
   kubectl ate proxy actor "$actor" -a "$ns" "$port:80" >"$WORK/proxy-$actor.log" 2>&1 &
   PIDS+=("$!")
   for _ in $(seq 1 60); do curl -sf -m 10 "http://127.0.0.1:$port/" >/dev/null 2>&1 && break; sleep 2; done
-  a=$(curl -s -m 30 "http://127.0.0.1:$port/"); info "$a"
-  b=$(curl -s -m 30 "http://127.0.0.1:$port/"); info "$b"
+  # A failed request leaves its count empty; the checks below report it.
+  a=$(curl -s -m 30 "http://127.0.0.1:$port/") || a=""; info "$a"
+  b=$(curl -s -m 30 "http://127.0.0.1:$port/") || b=""; info "$b"
   kubectl ate suspend actor "$actor" -a "$ns" >/dev/null 2>&1
   [ "$(state "$actor" "$ns")" = ACTOR_STATE_SUSPENDED ] || die "$actor did not suspend"
   info "suspended"
-  c=$(curl -s -m 120 "http://127.0.0.1:$port/"); info "$c"
+  c=$(curl -s -m 120 "http://127.0.0.1:$port/") || c=""; info "$c"
   [ "$(state "$actor" "$ns")" = ACTOR_STATE_RUNNING ] || die "$actor did not resume"
   [ "$(count "$c")" -eq $(( $(count "$b") + 1 )) ] || die "$actor lost its in-memory count across suspend/resume"
   # The resume can use the node's local copy while the S3 upload of the same
@@ -48,7 +49,7 @@ roundtrip() { # actor atespace template localport
   local snap="" st=""
   for _ in $(seq 1 120); do
     snap=$(kubectl ate get actor "$actor" -a "$ns" -o json 2>/dev/null \
-      | jq -c '[.status.snapshots[]? | select(.owner == "SNAPSHOT_OWNER_ACTOR")] | max_by(.generation) // empty')
+      | jq -c '[.status.snapshots[]? | select(.owner == "SNAPSHOT_OWNER_ACTOR")] | max_by(.generation) // empty') || snap=""
     st=$(jq -r '.durableSnapshot.state // empty' <<<"$snap")
     [ "$st" = SNAPSHOT_STORAGE_STATE_COMPLETED ] && break
     sleep 5
