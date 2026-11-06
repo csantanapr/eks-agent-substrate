@@ -279,6 +279,21 @@ func TestCredproviderPlugin(t *testing.T) {
 	if got := strings.Join(ids, " "); !strings.Contains(got, "credprovider-aws credprovider-aws-verify") {
 		t.Errorf("commands: %s", got)
 	}
+	// With every choice on, Review still shows every command and the prompt.
+	for _, id := range []string{"openclaw", "efs", "s3files", "db-rotation"} {
+		m.demos[id] = true
+	}
+	m = press(t, m, "n")
+	if m.screen != sReview {
+		t.Fatalf("screen %v: %s", m.screen, m.msg)
+	}
+	v := plan.StripANSI(m.render(126, 33))
+	checkSize(t, "review", v, 126, 33)
+	for _, want := range []string{"demos/credprovider-aws/verify.sh", "demos/openclaw/deploy.sh verify", "to write config.local.env and start"} {
+		if !strings.Contains(v, want) {
+			t.Errorf("review lacks %q:\n%s", want, v)
+		}
+	}
 }
 
 // --done reopens a finished install on its Done screen, with the same

@@ -456,11 +456,20 @@ func (m Model) review(w, h int) string {
 
 	right := []string{"", "", "", "  " + sSection.Render("Commands, in order") + "  " + sMuted.Render("in "+filepath.Base(m.opt.Repo.Dir)+"/")}
 	total := 0
+	// Three lines a command (gap, command, summary) when they fit with the 7
+	// closing lines; one line a command when many are chosen.
+	compact := len(right)+3*len(m.cmds)+7 > h
+	if compact {
+		right = append(right, "")
+	}
 	for i, c := range m.cmds {
 		total += c.Minutes
-		right = append(right, "",
-			"  "+sOrange.Render(fmt.Sprintf("%d", i+1))+"  "+sCode.Render(pad(c.Display(), rightW-16))+sMuted.Render(fmt.Sprintf("~%d min", c.Minutes)),
-			"     "+sText.Render(cut(c.Summary, rightW-6)))
+		line := "  " + sOrange.Render(pad(fmt.Sprintf("%d", i+1), 2)) + " " + sCode.Render(pad(c.Display(), rightW-16)) + sMuted.Render(fmt.Sprintf("~%d min", c.Minutes))
+		if compact {
+			right = append(right, line)
+			continue
+		}
+		right = append(right, "", line, "     "+sText.Render(cut(c.Summary, rightW-6)))
 	}
 	right = append(right, "",
 		"  "+sMuted.Render(fmt.Sprintf("About %d minutes in all. The output streams to the", total)),
