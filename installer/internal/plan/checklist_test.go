@@ -192,3 +192,30 @@ func TestPlanMatchesScripts(t *testing.T) {
 		}
 	}
 }
+
+func TestInstallOrder(t *testing.T) {
+	ids := func(demos map[string]bool) string {
+		var s []string
+		for _, c := range Install(demos) {
+			s = append(s, c.ID)
+		}
+		return strings.Join(s, " ")
+	}
+	for _, tc := range []struct {
+		demos map[string]bool
+		want  string
+	}{
+		{map[string]bool{"counter-verify": true}, "create-cluster deploy counter-verify"},
+		// OpenClaw keeps its gateway state on EFS, and goes after the plugins.
+		{map[string]bool{"openclaw": true}, "create-cluster deploy efs efs-verify openclaw openclaw-verify"},
+		{map[string]bool{"db-rotation": true, "credprovider-aws": true, "openclaw": true},
+			"create-cluster deploy efs efs-verify db-rotation credprovider-aws credprovider-aws-verify openclaw openclaw-verify"},
+	} {
+		if got := ids(tc.demos); got != tc.want {
+			t.Errorf("Install(%v) = %s, want %s", tc.demos, got, tc.want)
+		}
+	}
+	if c, ok := ByID("db-rotation-verify"); !ok || c.Args[0] != "demos/db-rotation/verify.sh" {
+		t.Error("ByID still finds the retired db-rotation-verify, to replay older logs")
+	}
+}

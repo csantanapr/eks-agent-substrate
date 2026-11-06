@@ -4,14 +4,23 @@
 # Checks that every counter continues after the resume, and lists the
 # actor's snapshot in S3. Exits non-zero on any failure.
 #
+#   demos/counter/verify.sh [--quick]
+#
 # Run it after deploy.sh. A suspend saves the actor to a snapshot and frees
 # its worker; the next request resumes it from that snapshot, possibly on
-# another worker.
+# another worker. --quick skips the wait for the snapshot's copy in S3
+# (about 5 minutes per actor); the installer uses it.
 #
 # Learn more:
 #   https://github.com/agent-substrate/substrate/blob/v1.0.0/docs/concepts/architecture.md
 #   https://github.com/agent-substrate/substrate/blob/v1.0.0/docs/reference/kubectl-ate.md
 set -euo pipefail
+QUICK=0
+case "${1:-}" in
+  --quick) QUICK=1 ;;
+  "") ;;
+  *) echo "usage: $0 [--quick]" >&2; exit 2 ;;
+esac
 . "$(dirname "$0")/../../lib/common.sh"
 PIDS=()
 stop_proxies() { local p; for p in "${PIDS[@]}"; do kill "$p" 2>/dev/null || true; done; }
@@ -43,6 +52,10 @@ roundtrip() { # actor atespace template localport
   c=$(curl -s -m 120 "http://127.0.0.1:$port/") || c=""; info "$c"
   [ "$(state "$actor" "$ns")" = ACTOR_STATE_RUNNING ] || die "$actor did not resume"
   [ "$(count "$c")" -eq $(( $(count "$b") + 1 )) ] || die "$actor lost its in-memory count across suspend/resume"
+  if [ "$QUICK" = 1 ]; then
+    info "PASS: resumed and every counter continued (S3 copy not checked: --quick)"
+    return
+  fi
   # The resume can use the node's local copy while the S3 upload of the same
   # snapshot finishes in the background (sometimes minutes later); wait for
   # the durable copy.

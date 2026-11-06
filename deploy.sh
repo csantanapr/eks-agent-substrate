@@ -10,7 +10,9 @@
 #   4. Agent Substrate (published images), gVisor and microVM sandbox classes
 #   5. The LLM gateway (agentgateway + Amazon Bedrock)
 #   6. The counter demo on gVisor and on microVM
-#   7. The OpenClaw always-on agent demo, when configured
+#
+# The OpenClaw demo keeps its gateway state on EFS, so it runs after the EFS
+# plugin: demos/efs/deploy.sh, then demos/openclaw/deploy.sh.
 #
 # The second entry point, after create-cluster.sh. It calls the scripts below
 # in order, and each of them is idempotent too. Afterwards,
@@ -34,7 +36,6 @@ phase "RDS ready + database bootstrap";    bash "$ROOT/aws/db-bootstrap.sh"
 phase "Agent Substrate install";           bash "$ROOT/substrate/install.sh"
 phase "LLM gateway (Bedrock)";             bash "$ROOT/llm-gateway/deploy.sh"
 phase "Counter demo (gVisor + microVM)";   bash "$ROOT/demos/counter/deploy.sh" both
-phase "OpenClaw demo";                     bash "$ROOT/demos/openclaw/deploy.sh"
 phase "";
 
 log "Done. Everything is ClusterIP; reach it with port forwards."
@@ -42,5 +43,5 @@ cat <<EOF
    export KUBECONFIG=$KUBECONFIG PATH=$WORK/bin:\$PATH
    kubectl ate get actors -A
    demos/counter/verify.sh          # suspend/resume on gVisor and microVM
-   demos/openclaw/deploy.sh verify  # the OpenClaw agent, when deployed
+   demos/efs/deploy.sh              # then demos/openclaw/deploy.sh for OpenClaw
 EOF

@@ -215,6 +215,26 @@ func TestSettingsEditAndValidate(t *testing.T) {
 	if m.demos["openclaw"] || m.values["OPENCLAW_REPO"] != "" {
 		t.Errorf("openclaw off: %v %q", m.demos["openclaw"], m.values["OPENCLAW_REPO"])
 	}
+	// OpenClaw needs EFS: turning EFS off turns OpenClaw off, and OpenClaw on
+	// turns EFS back on.
+	m = press(t, m, " ")
+	for m.fields[m.cursor].key != "efs" {
+		m = press(t, m, "down")
+	}
+	m = press(t, m, " ")
+	if m.demos["efs"] || m.demos["openclaw"] || m.demos["s3files"] || m.values["OPENCLAW_REPO"] != "" {
+		t.Errorf("efs off: %v %q", m.demos, m.values["OPENCLAW_REPO"])
+	}
+	for m.fields[m.cursor].key != "openclaw" {
+		m = press(t, m, "up")
+	}
+	m = press(t, m, " ")
+	if !m.demos["openclaw"] || !m.demos["efs"] {
+		t.Errorf("openclaw on: %v", m.demos)
+	}
+	for m.fields[m.cursor].key != "s3files" {
+		m = press(t, m, "down")
+	}
 	m = press(t, m, " ")
 	for m.fields[m.cursor].key != "credprovider-aws" {
 		m = press(t, m, "down")
@@ -243,7 +263,7 @@ func TestSettingsEditAndValidate(t *testing.T) {
 	for _, c := range m.cmds {
 		ids = append(ids, c.ID)
 	}
-	if got := strings.Join(ids, " "); got != "create-cluster deploy counter-verify efs efs-verify s3files s3files-verify openclaw-verify" {
+	if got := strings.Join(ids, " "); got != "create-cluster deploy counter-verify efs efs-verify s3files s3files-verify openclaw openclaw-verify" {
 		t.Errorf("commands: %s", got)
 	}
 }

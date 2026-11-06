@@ -32,7 +32,8 @@ if cluster_exists; then
   phase "Demos and LLM gateway"
   log "Demos and the LLM gateway"
   # Namespaces first: deleting the openclaw namespace deletes its PVC, and
-  # the gp3 StorageClass deletes the EBS volume behind it.
+  # its StorageClass deletes the volume behind it (an EFS access point, or
+  # an EBS volume from an older install), before demos/efs/clean.sh runs.
   step kubectl delete namespace openclaw ate-demo-counter ate-demo-counter-microvm llm-gateway ate-db-bootstrap \
     --ignore-not-found --timeout=10m
   step kubectl delete clusterrole,clusterrolebinding openclaw-gateway-eks openclaw-dashboard --ignore-not-found

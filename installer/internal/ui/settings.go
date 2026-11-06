@@ -154,11 +154,16 @@ func (m Model) settingsKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 				if f.key == "openclaw" {
 					m.setOpenClaw(m.demos["openclaw"])
 				}
-				if f.key == "s3files" && m.demos["s3files"] {
+				// S3 Files and OpenClaw need EFS.
+				if (f.key == "s3files" || f.key == "openclaw") && m.demos[f.key] {
 					m.demos["efs"] = true
 				}
 				if f.key == "efs" && !m.demos["efs"] {
 					m.demos["s3files"] = false
+					if m.demos["openclaw"] {
+						m.demos["openclaw"] = false
+						m.setOpenClaw(false)
+					}
 				}
 			}
 			return m, nil

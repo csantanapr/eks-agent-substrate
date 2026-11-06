@@ -10,9 +10,11 @@
 #
 #   demos/openclaw/deploy.sh [verify]
 #
-# deploy.sh calls it as its last step. Each actor's egress policy allows only
-# the LLM gateway, and swaps a placeholder token for a signed actor JWT on
-# the way out.
+# Run it after demos/efs/deploy.sh: the gateway keeps its state on EFS
+# (StorageClass efs-ate), which every Availability Zone can mount, so the
+# gateway can move to any system node. An EBS volume would pin it to one
+# zone. Each actor's egress policy allows only the LLM gateway, and swaps a
+# placeholder token for a signed actor JWT on the way out.
 #
 # Learn more:
 #   https://github.com/agent-substrate/substrate/blob/v1.0.0/docs/guides/egress-credential-injection.md
@@ -54,7 +56,20 @@ export WHATSAPP_PEER="${WHATSAPP_PEER:-}"
 if [ "${1:-}" = verify ]; then
   log "Verify the OpenClaw demo"
   bash "$dir/demo/eks/verify-demo.sh"
-else
-  log "Deploy the OpenClaw demo from $dir"
-  bash "$dir/demo/eks/deploy-demo.sh"
+  exit 0
 fi
+
+export STORAGE_CLASS=efs-ate
+kubectl get storageclass "$STORAGE_CLASS" >/dev/null 2>&1 \
+  || die "no StorageClass $STORAGE_CLASS; run demos/efs/deploy.sh first (the gateway keeps its state on EFS)"
+# A claim's StorageClass cannot change. A gateway from an earlier install
+# has its state on EBS; replace that claim, which starts the gateway fresh.
+have_sc=$(kubectl -n openclaw get pvc openclaw-gateway-pvc -o jsonpath='{.spec.storageClassName}' 2>/dev/null || true)
+if [ -n "$have_sc" ] && [ "$have_sc" != "$STORAGE_CLASS" ]; then
+  log "Move the gateway's state from $have_sc to $STORAGE_CLASS"
+  warn "the gateway starts with empty state (a WhatsApp link must be paired again)"
+  kubectl -n openclaw delete deployment openclaw-gateway --ignore-not-found --wait=true
+  kubectl -n openclaw delete pvc openclaw-gateway-pvc --wait=true
+fi
+log "Deploy the OpenClaw demo from $dir"
+bash "$dir/demo/eks/deploy-demo.sh"

@@ -35,7 +35,7 @@ LLM gateway. The editable diagram is
 
 The fastest way to deploy. It checks your setup, asks for the settings,
 shows the commands it will run, then runs the scripts below with a live
-checklist, about 45 minutes in all. Teardown is on its last screen. It runs
+checklist, about 35 minutes with the default choices. Teardown is on its last screen. It runs
 inside the [toolbox](#run-with-only-docker), so you need only Docker with
 buildx, git, and AWS credentials for an account that meets the
 [prerequisites](#prerequisites):
@@ -168,6 +168,9 @@ kubectl ate get actors -A
 demos/counter/verify.sh          # suspend and resume on gVisor and on microVM
 ```
 
+`verify.sh` also waits for each snapshot's copy in S3, about 5 minutes per
+actor. `--quick` skips that wait, and the installer uses it.
+
 By hand:
 
 ```bash
@@ -180,8 +183,9 @@ curl -s localhost:8001          # resumes the actor; the counts continue
 
 The OpenClaw demo needs a checkout of the always-on-agent repository with its
 EKS scripts: set `OPENCLAW_DIR`, or `OPENCLAW_REPO` and `OPENCLAW_REF`, and
-optionally `WHATSAPP_PEER`, then run `demos/openclaw/deploy.sh` (and
-`demos/openclaw/deploy.sh verify`).
+optionally `WHATSAPP_PEER`. The gateway keeps its state on EFS, which every
+Availability Zone can mount, so run `demos/efs/deploy.sh` first, then
+`demos/openclaw/deploy.sh` and `demos/openclaw/deploy.sh verify`.
 
 ## Optional: per-actor volumes on Amazon EFS and Amazon S3 Files
 

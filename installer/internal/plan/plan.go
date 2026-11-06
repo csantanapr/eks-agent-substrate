@@ -58,9 +58,9 @@ type Demo struct {
 // Demos are the choices, in the order the Settings screen shows them.
 var Demos = []Demo{
 	{ID: "counter", Section: SectionDemos, Title: "Counter on gVisor and microVM", Note: "deploy.sh always deploys it", Default: true, Locked: true},
-	{ID: "counter-verify", Section: SectionDemos, Title: "Counter suspend/resume check", Note: "demos/counter/verify.sh, about 10 min", Default: true},
+	{ID: "counter-verify", Section: SectionDemos, Title: "Counter suspend/resume check", Note: "demos/counter/verify.sh --quick, about 1 min", Default: true},
 	{ID: "openclaw", Section: SectionDemos, Title: "OpenClaw always-on agent",
-		Note: "demos/openclaw: an always-on gateway, and an actor per conversation that thinks with Bedrock. Clones the always-on-agent repository (branch eks) into .work/, unless OPENCLAW_DIR names a checkout. About 10 min."},
+		Note: "demos/openclaw: an always-on gateway, and an actor per conversation that thinks with Bedrock. Needs EFS, which turns on with it: the gateway keeps its state there. Clones the always-on-agent repository (branch eks) into .work/, unless OPENCLAW_DIR names a checkout. About 5 min."},
 	{ID: "efs", Section: SectionPlugins, Title: "Amazon EFS volumes per actor", Note: "demos/efs, about 10 min"},
 	{ID: "s3files", Section: SectionPlugins, Title: "Amazon S3 Files volumes per actor", Note: "demos/s3files, needs EFS"},
 	{ID: "db-rotation", Section: SectionPlugins, Title: "Secrets Manager login rotation", Note: "demos/db-rotation"},
@@ -106,14 +106,17 @@ var deploy = Command{
 		{Title: "Counter image to Amazon ECR", Match: []string{"Build and push the counter image"}},
 		{Title: "Counter on gVisor", Match: []string{"Counter on gvisor"}},
 		{Title: "Counter on microVM", Match: []string{"Counter on microvm"}},
+		// Older deploy.sh runs deployed OpenClaw here; kept to replay their logs.
 		{Title: "OpenClaw demo", Match: []string{"Deploy the OpenClaw demo"}, Optional: true},
 		{Title: "Ready", Match: []string{"Done."}},
 	},
 }
 
+// The installer skips the wait for each snapshot's copy in S3 (about 5
+// minutes per actor); demos/counter/verify.sh without --quick checks it.
 var counterVerify = Command{
-	ID: "counter-verify", Title: "Check the counter demo", Args: []string{"demos/counter/verify.sh"},
-	Minutes: 10, Summary: "suspend and resume a counter on gVisor and on microVM",
+	ID: "counter-verify", Title: "Check the counter demo", Args: []string{"demos/counter/verify.sh", "--quick"},
+	Minutes: 1, Summary: "suspend and resume a counter on gVisor and on microVM",
 	Rows: []Row{
 		{Title: "Suspend and resume on gVisor", Match: []string{"demo-gvisor (ate-demo-counter)"}},
 		{Title: "Suspend and resume on microVM", Match: []string{"demo-microvm (ate-demo-counter-microvm)"}},
@@ -158,7 +161,11 @@ var dbRotation = []Command{
 		{Title: "Both users of each login", Match: []string{"Both users"}},
 		{Title: "Rotation functions and schedules", Match: []string{"Rotation functions"}},
 	}},
-	{ID: "db-rotation-verify", Title: "Check the login rotation", Args: []string{"demos/db-rotation/verify.sh"}, Minutes: 5, Summary: "rotate a login and watch the rollout"},
+}
+
+// The installer no longer runs these; ByID keeps them to replay older logs.
+var retired = []Command{
+	{ID: "db-rotation-verify", Title: "Check the login rotation", Args: []string{"demos/db-rotation/verify.sh"}, Minutes: 12, Summary: "rotate a login and watch the rollout"},
 }
 
 var credprovider = []Command{
@@ -176,9 +183,13 @@ var credprovider = []Command{
 	{ID: "credprovider-aws-verify", Title: "Check the credential provider", Args: []string{"demos/credprovider-aws/verify.sh"}, Minutes: 2, Summary: "inject a secret; refuse an untagged one and an unlisted atespace"},
 }
 
-var openclawVerify = Command{
-	ID: "openclaw-verify", Title: "Check the OpenClaw demo", Args: []string{"demos/openclaw/deploy.sh", "verify"},
-	Minutes: 2, Summary: "the actor, the gateway, and the gateway-to-actor path",
+var openclaw = []Command{
+	{ID: "openclaw", Title: "OpenClaw demo", Args: []string{"demos/openclaw/deploy.sh"}, Minutes: 4, Summary: "the gateway (state on EFS), worker pool, agent template", Rows: []Row{
+		{Title: "Gateway state to EFS", Match: []string{"Move the gateway's state"}, Optional: true},
+		{Title: "Gateway, workers and agent", Match: []string{"Deploy the OpenClaw demo"}},
+	}},
+	{ID: "openclaw-verify", Title: "Check the OpenClaw demo", Args: []string{"demos/openclaw/deploy.sh", "verify"},
+		Minutes: 1, Summary: "the actor, the gateway, and the gateway-to-actor path"},
 }
 
 // Install returns the commands for an install with the chosen demos.
@@ -187,7 +198,7 @@ func Install(demos map[string]bool) []Command {
 	if demos["counter-verify"] {
 		cmds = append(cmds, counterVerify)
 	}
-	if demos["efs"] || demos["s3files"] {
+	if demos["efs"] || demos["s3files"] || demos["openclaw"] {
 		cmds = append(cmds, efs...)
 	}
 	if demos["s3files"] {
@@ -199,9 +210,9 @@ func Install(demos map[string]bool) []Command {
 	if demos["credprovider-aws"] {
 		cmds = append(cmds, credprovider...)
 	}
-	// deploy.sh deploys OpenClaw when config.local.env names it; this checks it.
+	// Last: the plugins above reinstall Substrate, which crashes running actors.
 	if demos["openclaw"] {
-		cmds = append(cmds, openclawVerify)
+		cmds = append(cmds, openclaw...)
 	}
 	return cmds
 }
@@ -235,6 +246,7 @@ func Teardown() []Command {
 func ByID(id string) (Command, bool) {
 	all := append(Install(map[string]bool{"counter-verify": true, "s3files": true, "db-rotation": true,
 		"credprovider-aws": true, "openclaw": true}), Teardown()...)
+	all = append(all, retired...)
 	for _, c := range all {
 		if c.ID == id {
 			return c, true
