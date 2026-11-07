@@ -523,7 +523,41 @@
       <li>The <b>third node, microVM+gVisor</b>, is new. <i>point at it</i></li>
       <li>It runs gVisor actors <b>inside a microVM worker Pod</b>.</li>
     </ul>
-    <p><i>Next:</i> how that third mode works.</p>
+    <p><i>Next:</i> the installer this animation opens.</p>
+  </aside>
+</section>
+
+<!-- installer -->
+<section class="slide">
+  <h2>An interactive installer on top of the same scripts</h2>
+  <div class="installer">
+    <div class="term"><img src="installer-provision.png" alt="The installer's Provision screen: a checklist of install steps with times on the left, and the live script log on the right"></div>
+    <div class="card"><h3 class="accent">What it adds</h3><ul>
+      <li><b>Checks first:</b> tools, account, Region, vCPU quota, nested virtualization</li>
+      <li><b>Live checklist</b> from the scripts' own steps</li>
+      <li><b>Teardown</b> from the Done screen</li>
+      <li>Same <code>create-cluster.sh</code> and <code>deploy.sh</code> underneath</li>
+    </ul></div>
+  </div>
+  <aside class="notes">
+    <p>An <b>interactive installer</b>, the same idea as the <b>interactive installer for GKE</b>.</p>
+    <ul>
+      <li>A small <b>terminal UI in Go</b> with <b>no install logic of its own</b>: it runs <code>create-cluster.sh</code> and <code>deploy.sh</code>, and reads their step lines.</li>
+      <li>First it <b>checks your setup</b>:
+        <ul>
+          <li>the tool versions</li>
+          <li>which account and role you are signed in as, and the Region</li>
+          <li>whether the cluster name is free</li>
+          <li>that the instance type supports nested virtualization, and the EC2 vCPU quota</li>
+        </ul>
+      </li>
+      <li>Then it shows a <b>review of the settings</b>.</li>
+      <li>While it installs, it turns the scripts' steps into a <b>live checklist with times</b>, next to the log.</li>
+      <li>The <b>Done screen</b> prints how to reach the cluster, and has a Teardown action that runs <code>clean.sh</code> and <code>delete-cluster.sh</code>.</li>
+      <li>A full install took <b>about 28 minutes</b>. It lives in the <code>installer</code> folder of the talk repo.</li>
+      <li>It is the <b>fastest way to deploy</b>; the same scripts still run on their own.</li>
+    </ul>
+    <p><i>Next:</i> a proposed third mode, and how it works.</p>
   </aside>
 </section>
 
@@ -1627,40 +1661,6 @@ curl localhost:8001     <span class="c"># resumes</span></code></pre>
           <li>then per-actor EFS and S3 Files volumes work <b>with the add-on alone</b></li>
         </ul>
       </li>
-    </ul>
-    <p><i>Next:</i> an interactive installer on top of the same scripts.</p>
-  </aside>
-</section>
-
-<!-- installer -->
-<section class="slide">
-  <h2>An interactive installer on top of the same scripts</h2>
-  <div class="installer">
-    <div class="term"><img src="installer-provision.png" alt="The installer's Provision screen: a checklist of install steps with times on the left, and the live script log on the right"></div>
-    <div class="card"><h3 class="accent">What it adds</h3><ul>
-      <li><b>Checks first:</b> tools, account, Region, vCPU quota, nested virtualization</li>
-      <li><b>Live checklist</b> from the scripts' own steps</li>
-      <li><b>Teardown</b> from the Done screen</li>
-      <li>Same <code>create-cluster.sh</code> and <code>deploy.sh</code> underneath</li>
-    </ul></div>
-  </div>
-  <aside class="notes">
-    <p>An <b>interactive installer</b>, the same idea as the <b>interactive installer for GKE</b>.</p>
-    <ul>
-      <li>A small <b>terminal UI in Go</b> with <b>no install logic of its own</b>: it runs <code>create-cluster.sh</code> and <code>deploy.sh</code>, and reads their step lines.</li>
-      <li>First it <b>checks your setup</b>:
-        <ul>
-          <li>the tool versions</li>
-          <li>which account and role you are signed in as, and the Region</li>
-          <li>whether the cluster name is free</li>
-          <li>that the instance type supports nested virtualization, and the EC2 vCPU quota</li>
-        </ul>
-      </li>
-      <li>Then it shows a <b>review of the settings</b>.</li>
-      <li>While it installs, it turns the scripts' steps into a <b>live checklist with times</b>, next to the log.</li>
-      <li>The <b>Done screen</b> prints how to reach the cluster, and has a Teardown action that runs <code>clean.sh</code> and <code>delete-cluster.sh</code>.</li>
-      <li>A full install took <b>about 28 minutes</b>. It lives in the <code>installer</code> folder of the talk repo.</li>
-      <li>It is the <b>fastest way to deploy</b>; the same scripts still run on their own.</li>
     </ul>
     <p><i>Next:</i> the production checklist.</p>
   </aside>
