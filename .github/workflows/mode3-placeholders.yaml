@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
   push:
     branches: [mode3]
-    paths: [.github/workflows/mode3-placeholders.yaml, .github/mode3/placeholders.sh]
+    paths: [.github/workflows/mode3-placeholders.yaml, .github/mode3/*.sh]
 permissions:
   contents: read
   packages: write
@@ -16,6 +16,8 @@ jobs:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
       - name: Log in to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: Probe
+        run: .github/mode3/probe.sh
       - name: Push the placeholders
         env:
           IMAGE_REPO: ghcr.io/${{ github.repository }}
