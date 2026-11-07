@@ -1,0 +1,66 @@
+# Builds the Substrate release images for mode 3 (microVM worker Pods that
+# run gVisor actors) from a branch of a Substrate fork, and publishes them to
+# ghcr.io/OWNER/substrate under the tag v1.0.0-mode3.<commit>.
+#
+# The steps are the images job of the fork's own .github/workflows/release.yaml:
+# ate-setup publish release-images reads VERSION, KO_DOCKER_REPO and
+# KO_DEFAULTPLATFORMS. It logs in with GHCR_TOKEN (see mode3-placeholders.yaml).
+# A complete image set for the tag is left as it is.
+name: mode3-images
+on:
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: Substrate repository to build
+        default: csantanapr/substrate
+      ref:
+        description: Branch, tag or commit to build
+        default: microvm-mode-3
+  push:
+    branches: [mode3]
+    paths: [.github/workflows/mode3-images.yaml]
+permissions:
+  contents: read
+concurrency:
+  group: mode3-images
+jobs:
+  images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      KO_DOCKER_REPO: ghcr.io/${{ github.repository_owner }}/substrate
+      KO_DEFAULTPLATFORMS: linux/amd64,linux/arm64
+    steps:
+    - name: Checkout this repository
+      uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+      with:
+        path: eks
+        persist-credentials: false
+    - name: Checkout Substrate
+      uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+      with:
+        repository: ${{ inputs.repository || 'csantanapr/substrate' }}
+        ref: ${{ inputs.ref || 'microvm-mode-3' }}
+        path: src
+        persist-credentials: false
+    - name: Version
+      working-directory: src
+      run: echo "VERSION=v1.0.0-mode3.$(git rev-parse --short=7 HEAD)" >> "$GITHUB_ENV"
+    - name: Setup Go
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: src/go.mod
+        cache: false
+    - name: Set up buildx
+      uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      with:
+        driver-opts: image=moby/buildkit:v0.33.1@sha256:cec9f139f45e93c5c69c60f8b07cfad9f43f4ef6b6a6cd917527fea5ff2e3dea
+    - name: Log in to GHCR
+      env:
+        GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+      run: eks/.github/mode3/ghcr-login.sh
+    - name: Publish images
+      working-directory: src
+      run: go run ./cmd/ate-setup publish release-images
+    - name: Summary
+      run: echo "Published $KO_DOCKER_REPO/*:$VERSION" >> "$GITHUB_STEP_SUMMARY"
