@@ -15,7 +15,7 @@ on:
         default: csantanapr/substrate
       ref:
         description: Branch, tag or commit to build
-        default: microvm-mode-3
+        default: microvm-mode-3-mixed
   push:
     branches: [mode3]
     paths: [.github/workflows/mode3-images.yaml]
@@ -40,7 +40,7 @@ jobs:
       uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
       with:
         repository: ${{ inputs.repository || 'csantanapr/substrate' }}
-        ref: ${{ inputs.ref || 'microvm-mode-3' }}
+        ref: ${{ inputs.ref || 'microvm-mode-3-mixed' }}
         path: src
         persist-credentials: false
     - name: Version

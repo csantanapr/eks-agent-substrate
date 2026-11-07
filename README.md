@@ -304,6 +304,9 @@ Things to know:
 
 A proposal for upstream, in the `microvm-mode-3` branch of
 [csantanapr/substrate](https://github.com/csantanapr/substrate/tree/microvm-mode-3).
+`MODE3_COMMIT` is on `microvm-mode-3-mixed`, which adds one fix on top: atelet
+picks the transport per worker, so gVisor and microVM pools keep working on a
+cluster that also runs mode 3.
 The worker Pod is itself a microVM, and the worker runs actors with gVisor
 inside it. An escape from gVisor then lands in the microVM's guest kernel, not
 on the node or in other Pods. It is not part of a Substrate release.
