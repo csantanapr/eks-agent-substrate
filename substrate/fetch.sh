@@ -23,6 +23,15 @@ info "Agent Substrate $SUBSTRATE_TAG"
 
 clone() {
   rm -rf "$SUBSTRATE_SRC"
+  if [ -n "$SUBSTRATE_REF" ]; then
+    # A commit cannot be cloned by name; fetch it into an empty repository.
+    log "Clone $SUBSTRATE_REPO at $SUBSTRATE_REF"
+    git init --quiet "$SUBSTRATE_SRC"
+    git -C "$SUBSTRATE_SRC" fetch --quiet --depth 1 "$SUBSTRATE_REPO" "$SUBSTRATE_REF" \
+      || die "no ref $SUBSTRATE_REF in $SUBSTRATE_REPO"
+    git -C "$SUBSTRATE_SRC" checkout --quiet --detach FETCH_HEAD
+    return
+  fi
   log "Clone $SUBSTRATE_REPO at $SUBSTRATE_TAG"
   git clone --quiet --depth 1 --branch "$SUBSTRATE_TAG" "$SUBSTRATE_REPO" "$SUBSTRATE_SRC" \
     || die "no tag $SUBSTRATE_TAG in $SUBSTRATE_REPO"

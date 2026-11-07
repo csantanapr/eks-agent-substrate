@@ -72,7 +72,7 @@ done
 # reinstalls Substrate (demos/credprovider-aws) would otherwise turn off one
 # another demo turned on (ExternalVolumes for demos/efs). ./clean.sh
 # uninstalls Substrate, which clears them.
-args=() gates=""
+args=() gates="$SUBSTRATE_PREVIEW"
 for a in "$@"; do
   case "$a" in
     --preview=*) gates+=",${a#--preview=}" ;;

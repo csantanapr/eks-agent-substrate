@@ -56,6 +56,15 @@ latest_substrate_tag() {
     | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$' \
     | sed 's/-rc\./~rc./' | sort -V | tail -1 | sed 's/~rc\./-rc./'
 }
+# MODE3=on installs the mode 3 proposal instead: the Substrate fork commit
+# MODE3_COMMIT, its images under MODE3_IMAGE_REPO tagged MODE3_TAG, and the
+# NetworkWorkers preview gate. SUBSTRATE_REF is the git ref fetch.sh clones.
+SUBSTRATE_REF="${SUBSTRATE_REF:-}"
+SUBSTRATE_PREVIEW="${SUBSTRATE_PREVIEW:-}"
+if [ "${MODE3:-}" = on ]; then
+  SUBSTRATE_REPO="$MODE3_REPO" SUBSTRATE_REF="$MODE3_COMMIT" SUBSTRATE_TAG="$MODE3_TAG"
+  SUBSTRATE_IMAGE_REPO="$MODE3_IMAGE_REPO" SUBSTRATE_PREVIEW=NetworkWorkers
+fi
 if [ "$SUBSTRATE_TAG" = latest ]; then
   SUBSTRATE_TAG="$(latest_substrate_tag)" || die "cannot list the tags of $SUBSTRATE_REPO"
   [ -n "$SUBSTRATE_TAG" ] || die "no release tags in $SUBSTRATE_REPO"
