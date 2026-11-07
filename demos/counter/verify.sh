@@ -76,3 +76,11 @@ roundtrip() { # actor atespace template localport
 
 roundtrip demo-gvisor ate-demo-counter counter 8001
 roundtrip demo-microvm ate-demo-counter-microvm counter-microvm 8002
+# Mode 3 (demos/mode3): the same round trip with gVisor inside a Kata microVM
+# Pod, after checking every worker Pod of the pool runs under RuntimeClass kata.
+if [ "${MODE3:-}" = on ] && kubectl get namespace ate-demo-counter-mode3 >/dev/null 2>&1; then
+  rcs=$(kubectl -n ate-demo-counter-mode3 get pods -l ate.dev/worker-transport=network \
+    -o jsonpath='{range .items[*]}{.spec.runtimeClassName}{"\n"}{end}' | sort -u)
+  [ "$rcs" = kata ] || die "mode 3 worker Pods run under '${rcs:-nothing}', not RuntimeClass kata"
+  roundtrip demo-mode3 ate-demo-counter-mode3 counter-mode3 8003
+fi

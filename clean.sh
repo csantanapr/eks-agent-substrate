@@ -34,9 +34,14 @@ if cluster_exists; then
   # Namespaces first: deleting the openclaw namespace deletes its PVC, and
   # its StorageClass deletes the volume behind it (an EFS access point, or
   # an EBS volume from an older install), before demos/efs/clean.sh runs.
-  step kubectl delete namespace openclaw ate-demo-counter ate-demo-counter-microvm llm-gateway ate-db-bootstrap \
-    --ignore-not-found --timeout=10m
+  step kubectl delete namespace openclaw ate-demo-counter ate-demo-counter-microvm ate-demo-counter-mode3 \
+    llm-gateway ate-db-bootstrap --ignore-not-found --timeout=10m
   step kubectl delete clusterrole,clusterrolebinding openclaw-gateway-eks openclaw-dashboard --ignore-not-found
+  # Mode 3: once its worker Pods are gone, kata-deploy's uninstall removes Kata
+  # from the microvm nodes and the RuntimeClasses.
+  if helm status kata-deploy -n kube-system >/dev/null 2>&1; then
+    step helm uninstall kata-deploy -n kube-system --wait --timeout 10m
+  fi
 
   # Before Substrate goes: deleting the actors deletes their access points.
   phase "EFS and S3 Files demos"
