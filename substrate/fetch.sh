@@ -92,11 +92,15 @@ fi
 log "Build ate-setup and kubectl-ate ($(go version | awk '{print $3}'))"
 mkdir -p "$WORK/bin"
 # -mod=vendor builds from the modules vendored in the clone, so the build
-# downloads no Go modules.
+# downloads no Go modules. Stamp SUBSTRATE_TAG the way the release build does:
+# a clone of a commit (SUBSTRATE_REF) has no tag for Go to read.
 (
   cd "$SUBSTRATE_SRC"
   export GOFLAGS=-mod=vendor CGO_ENABLED=0
-  go build -o "$WORK/bin/ate-setup" ./cmd/ate-setup
-  go build -o "$WORK/bin/kubectl-ate" ./cmd/kubectl-ate
+  v=go.ate.dev/substrate/internal/version
+  read -r commit date < <(git show -s --format='%H %cI' HEAD)
+  ldflags="-X=$v.Version=$SUBSTRATE_TAG -X=$v.Commit=$commit -X=$v.BuildDate=$date"
+  go build -ldflags "$ldflags" -o "$WORK/bin/ate-setup" ./cmd/ate-setup
+  go build -ldflags "$ldflags" -o "$WORK/bin/kubectl-ate" ./cmd/kubectl-ate
 )
 "$WORK/bin/kubectl-ate" --version | sed 's/^/   /'
