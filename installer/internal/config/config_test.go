@@ -192,7 +192,7 @@ func TestValidate(t *testing.T) {
 		t.Fatalf("good values rejected: %v", bad)
 	}
 	for k, v := range map[string]string{
-		"CLUSTER_NAME": "Substrate_TUI", "AWS_REGION": "uswest2", "KUBERNETES_VERSION": "latest", "SYSTEM_NODES": "0",
+		"CLUSTER_NAME": "Substrate_TUI", "AWS_REGION": "uswest2", "KUBERNETES_VERSION": "latest", "AUTO_MODE": "yes", "SYSTEM_NODES": "0",
 		"GVISOR_INSTANCE_TYPE": "big", "TAGS": "no spaces=a b=", "EKS_PUBLIC_ACCESS_CIDRS": "", "SUBSTRATE_TAG": "main",
 	} {
 		vals := map[string]string{}

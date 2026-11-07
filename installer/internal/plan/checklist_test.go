@@ -37,6 +37,7 @@ func TestChecklistFreshCreate(t *testing.T) {
 	}
 	g.Line(at(1005), marker("Tag the node group Auto Scaling groups (EKS does not copy node group tags to them)"))
 	g.Line(at(1040), marker("Default StorageClass: encrypted gp3"))
+	g.Line(at(1041), marker("Auto Mode: network policy, node tags"))
 	g.Line(at(1042), marker("Node IMDS settings"))
 	g.Line(at(1050), marker("Timings: create-cluster.sh"))
 	g.Line(at(1050), "   Preflight + launch template           0:05")
@@ -45,7 +46,7 @@ func TestChecklistFreshCreate(t *testing.T) {
 	g.Line(at(1050), "   total                                  17:30")
 	g.Exit(at(1050), 0)
 
-	if s := statuses(g); s != "done done done done done done" {
+	if s := statuses(g); s != "done done done done done done done" {
 		t.Errorf("rows: %s", s)
 	}
 	if d := g.Rows[2].Duration(at(2000)); d != 1000*time.Second {
@@ -68,8 +69,8 @@ func TestChecklistFreshCreate(t *testing.T) {
 	}
 }
 
-// A rerun on an existing cluster prints no eksctl line; the optional row
-// is skipped and the next one still matches.
+// A rerun on an existing cluster without Auto Mode prints no eksctl or Auto
+// Mode line; those optional rows are skipped and the next ones still match.
 func TestChecklistRerunSkipsOptional(t *testing.T) {
 	now := time.Now()
 	g := NewGroup(createCluster)
@@ -78,7 +79,7 @@ func TestChecklistRerunSkipsOptional(t *testing.T) {
 		g.Line(now, marker(s))
 	}
 	g.Exit(now, 0)
-	if s := statuses(g); s != "done done skipped done done done" {
+	if s := statuses(g); s != "done done skipped done done skipped done" {
 		t.Errorf("rows: %s", s)
 	}
 }

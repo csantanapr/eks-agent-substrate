@@ -17,6 +17,7 @@ type fieldKind int
 const (
 	fText fieldKind = iota
 	fDemo
+	fToggle // a config key that is "on" or empty
 )
 
 // field is one focusable setting: a config key, or a demo checkbox.
@@ -34,6 +35,7 @@ func settingsFields() []field {
 		{kind: fText, key: "AWS_REGION", label: "AWS Region", section: "Cluster"},
 		{kind: fText, key: "AWS_PROFILE", label: "AWS profile", section: "Cluster"},
 		{kind: fText, key: "KUBERNETES_VERSION", label: "Kubernetes version", section: "Cluster"},
+		{kind: fToggle, key: "AUTO_MODE", label: "EKS Auto Mode", section: "Cluster"},
 		{kind: fText, key: "TAGS", label: "Tags", section: "Cluster"},
 		{kind: fText, key: "EKS_PUBLIC_ACCESS_CIDRS", label: "Kube API access CIDRs", section: "Cluster"},
 	}
@@ -142,6 +144,14 @@ func (m Model) settingsKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case "enter", " ", "space":
+		if f.kind == fToggle {
+			if m.values[f.key] == "on" {
+				m.values[f.key] = ""
+			} else {
+				m.values[f.key] = "on"
+			}
+			return m, nil
+		}
 		if f.kind == fDemo {
 			d := m.demo(f.key)
 			switch {

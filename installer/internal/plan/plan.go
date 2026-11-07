@@ -79,13 +79,14 @@ const (
 
 var createCluster = Command{
 	ID: "create-cluster", Title: "Create the EKS cluster", Args: []string{"./create-cluster.sh"},
-	Minutes: 18, Summary: "EKS control plane, add-ons, three managed node groups",
+	Minutes: 18, Summary: "EKS control plane, add-ons, three managed node groups, Auto Mode",
 	Rows: []Row{
 		{Title: "Preflight: nested virtualization", Match: []string{"Preflight"}},
 		{Title: "Launch template for microVM nodes", Match: []string{"Launch template"}},
 		{Title: "EKS control plane, add-ons, node groups", Match: []string{"eksctl create cluster", "Add the missing"}, Optional: true},
 		{Title: "Tag the Auto Scaling groups", Match: []string{"Tag the node group"}},
 		{Title: "Default StorageClass (encrypted gp3)", Match: []string{"Default StorageClass"}},
+		{Title: "Auto Mode: network policy, node tags", Match: []string{"Auto Mode: network policy"}, Optional: true},
 		{Title: "Node IMDS settings", Match: []string{"Node IMDS settings"}},
 	},
 }
@@ -110,6 +111,7 @@ var deploy = Command{
 		{Title: "Counter on microVM", Match: []string{"Counter on microvm"}},
 		// Older deploy.sh runs deployed OpenClaw here; kept to replay their logs.
 		{Title: "OpenClaw demo", Match: []string{"Deploy the OpenClaw demo"}, Optional: true},
+		{Title: "Tag the Auto Mode nodes", Match: []string{"Tag the Auto Mode nodes"}, Optional: true},
 		{Title: "Ready", Match: []string{"Done."}},
 	},
 }

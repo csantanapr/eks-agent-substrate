@@ -199,6 +199,21 @@ func TestSettingsEditAndValidate(t *testing.T) {
 	m = press(t, m, "enter")
 	m.input.SetValue("substrate-tui")
 	m = press(t, m, "enter")
+	// EKS Auto Mode: on by default (config.env); enter turns it off, again on.
+	for m.fields[m.cursor].key != "AUTO_MODE" {
+		m = press(t, m, "down")
+	}
+	if m.values["AUTO_MODE"] != "on" {
+		t.Errorf("AUTO_MODE default %q", m.values["AUTO_MODE"])
+	}
+	m = press(t, m, "enter")
+	if m.values["AUTO_MODE"] != "" || m.edit {
+		t.Errorf("auto mode off: %q, editing %v", m.values["AUTO_MODE"], m.edit)
+	}
+	m = press(t, m, " ")
+	if m.values["AUTO_MODE"] != "on" {
+		t.Errorf("auto mode on: %q", m.values["AUTO_MODE"])
+	}
 	// Toggle S3 Files: it needs EFS, which turns on with it.
 	for m.fields[m.cursor].key != "s3files" {
 		m = press(t, m, "down")

@@ -159,7 +159,7 @@ func (m Model) welcome(w, h int) string {
 		"  " + sText.Render("you can run the same scripts yourself. Every step is idempotent: run it again after a failure."),
 		"",
 		"  " + sSection.Render("What it creates in your AWS account"),
-		row("Amazon EKS", fmt.Sprintf("cluster %s, Kubernetes %s, three managed node groups", v["CLUSTER_NAME"], v["KUBERNETES_VERSION"])),
+		row("Amazon EKS", fmt.Sprintf("cluster %s, Kubernetes %s, three managed node groups, Auto Mode %s", v["CLUSTER_NAME"], v["KUBERNETES_VERSION"], autoMode(v))),
 		row("Amazon EC2", fmt.Sprintf("%d nodes: %d %s system, %d %s gVisor, %d %s microVM (nested virt)", total,
 			m.nodes("system"), v["SYSTEM_INSTANCE_TYPE"], m.nodes("gvisor"), v["GVISOR_INSTANCE_TYPE"], m.nodes("microvm"), v["MICROVM_INSTANCE_TYPE"])),
 		row("Amazon S3", "snapshot and asset buckets: private, encrypted, TLS only"),
@@ -277,6 +277,14 @@ func (m Model) checkView(w, h int) string {
 	return strings.Join(lines, "\n")
 }
 
+// autoMode is how the Welcome and Done screens show AUTO_MODE.
+func autoMode(v map[string]string) string {
+	if v["AUTO_MODE"] == "on" {
+		return "on (NodePools general-purpose, system)"
+	}
+	return "off"
+}
+
 // ---------------------------------------------------------------- settings
 
 func (m Model) settingsView(w, h int) string {
@@ -299,6 +307,12 @@ func (m Model) settingsView(w, h int) string {
 		st := sText
 		if val == "" {
 			st = sMuted
+		}
+		if f.kind == fToggle {
+			shown, st = "on (NodePools general-purpose, system)", sText
+			if val != "on" {
+				shown, st = "off", sMuted
+			}
 		}
 		if _, bad := m.errs[f.key]; bad {
 			st = sRed
@@ -688,6 +702,7 @@ func (m Model) done(w, h int) string {
 		kv("Node groups", fmt.Sprintf("system  %d × %s", m.nodes("system"), v["SYSTEM_INSTANCE_TYPE"])),
 		kv("", fmt.Sprintf("gvisor  %d × %s", m.nodes("gvisor"), v["GVISOR_INSTANCE_TYPE"])),
 		kv("", fmt.Sprintf("microvm %d × %s, nested virt", m.nodes("microvm"), v["MICROVM_INSTANCE_TYPE"])),
+		kv("Auto Mode", autoMode(v)),
 		kv("Amazon S3", c+"-snap-"+acct+"-"+r),
 		kv("", c+"-assets-"+acct+"-"+r),
 		kv("Amazon RDS", c+"-pg, PostgreSQL, private"),

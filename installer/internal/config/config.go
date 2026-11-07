@@ -162,7 +162,7 @@ func ParseFile(path string) (File, error) {
 
 // Managed lists the keys the installer asks about, in the order it writes them.
 var Managed = []string{
-	"CLUSTER_NAME", "AWS_REGION", "AWS_PROFILE", "KUBERNETES_VERSION",
+	"CLUSTER_NAME", "AWS_REGION", "AWS_PROFILE", "KUBERNETES_VERSION", "AUTO_MODE",
 	"SYSTEM_INSTANCE_TYPE", "SYSTEM_NODES",
 	"GVISOR_INSTANCE_TYPE", "GVISOR_NODES",
 	"MICROVM_INSTANCE_TYPE", "MICROVM_NODES",
@@ -339,6 +339,7 @@ func Validate(values map[string]string) map[string]string {
 	check("AWS_REGION", regionRe.MatchString(values["AWS_REGION"]), "a Region name such as us-west-2")
 	check("AWS_PROFILE", profileRe.MatchString(values["AWS_PROFILE"]), "a profile name from ~/.aws/config, or empty")
 	check("KUBERNETES_VERSION", versionRe.MatchString(values["KUBERNETES_VERSION"]), "a version such as 1.37")
+	check("AUTO_MODE", values["AUTO_MODE"] == "on" || values["AUTO_MODE"] == "", "on, or empty for off")
 	for _, g := range []string{"SYSTEM", "GVISOR", "MICROVM"} {
 		check(g+"_INSTANCE_TYPE", typeRe.MatchString(values[g+"_INSTANCE_TYPE"]), "an EC2 instance type such as m8i.2xlarge")
 		n := values[g+"_NODES"]
