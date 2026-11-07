@@ -132,14 +132,41 @@ for c in ${EKS_PUBLIC_ACCESS_CIDRS:-0.0.0.0/0}; do cidrs+="\"$c\", "; done
 render_yaml "$ROOT/cluster.yaml" CLUSTER_NAME AWS_REGION KUBERNETES_VERSION CLUSTER_TAGS PUBLIC_ACCESS_CIDRS \
   SYSTEM_INSTANCE_TYPE SYSTEM_NODES SYSTEM_MAX_NODES GVISOR_INSTANCE_TYPE GVISOR_NODES GVISOR_MAX_NODES \
   MICROVM_INSTANCE_TYPE MICROVM_NODES MICROVM_MAX_NODES NODE_TAGS lt_id lt_version > "$WORK/cluster.yaml"
+# AUTO_MODE=on: Auto Mode with its two built-in NodePools, and the system
+# group tainted ate.dev/workloadType=ate-system-infra; the pods deploy.sh
+# puts there tolerate it. eksctl creates an Auto Mode cluster only from a
+# config without node groups or add-ons, so cluster-auto.yaml is that, for
+# the create; cluster.yaml keeps them.
+#   https://docs.aws.amazon.com/eks/latest/userguide/set-builtin-node-pools.html
+if [ "$AUTO_MODE" = on ]; then
+  python3 - "$WORK/cluster.yaml" "$WORK/cluster-auto.yaml" <<'EOF'
+import sys, yaml
+full, create = sys.argv[1:]
+c = yaml.safe_load(open(full))
+c["autoModeConfig"] = {"enabled": True, "nodePools": ["general-purpose", "system"]}
+# The system group's taint keeps every pod that does not tolerate it (any
+# workload of yours) off it, so Auto Mode runs those on its own nodes.
+for g in c["managedNodeGroups"]:
+    if g["name"] == "system":
+        g["taints"] = [{"key": "ate.dev/workloadType", "value": "ate-system-infra", "effect": "NoSchedule"}]
+yaml.safe_dump(c, open(full, "w"), sort_keys=False)
+del c["managedNodeGroups"], c["addons"]
+yaml.safe_dump(c, open(create, "w"), sort_keys=False)
+EOF
+fi
 
 # eksctl turns the config into CloudFormation stacks: one for the cluster and
 # its VPC, one per node group.
 phase "eksctl: control plane, add-ons, node groups"
-if cluster_exists; then
+# Adds the add-ons and node groups an ACTIVE cluster is missing.
+add_missing() {
   status=$(aws_ eks describe-cluster --name "$CLUSTER_NAME" --query cluster.status --output text)
   [ "$status" = ACTIVE ] || die "cluster $CLUSTER_NAME is $status; wait for ACTIVE, or ./delete-cluster.sh and start again"
-  info "cluster $CLUSTER_NAME already exists in $AWS_REGION"
+  auto=$(aws_ eks describe-cluster --name "$CLUSTER_NAME" --query cluster.computeConfig.enabled --output text)
+  case "$AUTO_MODE:$auto" in
+    on:True|:False|:None) ;;
+    *) die "cluster $CLUSTER_NAME has Auto Mode $([ "$auto" = True ] && echo on || echo off), but AUTO_MODE='$AUTO_MODE'; set AUTO_MODE to match, or ./delete-cluster.sh and start again" ;;
+  esac
   addons=$(aws_ eks list-addons --cluster-name "$CLUSTER_NAME" --query 'addons[]' --output text)
   for a in vpc-cni coredns kube-proxy eks-pod-identity-agent aws-ebs-csi-driver; do
     if ! grep -qw "$a" <<<"$addons"; then
@@ -173,6 +200,10 @@ if cluster_exists; then
       || die "add-on $a is not ACTIVE; see: aws eks describe-addon --cluster-name $CLUSTER_NAME --addon-name $a"
     info "$a"
   done
+}
+if cluster_exists; then
+  info "cluster $CLUSTER_NAME already exists in $AWS_REGION"
+  add_missing
 else
   # A failed create leaves its stack in ROLLBACK_COMPLETE, empty but holding
   # the name, so eksctl cannot create the cluster again until it is deleted.
@@ -185,7 +216,14 @@ else
     aws_ cloudformation wait stack-delete-complete --stack-name "$stack"
   fi
   log "eksctl create cluster $CLUSTER_NAME ($KUBERNETES_VERSION, $AWS_REGION)"
-  eksctl create cluster -f "$WORK/cluster.yaml" --kubeconfig "$KUBECONFIG"
+  if [ "$AUTO_MODE" = on ]; then
+    # With Auto Mode, eksctl creates the cluster without node groups or the
+    # networking add-ons; add_missing adds them next.
+    eksctl create cluster -f "$WORK/cluster-auto.yaml" --kubeconfig "$KUBECONFIG"
+    add_missing
+  else
+    eksctl create cluster -f "$WORK/cluster.yaml" --kubeconfig "$KUBECONFIG"
+  fi
 fi
 
 ensure_kubeconfig
@@ -219,12 +257,26 @@ log "Default StorageClass: encrypted gp3"
 # volumes alone.
 kubectl apply -f "$WORK/storageclass.yaml" 2>/dev/null || kubectl replace --force -f "$WORK/storageclass.yaml"
 
+if [ "$AUTO_MODE" = on ]; then
+  log "Auto Mode: network policy, node tags"
+  # Auto Mode nodes enforce NetworkPolicy only with the network policy
+  # controller on. The vpc-cni add-on's enableNetworkPolicy (cluster.yaml)
+  # sets this key of its ConfigMap.
+  #   https://docs.aws.amazon.com/eks/latest/userguide/auto-net-pol.html
+  [ "$(kubectl -n kube-system get configmap amazon-vpc-cni -o jsonpath='{.data.enable-network-policy-controller}')" = true ] \
+    || die "the network policy controller is off (kube-system/amazon-vpc-cni); Auto Mode nodes would not enforce NetworkPolicy"
+  info "network policy controller on"
+  tag_auto_mode_nodes
+fi
+
 # Expect "required" (IMDSv2 only) and a hop limit of 1 on every node.
 log "Node IMDS settings"
-aws_ ec2 describe-instances \
-  --filters "Name=tag:eks:cluster-name,Values=$CLUSTER_NAME" Name=instance-state-name,Values=running \
-  --query 'Reservations[].Instances[].[Tags[?Key==`eks:nodegroup-name`]|[0].Value,MetadataOptions.HttpTokens,MetadataOptions.HttpPutResponseHopLimit]' \
-  --output text | sort | sed 's/^/   /'
-kubectl get nodes -L ate.dev/pool
+for tag in eks:cluster-name eks:eks-cluster-name; do
+  aws_ ec2 describe-instances --include-managed-resources \
+    --filters "Name=tag:$tag,Values=$CLUSTER_NAME" Name=instance-state-name,Values=running \
+    --query 'Reservations[].Instances[].[Tags[?Key==`eks:nodegroup-name` || Key==`eks:kubernetes-node-pool-name`]|[0].Value,MetadataOptions.HttpTokens,MetadataOptions.HttpPutResponseHopLimit]' \
+    --output text
+done | sort | sed 's/^/   /'
+kubectl get nodes -L ate.dev/pool -L karpenter.sh/nodepool
 info "kubeconfig: $KUBECONFIG"
 info "next: ./deploy.sh"

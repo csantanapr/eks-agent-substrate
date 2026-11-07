@@ -1,6 +1,7 @@
 # The eksctl cluster config: the EKS cluster, its add-ons, and one managed
 # node group per role (system, gvisor, microvm). create-cluster.sh fills it
-# in, writes it to .work/cluster.yaml and runs eksctl on that file.
+# in, writes it to .work/cluster.yaml and runs eksctl on that file. With
+# AUTO_MODE=on it also turns on EKS Auto Mode.
 #
 # Placeholders, filled in by render_yaml (lib/common.sh):
 #   CLUSTER_NAME, AWS_REGION, KUBERNETES_VERSION   config.env
@@ -36,6 +37,10 @@ vpc:
   publicAccessCIDRs: [$PUBLIC_ACCESS_CIDRS]
 iam:
   withOIDC: false
+# With AUTO_MODE=on, create-cluster.sh turns Auto Mode on with its two
+# built-in NodePools. The node groups below stay, with the add-ons they need.
+autoModeConfig:
+  enabled: false
 addons:
   - name: vpc-cni
     # Substrate ships NetworkPolicies (default deny for ate-system, one per
@@ -58,7 +63,10 @@ managedNodeGroups:
     privateNetworking: true
     disableIMDSv1: true
     disablePodIMDS: true
-    labels: { ate.dev/pool: system }
+    # ate.dev/workloadType is the label ate-setup pins the Substrate control
+    # plane to under --cordon-system-infra-components (substrate/install.sh,
+    # with AUTO_MODE=on).
+    labels: { ate.dev/pool: system, ate.dev/workloadType: ate-system-infra }
     tags:
       ${NODE_TAGS}
   - name: gvisor

@@ -107,6 +107,8 @@ processClusterStore: false
 processClusterPushSecret: false
 processPushSecret: false
 nodeSelector: { ate.dev/pool: system }
+# The system group's taint with AUTO_MODE=on (create-cluster.sh).
+tolerations: [{ key: ate.dev/workloadType, operator: Equal, value: ate-system-infra, effect: NoSchedule }]
 # Pod Identity only; never the node role.
 extraEnv: [{ name: AWS_EC2_METADATA_DISABLED, value: "true" }]
 EOF
@@ -138,7 +140,7 @@ kubectl create namespace "$RELOADER_NS" --dry-run=client -o yaml | kubectl apply
 sed -e "s|image: \"ghcr.io/external-secrets/reloader:$RELOADER_VERSION\"|image: \"$RELOADER_IMAGE\"|" "$bundle" \
   | kubectl apply --server-side -f - >/dev/null
 kubectl -n "$RELOADER_NS" patch deployment reloader --type=strategic -p \
-  '{"spec":{"template":{"spec":{"nodeSelector":{"ate.dev/pool":"system"}}}}}' >/dev/null
+  '{"spec":{"template":{"spec":{"nodeSelector":{"ate.dev/pool":"system"},"tolerations":[{"key":"ate.dev/workloadType","operator":"Equal","value":"ate-system-infra","effect":"NoSchedule"}]}}}}' >/dev/null
 kubectl -n "$RELOADER_NS" rollout status deploy/reloader --timeout=3m
 # A change to ate-api-server-secret-envvars rolls the Deployments that read
 # it through envFrom: ate-api-server only (reloader-config.yaml).

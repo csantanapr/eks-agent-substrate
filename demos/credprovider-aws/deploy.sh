@@ -152,6 +152,9 @@ for d in docs:
         continue
     tpl = d["spec"]["template"]
     tpl["spec"]["nodeSelector"] = {"ate.dev/pool": "system"}
+    # The taint of the system group with AUTO_MODE=on (create-cluster.sh).
+    tpl["spec"]["tolerations"] = [{"key": "ate.dev/workloadType", "operator": "Equal",
+                                   "value": "ate-system-infra", "effect": "NoSchedule"}]
     tpl["metadata"].setdefault("annotations", {})["agent-substrate-on-eks/secret-policy-sha256"] = sha
     for c in tpl["spec"]["containers"]:
         assert c["image"].startswith("ko://"), c["image"]

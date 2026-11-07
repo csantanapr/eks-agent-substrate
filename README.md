@@ -18,7 +18,10 @@ Kubernetes API endpoint is public by default (IAM authenticated); set
 
 One EKS cluster with three node groups: `system` for the Substrate control
 plane, atenet and the LLM gateway; `gvisor` for gVisor workers; `microvm` for
-Kata and Cloud Hypervisor workers on EC2 with nested virtualization. Around
+Kata and Cloud Hypervisor workers on EC2 with nested virtualization. EKS
+Auto Mode is on as well (`AUTO_MODE=on`, the default), with its two built-in
+NodePools, `general-purpose` and `system`, for any other workloads; set
+`AUTO_MODE=` in `config.local.env` for a cluster without it. Around
 it: Amazon S3 for actor snapshots and microVM guest assets, Amazon RDS for
 PostgreSQL (TLS verify-full), Secrets Manager for the database logins, ECR
 for the demo images, and Bedrock for agent inference through the in-cluster
@@ -188,6 +191,34 @@ EKS scripts: set `OPENCLAW_DIR`, or `OPENCLAW_REPO` and `OPENCLAW_REF`, and
 optionally `WHATSAPP_PEER`. The gateway keeps its state on EFS, which every
 Availability Zone can mount, so run `demos/efs/deploy.sh` first, then
 `demos/openclaw/deploy.sh` and `demos/openclaw/deploy.sh verify`.
+
+## EKS Auto Mode
+
+With `AUTO_MODE=on` (the default), the cluster runs EKS Auto Mode next to
+the three node groups, with its two built-in NodePools, `general-purpose` and
+`system`. The node groups only take the pods meant for them: `gvisor` and
+`microvm` the worker pods, `system` the Substrate control plane (pinned by
+`ate-setup --cordon-system-infra-components`) and this repository's system
+pods. The `system` group carries the taint
+`ate.dev/workloadType=ate-system-infra:NoSchedule`, which those pods
+tolerate. Every other pod, with no nodeSelector or toleration, runs on a
+node Auto Mode launches for it:
+
+```bash
+kubectl run hello --image=public.ecr.aws/docker/library/busybox --restart=Never -- sh -c 'echo hello; sleep 600'
+kubectl get pod hello -o wide          # on a new node
+kubectl get nodes -L karpenter.sh/nodepool,eks.amazonaws.com/compute-type
+kubectl delete pod hello               # Auto Mode removes the empty node
+```
+
+The OpenClaw gateway and dashboard have no node selector, so they run on
+Auto Mode nodes too. Auto Mode nodes enforce NetworkPolicy, use IMDSv2 with
+hop limit 1 and run in the private subnets. The built-in NodePools cannot
+carry your tags, so `create-cluster.sh` and `deploy.sh` add `TAGS` to the
+Auto Mode instances, volumes and network interfaces they find; a node Auto
+Mode launches later starts with EKS tags only. Set `AUTO_MODE=` in
+`config.local.env` for a cluster without Auto Mode, before
+`create-cluster.sh`: the mode is fixed when the cluster is created.
 
 ## Optional: per-actor volumes on Amazon EFS and Amazon S3 Files
 

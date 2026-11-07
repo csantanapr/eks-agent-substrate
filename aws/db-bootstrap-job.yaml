@@ -28,6 +28,8 @@ spec:
     spec:
       restartPolicy: Never
       nodeSelector: { ate.dev/pool: system }
+      # Tolerates the system group's taint (AUTO_MODE=on, create-cluster.sh).
+      tolerations: [{ key: ate.dev/workloadType, operator: Equal, value: ate-system-infra, effect: NoSchedule }]
       securityContext: { runAsNonRoot: true, runAsUser: 70, seccompProfile: { type: RuntimeDefault } }
       containers:
       - name: psql

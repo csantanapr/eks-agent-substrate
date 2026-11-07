@@ -65,6 +65,10 @@ if [ "${MODE3:-}" = on ]; then
   SUBSTRATE_REPO="$MODE3_REPO" SUBSTRATE_REF="$MODE3_COMMIT" SUBSTRATE_TAG="$MODE3_TAG"
   SUBSTRATE_IMAGE_REPO="$MODE3_IMAGE_REPO" SUBSTRATE_PREVIEW=NetworkWorkers
 fi
+case "${AUTO_MODE:-}" in
+  on|"") ;;
+  *) die "AUTO_MODE must be on or empty, not '$AUTO_MODE'" ;;
+esac
 if [ "$SUBSTRATE_TAG" = latest ]; then
   SUBSTRATE_TAG="$(latest_substrate_tag)" || die "cannot list the tags of $SUBSTRATE_REPO"
   [ -n "$SUBSTRATE_TAG" ] || die "no release tags in $SUBSTRATE_REPO"
@@ -204,6 +208,28 @@ tags_csv() { _tag_pairs | while read -r k v; do printf '%s=%s,' "$k" "$v"; done 
 tags_yaml() { local pad; pad="$(printf '%*s' "$1" '')"; _tag_pairs | while read -r k v; do printf '%s"%s": "%s"\n' "$pad" "$k" "$v"; done; }
 # key=value lines (Auto Scaling group and StorageClass tags)
 tags_kv() { _tag_pairs | while read -r k v; do printf '%s=%s\n' "$k" "$v"; done; }
+
+# tag_auto_mode_nodes: the built-in Auto Mode NodePools launch their
+# instances with EKS tags only, and cannot take custom ones. Add the tags to
+# this cluster's Auto Mode instances, their volumes and their network
+# interfaces. A node Auto Mode launches later starts without them, until
+# create-cluster.sh or deploy.sh runs again.
+tag_auto_mode_nodes() {
+  [ "$AUTO_MODE" = on ] || return 0
+  local ids
+  # shellcheck disable=SC2207
+  local TAG_ARGS=($(tags_cli))
+  # Auto Mode instances are EC2 managed instances, which a filtered describe
+  # leaves out without --include-managed-resources.
+  ids=$(aws_ ec2 describe-instances --include-managed-resources \
+    --filters "Name=tag:eks:eks-cluster-name,Values=$CLUSTER_NAME" Name=instance-state-name,Values=pending,running \
+    --query 'Reservations[].Instances[].[InstanceId, BlockDeviceMappings[].Ebs.VolumeId, NetworkInterfaces[].NetworkInterfaceId]' \
+    --output text)
+  read -ra ids <<<"$(tr '\n\t' '  ' <<<"$ids")"
+  [ "${#ids[@]}" -gt 0 ] || { info "no Auto Mode instances yet"; return 0; }
+  aws_ ec2 create-tags --resources "${ids[@]}" --tags "${TAG_ARGS[@]}"
+  info "tagged ${#ids[@]} Auto Mode instances, volumes and network interfaces (in all)"
+}
 
 # owned_role ROLE / owned_bucket BUCKET: 0 if it carries our owner tag, 1 if
 # it does not exist; stops the script when it exists without the tag.

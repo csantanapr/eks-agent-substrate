@@ -36,6 +36,9 @@ phase "RDS ready + database bootstrap";    bash "$ROOT/aws/db-bootstrap.sh"
 phase "Agent Substrate install";           bash "$ROOT/substrate/install.sh"
 phase "LLM gateway (Bedrock)";             bash "$ROOT/llm-gateway/deploy.sh"
 phase "Counter demo (gVisor + microVM)";   bash "$ROOT/demos/counter/deploy.sh" both
+if [ "$AUTO_MODE" = on ]; then
+  phase "Auto Mode node tags"; log "Tag the Auto Mode nodes"; tag_auto_mode_nodes
+fi
 phase "";
 
 log "Done. Everything is ClusterIP; reach it with port forwards."

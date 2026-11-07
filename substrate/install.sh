@@ -85,6 +85,10 @@ if kubectl -n ate-system get deploy ate-api-server >/dev/null 2>&1; then
 fi
 gates=$(tr ',' '\n' <<<"$gates" | sed '/^$/d' | sort -u | paste -sd, -)
 [ -z "$gates" ] || { args+=("--preview=$gates"); info "preview gates: $gates"; }
+# With EKS Auto Mode the system node group is tainted (create-cluster.sh), so
+# other pods go to Auto Mode nodes. This flag pins every control plane
+# Deployment there, with the matching toleration.
+[ "$AUTO_MODE" = on ] && args+=(--cordon-system-infra-components)
 
 log "ate-setup deploy ate-system ($SUBSTRATE_TAG)"
 cd "$SUBSTRATE_SRC"
