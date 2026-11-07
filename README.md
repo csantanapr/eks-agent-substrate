@@ -300,6 +300,31 @@ Things to know:
 - Registering the provider reinstalls Substrate with the preview gates the
   cluster runs (for example `ExternalVolumes` from `demos/efs`).
 
+## Optional, preview: mode 3, gVisor inside a microVM Pod
+
+A proposal for upstream, in the `microvm-mode-3` branch of
+[csantanapr/substrate](https://github.com/csantanapr/substrate/tree/microvm-mode-3).
+The worker Pod is itself a microVM, and the worker runs actors with gVisor
+inside it. An escape from gVisor then lands in the microVM's guest kernel, not
+on the node or in other Pods. It is not part of a Substrate release.
+
+```bash
+echo MODE3=on >> config.local.env
+./deploy.sh                     # Substrate from the proposal
+demos/mode3/deploy.sh           # Kata on the microvm nodes, a counter pool on mode 3
+demos/counter/verify.sh         # also runs a round trip on mode 3
+```
+
+Or choose "Mode 3" under Plugins in the installer. `clean.sh` removes it. How
+the pieces fit:
+
+| Piece | What it does |
+|---|---|
+| Substrate | `MODE3=on` installs commit `MODE3_COMMIT` of the fork, with its images from `ghcr.io/csantanapr/substrate` (built by `.github/workflows/mode3-images.yaml`) and the `NetworkWorkers` preview gate. The EKS patch applies to it as is. |
+| Kata Containers | kata-deploy 3.32.0, Kata's own installer, on the microvm node group only, which already has `/dev/kvm` through nested virtualization. Only the Go runtime with Cloud Hypervisor, the VMM `ateworker-microvm` uses too, behind RuntimeClass `kata`. |
+| WorkerPool | The gVisor class with `spec.networkTransport.runtimeClassName: kata`: the controller runs the worker Pods under Kata, and atelet reaches them over mutual TLS on the Pod network (port 8087, the `atelet-workers` Service) instead of the node's shared files and Unix sockets. Snapshots and sandbox assets go through a staging service. |
+| Check | `demos/counter/verify.sh` checks that every worker Pod of the pool runs under RuntimeClass `kata`, then suspends and resumes the counter on it. |
+
 ## Move to a new release
 
 Set `SUBSTRATE_TAG` in `config.local.env` (for example `v1.0.1`, or
@@ -374,7 +399,8 @@ client identity (pass it through `substrate/install.sh`).
 | `substrate/` | Fetch, patch and build the installer; install Agent Substrate |
 | `patches/` | The installer patch for EKS and S3, and why |
 | `llm-gateway/` | agentgateway with the Bedrock backend |
-| `demos/` | The counter and OpenClaw demos; per-actor EFS and S3 Files volumes; DB login rotation; Secrets Manager credential injection |
+| `demos/` | The counter and OpenClaw demos; per-actor EFS and S3 Files volumes; DB login rotation; Secrets Manager credential injection; mode 3 (preview) |
+| `.github/` | Workflows that build the mode 3 images to GHCR |
 | `slides/` | The talk deck (open `slides/index.html`) |
 | `installer/` | Interactive terminal installer over the scripts |
 | `.agents/skills/` | Agent skill for deploying and troubleshooting this repo; `.claude/skills` and `.kiro/skills` link to it |
