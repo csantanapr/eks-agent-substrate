@@ -14,16 +14,17 @@ everything it does can also be done by running those scripts yourself.
 
 ## Screens
 
-It opens with a short animation, about 3.4 seconds: the Agent Substrate
+It opens with a short animation, about 3.6 seconds: the Agent Substrate
 mascot, a hooded octopus holding three robot puppets, fades in; the puppets
 bob, the tentacles wave and the octopus blinks; "Agent Substrate 1.0.0" types
-out over "on Amazon EKS" and an orange smile; then three robots (actors) drop
-onto a gVisor node and a microVM node in an Amazon EKS cluster. Any key skips
-it, and `--done` opens without it. Under 80 x 21 cells the title goes under
-the mascot, which needs 50 x 24; in a smaller window, or a terminal without
+out over "on Amazon EKS" and an orange smile; then four robots (actors) drop
+onto a gVisor node, a microVM node and a microVM+gVisor node (a gVisor box
+inside a microVM box) in an Amazon EKS cluster. Any key skips it, and
+`--done` opens without it. Under 80 x 21 cells the title goes under the
+mascot, which needs 50 x 24; in a smaller window, or a terminal without
 color (`NO_COLOR`), it shows the title alone.
 
-![The opening animation: the mascot fades in, the title types out, and actors drop onto gVisor and microVM nodes in an Amazon EKS cluster](docs/splash.gif)
+![The opening animation: the mascot fades in, the title types out, and actors drop onto gVisor, microVM and microVM+gVisor nodes in an Amazon EKS cluster](docs/splash.gif)
 
 | # | Screen | What happens |
 |---|---|---|

@@ -12,12 +12,13 @@ import (
 )
 
 // The splash before Welcome: the Agent Substrate mascot, a hooded octopus
-// holding three robot puppets, in half-block pixels; the title; and three
-// small robots (actors) landing on gVisor and microVM nodes in an Amazon EKS
-// cluster. About 3.4 seconds; any key skips it.
+// holding three robot puppets, in half-block pixels; the title; and four
+// small robots (actors) landing on gVisor, microVM and microVM+gVisor (a
+// gVisor box inside a microVM box) nodes in an Amazon EKS cluster. About
+// 3.6 seconds; any key skips it.
 
 const (
-	splashFrames = 34
+	splashFrames = 36
 	splashEvery  = 100 * time.Millisecond
 )
 
@@ -28,7 +29,7 @@ func splashTick() tea.Cmd {
 }
 
 // splashSnaps are the frames saved as 00-splash-NN when snapshots are on.
-var splashSnaps = map[int]bool{5: true, 14: true, 21: true, 33: true}
+var splashSnaps = map[int]bool{5: true, 14: true, 21: true, splashFrames - 1: true}
 
 func (m Model) onSplash() (tea.Model, tea.Cmd) {
 	if m.screen != sSplash {
@@ -194,6 +195,7 @@ var actors = []struct {
 	{[]string{"..c..", "ccccc", "ckckc", "ccccc"}, 0x62B2DA},
 	{[]string{"c...c", "ccccc", "ckckc", "ccccc"}, 0xF0EA6E},
 	{[]string{"...c.", "ccccc", "ckckc", "ccccc"}, 0xE678B0},
+	{[]string{"..c..", "ccccc", "ckckc", "ccccc"}, 0x5FCF65},
 }
 
 var mascotColors = map[byte]uint32{
@@ -419,15 +421,20 @@ func drawTitle(c *canvas, x, y, f int) {
 	}
 }
 
-// drawCluster draws the Amazon EKS frame, pw cells wide and 6 rows high,
-// at cell x, y, with a gVisor node and a microVM node, and the actors
-// dropping onto them.
+// clusterRows is the height of the Amazon EKS frame.
+const clusterRows = 13
+
+// drawCluster draws the Amazon EKS frame, pw cells wide and clusterRows
+// high, at cell x, y: a gVisor node and a microVM node side by side, a
+// microVM+gVisor node under them (a gVisor box inside a microVM box), and
+// the actors dropping onto them.
 func drawCluster(c *canvas, x, y, pw, f int) {
 	if f < 16 {
 		return
 	}
 	// The nodes, side by side with a space before, between and (when it
-	// fits) after them; gVisor holds two actors, microVM one.
+	// fits) after them; gVisor holds two actors, microVM one. The
+	// microVM+gVisor node below spans both, after a blank row.
 	avail := pw - 5
 	if avail < 24 {
 		avail = pw - 4
@@ -436,54 +443,61 @@ func drawCluster(c *canvas, x, y, pw, f int) {
 	bw2 := avail - bw1
 	// The labels are on the bottom borders, out of the way of the drops.
 	label := " Amazon EKS "
+	bottom := y + clusterRows - 1
 	c.text(x, y, "╭"+strings.Repeat("─", pw-2)+"╮", inkDim, false)
-	for r := 1; r <= 4; r++ {
-		c.text(x, y+r, "│", inkDim, false)
-		c.text(x+pw-1, y+r, "│", inkDim, false)
+	for r := y + 1; r < bottom; r++ {
+		c.text(x, r, "│", inkDim, false)
+		c.text(x+pw-1, r, "│", inkDim, false)
 	}
-	e := c.text(x, y+5, "╰─", inkDim, false)
-	e = c.text(e, y+5, label, inkOrange, true)
-	c.text(e, y+5, strings.Repeat("─", pw-3-len(label))+"╯", inkDim, false)
+	e := c.text(x, bottom, "╰─", inkDim, false)
+	e = c.text(e, bottom, label, inkOrange, true)
+	c.text(e, bottom, strings.Repeat("─", pw-3-len(label))+"╯", inkDim, false)
 
-	// Actor i drops in from above the frame between frames start and
-	// start+4, then its node's border lights up for two frames.
-	type drop struct {
-		actor, node, slot, start int
+	// The boxes, each w x h cells at x, y with its name on the bottom
+	// border; slots is how many actors land in it.
+	type box struct {
+		name       string
+		x, y, w, h int
+		slots      int
 	}
-	drops := []drop{{0, 0, 0, 19}, {1, 1, 0, 21}, {2, 0, 1, 23}}
-	nodes := []struct {
-		name string
-		x, w int
-	}{{"gVisor", x + 2, bw1}, {"microVM", x + 2 + bw1 + 1, bw2}}
-	for i, nd := range nodes {
+	boxes := []box{
+		{name: "gVisor", x: x + 2, y: y + 1, w: bw1, h: 4, slots: 2},
+		{name: "microVM", x: x + 3 + bw1, y: y + 1, w: bw2, h: 4, slots: 1},
+		{name: "microVM+gVisor", x: x + 2, y: y + 6, w: avail + 1, h: 6},
+		{name: "gVisor", x: x + 4, y: y + 7, w: avail - 3, h: 4, slots: 1},
+	}
+	// Actor i drops from three rows above its box between frames start
+	// and start+4, then that box's border lights up for two frames.
+	type drop struct {
+		actor, box, slot, start int
+	}
+	drops := []drop{{0, 0, 0, 19}, {1, 1, 0, 21}, {2, 0, 1, 23}, {3, 3, 0, 25}}
+	for i, b := range boxes {
 		border := inkDim
 		for _, d := range drops {
-			if d.node == i && f >= d.start+4 && f < d.start+6 {
+			if d.box == i && f >= d.start+4 && f < d.start+6 {
 				border = inkOrange
 			}
 		}
-		name := " " + nd.name + " "
-		c.text(nd.x, y+1, "┌"+strings.Repeat("─", nd.w-2)+"┐", border, false)
-		for r := 2; r <= 3; r++ {
-			c.text(nd.x, y+r, "│", border, false)
-			c.text(nd.x+nd.w-1, y+r, "│", border, false)
+		name := " " + b.name + " "
+		c.text(b.x, b.y, "┌"+strings.Repeat("─", b.w-2)+"┐", border, false)
+		for r := b.y + 1; r < b.y+b.h-1; r++ {
+			c.text(b.x, r, "│", border, false)
+			c.text(b.x+b.w-1, r, "│", border, false)
 		}
-		e := c.text(nd.x, y+4, "└", border, false)
-		e = c.text(e, y+4, name, inkText, false)
-		c.text(e, y+4, strings.Repeat("─", nd.w-2-len(name))+"┘", border, false)
+		e := c.text(b.x, b.y+b.h-1, "└", border, false)
+		e = c.text(e, b.y+b.h-1, name, inkText, false)
+		c.text(e, b.y+b.h-1, strings.Repeat("─", b.w-2-len(name))+"┘", border, false)
 	}
 	for _, d := range drops {
 		if f < d.start {
 			continue
 		}
-		nd := nodes[d.node]
-		in := nd.w - 2
-		n := 1
-		if d.node == 0 {
-			n = 2
-		}
-		ax := nd.x + 1 + (in-(6*n-1))/2 + 6*d.slot
-		y0, y1 := 2*y-2, 2*(y+2)
+		b := boxes[d.box]
+		in := b.w - 2
+		ax := b.x + 1 + (in-(6*b.slots-1))/2 + 6*d.slot
+		y1 := 2 * (b.y + 1)
+		y0 := y1 - 6
 		t := math.Min(1, float64(f-d.start)/4)
 		ay := y0 + int(math.Round(float64(y1-y0)*t*t))
 		a := actors[d.actor]
@@ -509,7 +523,8 @@ func (m Model) splash(w, h int) string {
 	}
 	c := newCanvas(w, h)
 	hint := "press any key"
-	// The title and the cluster are 11 rows and at least 28 cells wide.
+	// The title and the cluster are 5+clusterRows rows and at least 28
+	// cells wide.
 	side := func(s int) {
 		aw, ah := s*mascotW, s*mascotH/2
 		pw := min(44, w-aw-4)
@@ -517,7 +532,7 @@ func (m Model) splash(w, h int) string {
 		x0 := (w - (aw + gap + pw)) / 2
 		y0 := (h - 1 - ah) / 2
 		drawMascot(c, x0, 2*y0, s, f)
-		px, py := x0+aw+gap, y0+(ah-11)/2
+		px, py := x0+aw+gap, y0+(ah-5-clusterRows)/2
 		drawTitle(c, px, py, f)
 		drawCluster(c, px, py+5, pw, f)
 	}
