@@ -1,24 +1,28 @@
 # Creates the GHCR packages for the mode 3 images with a placeholder tag, so
 # they can be made public before the first real build.
+#
+# GHCR lets the workflow's GITHUB_TOKEN create only the package named after
+# this repository, and Substrate needs one package per image, so this uses
+# GHCR_TOKEN: a personal access token with write:packages, set as a repository
+# secret (gh secret set GHCR_TOKEN).
 name: mode3-placeholders
 on:
   workflow_dispatch:
   push:
     branches: [mode3]
-    paths: [.github/workflows/mode3-placeholders.yaml, .github/mode3/*.sh]
+    paths: [.github/workflows/mode3-placeholders.yaml, .github/mode3/placeholders.sh]
 permissions:
   contents: read
-  packages: write
 jobs:
   push:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
       - name: Log in to GHCR
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-      - name: Probe
-        run: .github/mode3/probe.sh
+        env:
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+        run: .github/mode3/ghcr-login.sh
       - name: Push the placeholders
         env:
-          IMAGE_REPO: ghcr.io/${{ github.repository }}
+          IMAGE_REPO: ghcr.io/${{ github.repository_owner }}/substrate
         run: .github/mode3/placeholders.sh

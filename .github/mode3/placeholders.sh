@@ -3,11 +3,11 @@
 # publishes, under IMAGE_REPO, so the GHCR packages exist (linked to this
 # repository) and can be made public before the first real build.
 #
-#   IMAGE_REPO=ghcr.io/OWNER/REPO .github/mode3/placeholders.sh
+#   IMAGE_REPO=ghcr.io/OWNER/substrate .github/mode3/placeholders.sh
 #
 # Run by .github/workflows/mode3-placeholders.yaml after docker login.
 set -euo pipefail
-: "${IMAGE_REPO:?set IMAGE_REPO, e.g. ghcr.io/OWNER/REPO}"
+: "${IMAGE_REPO:?set IMAGE_REPO, e.g. ghcr.io/OWNER/substrate}"
 SOURCE="${SOURCE:-https://github.com/${GITHUB_REPOSITORY:-csantanapr/eks-agent-substrate}}"
 
 # The release set: images.ReleaseComponents and images.ReleaseDockerfileImages
