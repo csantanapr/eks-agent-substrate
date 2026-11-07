@@ -96,6 +96,10 @@ for d in docs:
         d["spec"]["replicas"] = 2
         d["spec"]["networkTransport"] = {"runtimeClassName": "kata"}
         t = d["spec"].setdefault("template", {})
+        # The worker keeps runtime assets, image layers and actor state on a
+        # tmpfs in the guest, which counts as the worker memory.
+        t["resources"] = {"limits": {"cpu": "1", "memory": "2Gi"},
+                          "requests": {"cpu": "250m", "memory": "2Gi"}}
         t["nodeSelector"] = {"ate.dev/pool": "microvm"}
         t["tolerations"] = [{"key": "ate.dev/sandboxClass", "operator": "Equal",
                              "value": "microvm", "effect": "NoSchedule"}]

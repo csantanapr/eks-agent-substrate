@@ -304,10 +304,12 @@ Things to know:
 
 A proposal for upstream, in the `microvm-mode-3` branch of
 [csantanapr/substrate](https://github.com/csantanapr/substrate/tree/microvm-mode-3).
-`MODE3_COMMIT` is on `microvm-mode-3-mixed`, which adds two fixes on top:
+`MODE3_COMMIT` is on `microvm-mode-3-mixed`, which adds three fixes on top:
 atelet picks the transport per worker, so gVisor and microVM pools keep working
-on a cluster that also runs mode 3, and staging keeps the sticky bit of an
-image's `/tmp`.
+on a cluster that also runs mode 3; staging keeps the sticky bit of an image's
+`/tmp`; and a mode 3 worker keeps its actors on a tmpfs in the guest, since
+overlayfs refuses Kata's virtio-fs share for an actor's root filesystem. That
+tmpfs is guest memory, so the mode 3 pool gets 2 GiB per worker.
 The worker Pod is itself a microVM, and the worker runs actors with gVisor
 inside it. An escape from gVisor then lands in the microVM's guest kernel, not
 on the node or in other Pods. It is not part of a Substrate release.
