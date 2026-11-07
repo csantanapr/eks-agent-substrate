@@ -18,5 +18,5 @@ jobs:
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
       - name: Push the placeholders
         env:
-          IMAGE_REPO: ghcr.io/${{ github.repository_owner }}/substrate
+          IMAGE_REPO: ghcr.io/${{ github.repository }}
         run: .github/mode3/placeholders.sh
