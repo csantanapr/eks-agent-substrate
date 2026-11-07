@@ -148,7 +148,7 @@
       <ol>
         <li>Agent Substrate in one slide</li>
         <li>The architecture on AWS</li>
-        <li>Cluster and sandboxes: EKS 1.37, gVisor, microVM</li>
+        <li>Cluster and sandboxes: EKS 1.37, gVisor, microVM, proposed third mode</li>
         <li>Snapshots on S3, one IAM role per component</li>
         <li>State on RDS, with rotating logins</li>
         <li>Actor secrets and Bedrock, through the egress gateway</li>
@@ -172,7 +172,7 @@
       <li>What Agent Substrate is, and how it <b>maps onto AWS</b>.</li>
       <li>Then the pieces, one at a time:
         <ul>
-          <li>the cluster and its <b>two sandbox classes</b></li>
+          <li>the cluster and its <b>two sandbox classes</b>, plus a <b>proposed third mode</b></li>
           <li>snapshots and identity</li>
           <li>state and rotating logins</li>
           <li>secrets and inference through the <b>egress gateway</b></li>
@@ -505,6 +505,104 @@
       <li>microVM needs <code>/dev/kvm</code>. <code>atelet</code> advertises it as the <code>ate.dev/kvm</code> resource.</li>
       <li>Its memory snapshot is <b>restored on demand with userfaultfd</b>, and its guest assets come from the S3 asset bucket.</li>
       <li>The <b>ActorTemplate looks the same</b> for both. The WorkerPool's <code>sandboxClasses</code> picks which one a workload gets.</li>
+    </ul>
+    <p><i>Next:</i> a proposed third mode that stacks both.</p>
+  </aside>
+</section>
+
+<!-- 7b -->
+<section class="slide">
+  <h2>Proposal: a third mode, gVisor inside a microVM Pod <span class="tag">upstream proposal</span></h2>
+  <div class="fill">
+    <svg viewBox="0 0 1720 560" role="img" aria-label="Three nested stacks. gVisor today: an EC2 node holds atelet and a regular worker Pod, which holds a gVisor sandbox, which holds the actor; one boundary. microVM today: an EC2 node with nested virtualization holds atelet and a regular worker Pod with /dev/kvm, which holds a Cloud Hypervisor microVM, which holds the actor; one boundary. Proposed mode 3: the worker Pod itself is a Kata microVM on RuntimeClass kata, reached by atelet over mutual TLS on port 8087, and inside it a gVisor sandbox holds the actor; two boundaries.">
+      <defs><marker id="m3a" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
+      <rect x="1160" y="1" width="558" height="558" rx="18" fill="#1d2733" stroke="#ff9900" stroke-width="2.5"/>
+      <g font-size="21">
+        <!-- gVisor -->
+        <text x="15" y="40"><tspan fill="#3ecf8e" font-weight="700" font-size="26">gVisor</tspan><tspan dx="12" fill="#9aa7b4" font-size="20">v1.0.0</tspan></text>
+        <rect x="15" y="64" width="530" height="424" rx="14" fill="#161d26" stroke="#ff9900" stroke-width="2"/>
+        <text x="37" y="98"><tspan fill="#ff9900" font-weight="700">EC2 node</tspan><tspan dx="12" fill="#9aa7b4" font-size="18">gVisor node group</tspan></text>
+        <rect x="37" y="116" width="140" height="44" rx="10" fill="#0b1016" stroke="#9aa7b4" stroke-width="1.5"/>
+        <text x="107" y="145" text-anchor="middle" fill="#e8edf2" font-weight="700" font-size="20">atelet</text>
+        <path d="M107 162 V202" stroke="#9aa7b4" stroke-width="2.5" marker-start="url(#m3a)" marker-end="url(#m3a)"/>
+        <text x="197" y="134" fill="#e8edf2" font-size="18">Unix socket</text>
+        <text x="197" y="156" fill="#9aa7b4" font-size="16">shared node files</text>
+        <rect x="35" y="206" width="490" height="264" rx="12" fill="#0b1016" stroke="#2a3542" stroke-width="2"/>
+        <text x="57" y="236" fill="#e8edf2" font-weight="700">worker Pod</text>
+        <text x="57" y="258" fill="#9aa7b4" font-size="17">regular Pod</text>
+        <rect x="55" y="274" width="450" height="178" rx="12" fill="#161d26" stroke="#3ecf8e" stroke-width="3"/>
+        <text x="77" y="304" fill="#3ecf8e" font-weight="700">gVisor sandbox</text>
+        <text x="77" y="326" fill="#9aa7b4" font-size="17">runsc userspace kernel</text>
+        <rect x="75" y="344" width="410" height="90" rx="12" fill="#0b1016" stroke="#4aa3ff" stroke-width="2"/>
+        <text x="97" y="384" fill="#4aa3ff" font-weight="700">actor</text>
+        <text x="97" y="410" fill="#9aa7b4" font-size="17">the agent's own processes</text>
+        <text x="280" y="530" text-anchor="middle"><tspan fill="#e8edf2" font-weight="700">1 boundary</tspan><tspan fill="#9aa7b4">: gVisor</tspan></text>
+
+        <!-- microVM -->
+        <text x="595" y="40"><tspan fill="#b18cff" font-weight="700" font-size="26">microVM</tspan><tspan dx="12" fill="#9aa7b4" font-size="20">v1.0.0</tspan></text>
+        <rect x="595" y="64" width="530" height="424" rx="14" fill="#161d26" stroke="#ff9900" stroke-width="2"/>
+        <text x="617" y="98"><tspan fill="#ff9900" font-weight="700">EC2 node</tspan><tspan dx="12" fill="#9aa7b4" font-size="18">nested virtualization on</tspan></text>
+        <rect x="617" y="116" width="140" height="44" rx="10" fill="#0b1016" stroke="#9aa7b4" stroke-width="1.5"/>
+        <text x="687" y="145" text-anchor="middle" fill="#e8edf2" font-weight="700" font-size="20">atelet</text>
+        <path d="M687 162 V202" stroke="#9aa7b4" stroke-width="2.5" marker-start="url(#m3a)" marker-end="url(#m3a)"/>
+        <text x="777" y="134" fill="#e8edf2" font-size="18">Unix socket</text>
+        <text x="777" y="156" fill="#9aa7b4" font-size="16">shared node files</text>
+        <rect x="615" y="206" width="490" height="264" rx="12" fill="#0b1016" stroke="#2a3542" stroke-width="2"/>
+        <text x="637" y="236" fill="#e8edf2" font-weight="700">worker Pod</text>
+        <text x="637" y="258" fill="#9aa7b4" font-size="17">regular Pod with /dev/kvm</text>
+        <rect x="635" y="274" width="450" height="178" rx="12" fill="#161d26" stroke="#b18cff" stroke-width="3"/>
+        <text x="657" y="304" fill="#b18cff" font-weight="700">microVM</text>
+        <text x="657" y="326" fill="#9aa7b4" font-size="17">Cloud Hypervisor, its own guest kernel</text>
+        <rect x="655" y="344" width="410" height="90" rx="12" fill="#0b1016" stroke="#4aa3ff" stroke-width="2"/>
+        <text x="677" y="384" fill="#4aa3ff" font-weight="700">actor</text>
+        <text x="677" y="410" fill="#9aa7b4" font-size="17">the agent's own processes</text>
+        <text x="860" y="530" text-anchor="middle"><tspan fill="#e8edf2" font-weight="700">1 boundary</tspan><tspan fill="#9aa7b4">: the VM</tspan></text>
+
+        <!-- mode 3 -->
+        <text x="1175" y="40"><tspan fill="#ff9900" font-weight="700" font-size="26">gVisor in a microVM Pod</tspan><tspan dx="12" fill="#9aa7b4" font-size="20">proposed</tspan></text>
+        <rect x="1175" y="64" width="530" height="424" rx="14" fill="#161d26" stroke="#ff9900" stroke-width="2"/>
+        <text x="1197" y="98"><tspan fill="#ff9900" font-weight="700">EC2 node</tspan><tspan dx="12" fill="#9aa7b4" font-size="18">nested virtualization on</tspan></text>
+        <rect x="1197" y="116" width="140" height="44" rx="10" fill="#0b1016" stroke="#9aa7b4" stroke-width="1.5"/>
+        <text x="1267" y="145" text-anchor="middle" fill="#e8edf2" font-weight="700" font-size="20">atelet</text>
+        <path d="M1267 162 V202" stroke="#ff9900" stroke-width="2.5" marker-start="url(#m3a)" marker-end="url(#m3a)"/>
+        <text x="1357" y="134" fill="#ff9900" font-size="18" font-weight="700">mutual TLS, port 8087</text>
+        <text x="1357" y="156" fill="#9aa7b4" font-size="16">Pod network, staging service</text>
+        <rect x="1195" y="206" width="490" height="264" rx="12" fill="#0b1016" stroke="#b18cff" stroke-width="3"/>
+        <text x="1217" y="236" fill="#b18cff" font-weight="700">worker Pod is a microVM</text>
+        <text x="1217" y="258" fill="#9aa7b4" font-size="17">Kata on Cloud Hypervisor · RuntimeClass kata</text>
+        <rect x="1215" y="274" width="450" height="178" rx="12" fill="#161d26" stroke="#3ecf8e" stroke-width="3"/>
+        <text x="1237" y="304" fill="#3ecf8e" font-weight="700">gVisor sandbox</text>
+        <text x="1237" y="326" fill="#9aa7b4" font-size="17">runsc, inside the guest kernel</text>
+        <rect x="1235" y="344" width="410" height="90" rx="12" fill="#0b1016" stroke="#4aa3ff" stroke-width="2"/>
+        <text x="1257" y="384" fill="#4aa3ff" font-weight="700">actor</text>
+        <text x="1257" y="410" fill="#9aa7b4" font-size="17">the agent's own processes</text>
+        <text x="1440" y="530" text-anchor="middle"><tspan fill="#ff9900" font-weight="700">2 boundaries</tspan><tspan fill="#9aa7b4">: the VM, then gVisor</tspan></text>
+      </g>
+    </svg>
+  </div>
+  <div class="grid2" style="flex:0;margin-top:1.2rem;align-items:stretch;grid-template-columns:1fr 1.6fr">
+<pre><code><span class="k">apiVersion</span>: ate.dev/v1
+<span class="k">kind</span>: WorkerPool
+<span class="k">spec</span>:
+  <span class="k">sandboxClasses</span>:
+  - name: gvisor          <span class="c"># gVisor class only</span>
+  <span class="k">networkTransport</span>:       <span class="c"># NetworkWorkers preview gate</span>
+    <span class="k">runtimeClassName</span>: <span class="s">kata</span></code></pre>
+    <div class="card roomy watch">
+      <h3>Why it matters</h3>
+      <ul>
+        <li><b>Defense in depth:</b> a gVisor escape lands in the guest kernel, not on the node or in other Pods</li>
+        <li>Images from the proposal branch: <code>ghcr.io/csantanapr/substrate</code></li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    <p>This is a <b>proposal for upstream</b>, not part of v1.0.0: a third mode that <b>stacks both boundaries</b>.</p>
+    <ul>
+      <li><i>point at the right column</i> The worker Pod itself runs as a <b>Kata microVM</b> on Cloud Hypervisor, on the nested-virtualization node group, and inside that guest the worker runs actors with <b>gVisor</b>.</li>
+      <li>That is <b>defense in depth</b>: a gVisor escape still lands in the microVM's guest kernel, not on the node or in another tenant's Pod.</li>
+      <li>You turn it on per WorkerPool with <code>networkTransport.runtimeClassName: kata</code>, for the gVisor class, behind the <code>NetworkWorkers</code> preview gate.</li>
+      <li>The guest can't see the node's files, so atelet reaches the worker over <b>mutual TLS on the Pod network</b>, through the <code>atelet-workers</code> Service on port 8087, and moves sandbox assets and snapshots through a <b>staging service</b>.</li>
     </ul>
     <p><i>Next:</i> how microVMs run without bare metal.</p>
   </aside>
