@@ -28,11 +28,16 @@ for n in "${names[@]}"; do
   # No org.opencontainers.image.source label: linking a package to a
   # repository needs more than write:packages, and GHCR denies the push.
   docker build -q -t "$ref" "$ctx" >/dev/null
-  if docker push -q "$ref"; then echo "pushed $ref"; else denied+=("$n"); fi
+  # GHCR refuses some first pushes of new packages in a burst with a plain
+  # "denied" and takes the same push a little later.
+  ok=""
+  for wait in 0 20 40 60 90; do
+    sleep "$wait"
+    if docker push -q "$ref"; then ok=1; break; fi
+  done
+  if [ -n "$ok" ]; then echo "pushed $ref"; else denied+=("$n"); fi
 done
-# A package that already exists and is linked to a repository refuses a
-# token without access to that repository.
 if [ "${#denied[@]}" -gt 0 ]; then
-  echo "::error::denied: ${denied[*]} (an existing package linked to another repository?)" >&2
+  echo "::error::denied after retries: ${denied[*]}" >&2
   exit 1
 fi
