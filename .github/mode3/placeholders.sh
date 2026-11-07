@@ -22,10 +22,17 @@ FROM scratch
 COPY README /README
 EOF
 
+denied=()
 for n in "${names[@]}"; do
   ref="$IMAGE_REPO/$n:placeholder"
   # No org.opencontainers.image.source label: linking a package to a
   # repository needs more than write:packages, and GHCR denies the push.
   docker build -q -t "$ref" "$ctx" >/dev/null
-  docker push -q "$ref"
+  if docker push -q "$ref"; then echo "pushed $ref"; else denied+=("$n"); fi
 done
+# A package that already exists and is linked to a repository refuses a
+# token without access to that repository.
+if [ "${#denied[@]}" -gt 0 ]; then
+  echo "::error::denied: ${denied[*]} (an existing package linked to another repository?)" >&2
+  exit 1
+fi
