@@ -531,9 +531,10 @@
 <section class="slide">
   <h2>An interactive installer on top of the same scripts</h2>
   <div class="installer">
-    <div class="term"><img src="installer-provision.png" alt="The installer's Provision screen: a checklist of install steps with times on the left, and the live script log on the right"></div>
+    <div class="term"><img src="installer-settings.png" alt="The installer's Settings screen: cluster name, Region, profile, tags and node groups on the left; the demos and plugins with every box checked on the right, and the Mode 3 plugin's description below them"></div>
     <div class="card"><h3 class="accent">What it adds</h3><ul>
       <li><b>Checks first:</b> tools, account, Region, vCPU quota, nested virtualization</li>
+      <li><b>Pick</b> the cluster name, Region, node groups, demos and plugins</li>
       <li><b>Live checklist</b> from the scripts' own steps</li>
       <li><b>Teardown</b> from the Done screen</li>
       <li>Same <code>create-cluster.sh</code> and <code>deploy.sh</code> underneath</li>
@@ -551,7 +552,8 @@
           <li>that the instance type supports nested virtualization, and the EC2 vCPU quota</li>
         </ul>
       </li>
-      <li>Then it shows a <b>review of the settings</b>.</li>
+      <li>On <b>Settings</b> you pick the <b>cluster name</b>, Region, profile and node groups, then the <b>demos and plugins</b>: EFS, S3 Files, login rotation, <b>Mode 3</b> and the credential provider. <i>point at the checked boxes</i></li>
+      <li>Then it shows a <b>review of the settings</b> and the commands it will run.</li>
       <li>While it installs, it turns the scripts' steps into a <b>live checklist with times</b>, next to the log.</li>
       <li>The <b>Done screen</b> prints how to reach the cluster, and has a Teardown action that runs <code>clean.sh</code> and <code>delete-cluster.sh</code>.</li>
       <li>A full install took <b>about 28 minutes</b>. It lives in the <code>installer</code> folder of the talk repo.</li>
