@@ -65,7 +65,7 @@ var Demos = []Demo{
 	{ID: "s3files", Section: SectionPlugins, Title: "Amazon S3 Files volumes per actor", Note: "demos/s3files, needs EFS"},
 	{ID: "db-rotation", Section: SectionPlugins, Title: "Secrets Manager login rotation", Note: "demos/db-rotation"},
 	{ID: "mode3", Section: SectionPlugins, Title: "Mode 3: gVisor in a microVM Pod (preview)",
-		Note: "demos/mode3, a proposal for upstream: worker Pods are Kata microVMs on the microvm nodes, with gVisor actors inside, so an escape from gVisor lands in the guest kernel. Sets MODE3=on: Substrate is installed from the proposal (MODE3_REPO at MODE3_COMMIT, images under MODE3_IMAGE_REPO), Kata from kata-deploy, and a counter pool the counter check covers. About 6 min."},
+		Note: "demos/mode3, a proposal for upstream: worker Pods are Kata microVMs on the microvm nodes, with gVisor actors inside, so an escape from gVisor lands in the guest kernel. Sets MODE3=on: Substrate is installed from the proposal (MODE3_REPO at MODE3_COMMIT, images under MODE3_IMAGE_REPO), Kata from kata-deploy, and a counter pool the counter check covers. About 2 min."},
 	{ID: "credprovider-aws", Section: SectionPlugins, Title: "Secrets Manager credential provider",
 		Note: "demos/credprovider-aws: builds the provider from its checkout (CREDPROVIDER_DIR, default ~/credprovider-aws-secret-manager), then checks it injects an actor's secret and refuses the rest. About 3 min."},
 }
@@ -197,7 +197,7 @@ var openclaw = []Command{
 
 var mode3 = Command{
 	ID: "mode3", Title: "Mode 3: gVisor in a microVM Pod", Args: []string{"demos/mode3/deploy.sh"},
-	Minutes: 6, Summary: "Kata on the microvm nodes, a counter pool with networkTransport", Rows: []Row{
+	Minutes: 2, Summary: "Kata on the microvm nodes, a counter pool with networkTransport", Rows: []Row{
 		{Title: "Kata Containers (kata-deploy)", Match: []string{"Kata Containers"}},
 		{Title: "Counter on mode 3", Match: []string{"Counter on mode 3"}},
 	},
