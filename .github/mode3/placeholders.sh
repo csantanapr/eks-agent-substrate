@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 # Push a tiny placeholder image for every image a Substrate release
-# publishes, under IMAGE_REPO, so the GHCR packages exist (linked to this
-# repository) and can be made public before the first real build.
+# publishes, under IMAGE_REPO, so the GHCR packages exist and can be made
+# public before the first real build.
 #
 #   IMAGE_REPO=ghcr.io/OWNER/substrate .github/mode3/placeholders.sh
 #
 # Run by .github/workflows/mode3-placeholders.yaml after docker login.
 set -euo pipefail
 : "${IMAGE_REPO:?set IMAGE_REPO, e.g. ghcr.io/OWNER/substrate}"
-SOURCE="${SOURCE:-https://github.com/${GITHUB_REPOSITORY:-csantanapr/eks-agent-substrate}}"
 
 # The release set: images.ReleaseComponents and images.ReleaseDockerfileImages
 # in cmd/ate-setup/internal/images/images.go, named by their last path element.
@@ -25,6 +24,8 @@ EOF
 
 for n in "${names[@]}"; do
   ref="$IMAGE_REPO/$n:placeholder"
-  docker build -q --label "org.opencontainers.image.source=$SOURCE" -t "$ref" "$ctx" >/dev/null
+  # No org.opencontainers.image.source label: linking a package to a
+  # repository needs more than write:packages, and GHCR denies the push.
+  docker build -q -t "$ref" "$ctx" >/dev/null
   docker push -q "$ref"
 done
