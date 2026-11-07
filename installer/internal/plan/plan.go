@@ -60,12 +60,12 @@ var Demos = []Demo{
 	{ID: "counter", Section: SectionDemos, Title: "Counter on gVisor and microVM", Note: "deploy.sh always deploys it", Default: true, Locked: true},
 	{ID: "counter-verify", Section: SectionDemos, Title: "Counter suspend/resume check", Note: "demos/counter/verify.sh --quick, about 1 min", Default: true},
 	{ID: "openclaw", Section: SectionDemos, Title: "OpenClaw always-on agent",
-		Note: "demos/openclaw: an always-on gateway, and an actor per conversation that thinks with Bedrock. Needs EFS, which turns on with it: the gateway keeps its state there. Clones the always-on-agent repository (branch eks) into .work/, unless OPENCLAW_DIR names a checkout. About 5 min."},
-	{ID: "efs", Section: SectionPlugins, Title: "Amazon EFS volumes per actor", Note: "demos/efs, about 10 min"},
+		Note: "demos/openclaw: an always-on gateway, and an actor per conversation that thinks with Bedrock. Needs EFS, which turns on with it: the gateway keeps its state there. Clones the always-on-agent repository (branch eks) into .work/, unless OPENCLAW_DIR names a checkout. About 8 min."},
+	{ID: "efs", Section: SectionPlugins, Title: "Amazon EFS volumes per actor", Note: "demos/efs, about 6 min"},
 	{ID: "s3files", Section: SectionPlugins, Title: "Amazon S3 Files volumes per actor", Note: "demos/s3files, needs EFS"},
 	{ID: "db-rotation", Section: SectionPlugins, Title: "Secrets Manager login rotation", Note: "demos/db-rotation"},
 	{ID: "credprovider-aws", Section: SectionPlugins, Title: "Secrets Manager credential provider",
-		Note: "demos/credprovider-aws: builds the provider from its checkout (CREDPROVIDER_DIR, default ~/credprovider-aws-secret-manager), then checks it injects an actor's secret and refuses the rest. About 5 min."},
+		Note: "demos/credprovider-aws: builds the provider from its checkout (CREDPROVIDER_DIR, default ~/credprovider-aws-secret-manager), then checks it injects an actor's secret and refuses the rest. About 3 min."},
 }
 
 // OpenClawRepo and OpenClawRef are what the OpenClaw choice clones when
@@ -77,7 +77,7 @@ const (
 
 var createCluster = Command{
 	ID: "create-cluster", Title: "Create the EKS cluster", Args: []string{"./create-cluster.sh"},
-	Minutes: 20, Summary: "EKS control plane, add-ons, three managed node groups",
+	Minutes: 18, Summary: "EKS control plane, add-ons, three managed node groups",
 	Rows: []Row{
 		{Title: "Preflight: nested virtualization", Match: []string{"Preflight"}},
 		{Title: "Launch template for microVM nodes", Match: []string{"Launch template"}},
@@ -90,7 +90,7 @@ var createCluster = Command{
 
 var deploy = Command{
 	ID: "deploy", Title: "Deploy Agent Substrate", Args: []string{"./deploy.sh"},
-	Minutes: 15, Summary: "S3, ECR, IAM, RDS, Secrets, Substrate, LLM gateway, counter",
+	Minutes: 12, Summary: "S3, ECR, IAM, RDS, Secrets, Substrate, LLM gateway, counter",
 	Rows: []Row{
 		{Title: "S3 snapshot and asset buckets", Match: []string{"S3 buckets"}},
 		{Title: "ECR repositories", Match: []string{"ECR repositories"}},
@@ -124,7 +124,7 @@ var counterVerify = Command{
 }
 
 var efs = []Command{
-	{ID: "efs", Title: "Amazon EFS volumes", Args: []string{"demos/efs/deploy.sh"}, Minutes: 10, Summary: "EFS, the EFS CSI add-on, per-actor access points", Rows: []Row{
+	{ID: "efs", Title: "Amazon EFS volumes", Args: []string{"demos/efs/deploy.sh"}, Minutes: 4, Summary: "EFS, the EFS CSI add-on, per-actor access points", Rows: []Row{
 		{Title: "EFS file system", Match: []string{"Amazon EFS file system"}},
 		{Title: "Security group (NFS)", Match: []string{"Security group"}},
 		{Title: "Mount targets", Match: []string{"Mount targets"}},
@@ -135,11 +135,11 @@ var efs = []Command{
 		{Title: "CSIDriverConfig and StorageClass", Match: []string{"CSIDriverConfig"}},
 		{Title: "Counter templates on EFS", Match: []string{"Counter templates"}},
 	}},
-	{ID: "efs-verify", Title: "Check the EFS volumes", Args: []string{"demos/efs/verify.sh"}, Minutes: 5, Summary: "a file counter survives suspend/resume"},
+	{ID: "efs-verify", Title: "Check the EFS volumes", Args: []string{"demos/efs/verify.sh"}, Minutes: 2, Summary: "a file counter survives suspend/resume"},
 }
 
 var s3files = []Command{
-	{ID: "s3files", Title: "Amazon S3 Files volumes", Args: []string{"demos/s3files/deploy.sh"}, Minutes: 8, Summary: "an S3 file system and per-actor access points", Rows: []Row{
+	{ID: "s3files", Title: "Amazon S3 Files volumes", Args: []string{"demos/s3files/deploy.sh"}, Minutes: 7, Summary: "an S3 file system and per-actor access points", Rows: []Row{
 		{Title: "S3 bucket (versioned, private)", Match: []string{"S3 bucket"}},
 		{Title: "IAM role for S3 Files sync", Match: []string{"IAM role S3 Files"}},
 		{Title: "S3 file system", Match: []string{"S3 file system"}},
@@ -148,11 +148,11 @@ var s3files = []Command{
 		{Title: "StorageClass", Match: []string{"StorageClass"}},
 		{Title: "Counter templates on S3 Files", Match: []string{"Counter templates"}},
 	}},
-	{ID: "s3files-verify", Title: "Check the S3 Files volumes", Env: []string{"STORAGE=s3files"}, Args: []string{"demos/efs/verify.sh"}, Minutes: 5, Summary: "the same check on S3 Files"},
+	{ID: "s3files-verify", Title: "Check the S3 Files volumes", Env: []string{"STORAGE=s3files"}, Args: []string{"demos/efs/verify.sh"}, Minutes: 1, Summary: "the same check on S3 Files"},
 }
 
 var dbRotation = []Command{
-	{ID: "db-rotation", Title: "Database login rotation", Args: []string{"demos/db-rotation/deploy.sh"}, Minutes: 8, Summary: "rotation functions, External Secrets, Reloader", Rows: []Row{
+	{ID: "db-rotation", Title: "Database login rotation", Args: []string{"demos/db-rotation/deploy.sh"}, Minutes: 7, Summary: "rotation functions, External Secrets, Reloader", Rows: []Row{
 		{Title: "Security group for rotation", Match: []string{"Security group"}},
 		{Title: "Connection fields on the logins", Match: []string{"Connection fields"}},
 		{Title: "External Secrets Operator", Match: []string{"External Secrets Operator"}},
@@ -169,7 +169,7 @@ var retired = []Command{
 }
 
 var credprovider = []Command{
-	{ID: "credprovider-aws", Title: "Secrets Manager credential provider", Args: []string{"demos/credprovider-aws/deploy.sh"}, Minutes: 4, Summary: "the provider, its IAM role, demo secrets, probe actors", Rows: []Row{
+	{ID: "credprovider-aws", Title: "Secrets Manager credential provider", Args: []string{"demos/credprovider-aws/deploy.sh"}, Minutes: 2, Summary: "the provider, its IAM role, demo secrets, probe actors", Rows: []Row{
 		{Title: "IAM role for the provider", Match: []string{"IAM role for the provider"}},
 		{Title: "Demo secrets", Match: []string{"Secrets Manager: the demo secrets"}},
 		{Title: "ECR repositories", Match: []string{"ECR repositories"}},
@@ -180,11 +180,11 @@ var credprovider = []Command{
 		{Title: "Register with the egress gateway", Match: []string{"atenet-egress serves"}},
 		{Title: "Probe worker pool and templates", Match: []string{"Worker pool credprovider-probe"}},
 	}},
-	{ID: "credprovider-aws-verify", Title: "Check the credential provider", Args: []string{"demos/credprovider-aws/verify.sh"}, Minutes: 2, Summary: "inject a secret; refuse an untagged one and an unlisted atespace"},
+	{ID: "credprovider-aws-verify", Title: "Check the credential provider", Args: []string{"demos/credprovider-aws/verify.sh"}, Minutes: 1, Summary: "inject a secret; refuse an untagged one and an unlisted atespace"},
 }
 
 var openclaw = []Command{
-	{ID: "openclaw", Title: "OpenClaw demo", Args: []string{"demos/openclaw/deploy.sh"}, Minutes: 4, Summary: "the gateway (state on EFS), worker pool, agent template", Rows: []Row{
+	{ID: "openclaw", Title: "OpenClaw demo", Args: []string{"demos/openclaw/deploy.sh"}, Minutes: 7, Summary: "the gateway (state on EFS), worker pool, agent template", Rows: []Row{
 		{Title: "StorageClass on EFS", Match: []string{"StorageClass efs-openclaw"}},
 		{Title: "Gateway state to EFS", Match: []string{"Move the gateway's state"}, Optional: true},
 		{Title: "Gateway, workers and agent", Match: []string{"Deploy the OpenClaw demo"}},

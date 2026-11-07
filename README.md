@@ -35,7 +35,7 @@ LLM gateway. The editable diagram is
 
 The fastest way to deploy. It checks your setup, asks for the settings,
 shows the commands it will run, then runs the scripts below with a live
-checklist, about 35 minutes with the default choices. Teardown is on its last screen. It runs
+checklist, about 30 minutes with the default choices and about an hour with every demo and plugin. Teardown is on its last screen. It runs
 inside the [toolbox](#run-with-only-docker), so you need only Docker with
 buildx, git, and AWS credentials for an account that meets the
 [prerequisites](#prerequisites):

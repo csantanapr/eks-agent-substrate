@@ -169,7 +169,7 @@ func (m Model) welcome(w, h int) string {
 		row("EKS Pod Identity", "one IAM role per service account; IMDSv2 with hop limit 1 on nodes"),
 		row("Amazon Bedrock", "model calls through the in-cluster LLM gateway"),
 		"",
-		"    " + sBold.Render(pad("Time", 20)) + sText.Render("about 35 minutes: cluster ~20, Substrate ~15, demo check ~1; plugins add more"),
+		"    " + sBold.Render(pad("Time", 20)) + sText.Render("about 30 minutes: cluster ~18, Substrate ~12, demo check ~1; plugins add more"),
 		"    " + sBold.Render(pad("Cost", 20)) + sText.Render(cost),
 		"    " + pad("", 20) + sMuted.Render("Everything stays until you choose Teardown on the last screen."),
 	}
