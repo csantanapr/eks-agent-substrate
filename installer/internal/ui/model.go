@@ -159,6 +159,9 @@ func New(opt Options) Model {
 			// deploy.sh deploys OpenClaw when the config names a checkout.
 			m.demos[d.ID] = m.values["OPENCLAW_DIR"] != "" || m.values["OPENCLAW_REPO"] != ""
 		}
+		if d.ID == "mode3" {
+			m.demos[d.ID] = m.values["MODE3"] == "on"
+		}
 		if opt.Demos != nil && d.Disabled == "" && !d.Locked {
 			m.demos[d.ID] = opt.Demos[d.ID]
 		}

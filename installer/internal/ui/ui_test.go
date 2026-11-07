@@ -180,6 +180,7 @@ func TestSettingsEditAndValidate(t *testing.T) {
 	// Start with OpenClaw off, whatever this checkout's config says.
 	m.setOpenClaw(false)
 	m.demos["openclaw"] = false
+	m.demos["mode3"], m.values["MODE3"] = false, ""
 	m = press(t, m, "enter", "enter") // welcome -> check -> settings
 	if m.screen != sSettings {
 		t.Fatalf("screen %v", m.screen)
@@ -205,6 +206,21 @@ func TestSettingsEditAndValidate(t *testing.T) {
 	m = press(t, m, " ")
 	if !m.demos["s3files"] || !m.demos["efs"] {
 		t.Errorf("demos %v", m.demos)
+	}
+	// Mode 3: on writes MODE3=on, off clears it.
+	for m.fields[m.cursor].key != "mode3" {
+		m = press(t, m, "down")
+	}
+	m = press(t, m, " ")
+	if !m.demos["mode3"] || m.values["MODE3"] != "on" {
+		t.Errorf("mode3 on: %v %q", m.demos["mode3"], m.values["MODE3"])
+	}
+	m = press(t, m, " ")
+	if m.demos["mode3"] || m.values["MODE3"] != "" {
+		t.Errorf("mode3 off: %v %q", m.demos["mode3"], m.values["MODE3"])
+	}
+	for m.fields[m.cursor].key != "s3files" {
+		m = press(t, m, "up")
 	}
 	// OpenClaw: on writes the repository to clone, off clears it again.
 	for m.fields[m.cursor].key != "openclaw" {
@@ -303,7 +319,7 @@ func TestCredproviderPlugin(t *testing.T) {
 		t.Errorf("commands: %s", got)
 	}
 	// With every choice on, Review still shows every command and the prompt.
-	for _, id := range []string{"openclaw", "efs", "s3files", "db-rotation"} {
+	for _, id := range []string{"openclaw", "efs", "s3files", "db-rotation", "mode3"} {
 		m.demos[id] = true
 	}
 	m = press(t, m, "n")

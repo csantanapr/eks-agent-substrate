@@ -64,6 +64,8 @@ var Demos = []Demo{
 	{ID: "efs", Section: SectionPlugins, Title: "Amazon EFS volumes per actor", Note: "demos/efs, about 6 min"},
 	{ID: "s3files", Section: SectionPlugins, Title: "Amazon S3 Files volumes per actor", Note: "demos/s3files, needs EFS"},
 	{ID: "db-rotation", Section: SectionPlugins, Title: "Secrets Manager login rotation", Note: "demos/db-rotation"},
+	{ID: "mode3", Section: SectionPlugins, Title: "Mode 3: gVisor in a microVM Pod (preview)",
+		Note: "demos/mode3, a proposal for upstream: worker Pods are Kata microVMs on the microvm nodes, with gVisor actors inside, so an escape from gVisor lands in the guest kernel. Sets MODE3=on: Substrate is installed from the proposal (MODE3_REPO at MODE3_COMMIT, images under MODE3_IMAGE_REPO), Kata from kata-deploy, and a counter pool the counter check covers. About 6 min."},
 	{ID: "credprovider-aws", Section: SectionPlugins, Title: "Secrets Manager credential provider",
 		Note: "demos/credprovider-aws: builds the provider from its checkout (CREDPROVIDER_DIR, default ~/credprovider-aws-secret-manager), then checks it injects an actor's secret and refuses the rest. About 3 min."},
 }
@@ -193,9 +195,21 @@ var openclaw = []Command{
 		Minutes: 1, Summary: "the actor, the gateway, and the gateway-to-actor path"},
 }
 
+var mode3 = Command{
+	ID: "mode3", Title: "Mode 3: gVisor in a microVM Pod", Args: []string{"demos/mode3/deploy.sh"},
+	Minutes: 6, Summary: "Kata on the microvm nodes, a counter pool with networkTransport", Rows: []Row{
+		{Title: "Kata Containers (kata-deploy)", Match: []string{"Kata Containers"}},
+		{Title: "Counter on mode 3", Match: []string{"Counter on mode 3"}},
+	},
+}
+
 // Install returns the commands for an install with the chosen demos.
 func Install(demos map[string]bool) []Command {
 	cmds := []Command{createCluster, deploy}
+	// Before the counter check, which checks mode 3 too when it is there.
+	if demos["mode3"] {
+		cmds = append(cmds, mode3)
+	}
 	if demos["counter-verify"] {
 		cmds = append(cmds, counterVerify)
 	}
@@ -246,7 +260,7 @@ func Teardown() []Command {
 // teardown), for replaying a recorded log.
 func ByID(id string) (Command, bool) {
 	all := append(Install(map[string]bool{"counter-verify": true, "s3files": true, "db-rotation": true,
-		"credprovider-aws": true, "openclaw": true}), Teardown()...)
+		"credprovider-aws": true, "openclaw": true, "mode3": true}), Teardown()...)
 	all = append(all, retired...)
 	for _, c := range all {
 		if c.ID == id {

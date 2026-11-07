@@ -154,6 +154,13 @@ func (m Model) settingsKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 				if f.key == "openclaw" {
 					m.setOpenClaw(m.demos["openclaw"])
 				}
+				// MODE3=on switches the whole install to the proposal.
+				if f.key == "mode3" {
+					m.values["MODE3"] = ""
+					if m.demos["mode3"] {
+						m.values["MODE3"] = "on"
+					}
+				}
 				// S3 Files and OpenClaw need EFS.
 				if (f.key == "s3files" || f.key == "openclaw") && m.demos[f.key] {
 					m.demos["efs"] = true
