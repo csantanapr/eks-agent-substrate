@@ -1,0 +1,22 @@
+# Creates the GHCR packages for the mode 3 images with a placeholder tag, so
+# they can be made public before the first real build.
+name: mode3-placeholders
+on:
+  workflow_dispatch:
+  push:
+    branches: [mode3]
+    paths: [.github/workflows/mode3-placeholders.yaml, .github/mode3/placeholders.sh]
+permissions:
+  contents: read
+  packages: write
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: Push the placeholders
+        env:
+          IMAGE_REPO: ghcr.io/${{ github.repository_owner }}/substrate
+        run: .github/mode3/placeholders.sh
