@@ -40,6 +40,8 @@ inside the [toolbox](#run-with-only-docker), so you need only Docker with
 buildx, git, and AWS credentials for an account that meets the
 [prerequisites](#prerequisites):
 
+![The installer's opening animation: the Agent Substrate mascot, the title, and actors dropping onto gVisor and microVM nodes in an Amazon EKS cluster](installer/docs/splash.gif)
+
 ```bash
 git clone https://github.com/csantanapr/eks-agent-substrate.git
 cd eks-agent-substrate

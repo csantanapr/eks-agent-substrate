@@ -23,7 +23,7 @@ it, and `--done` opens without it. Under 80 x 21 cells the title goes under
 the mascot, which needs 50 x 24; in a smaller window, or a terminal without
 color (`NO_COLOR`), it shows the title alone.
 
-![The opening: the mascot, the title, and actors on gVisor and microVM nodes in an Amazon EKS cluster](docs/splash.png)
+![The opening animation: the mascot fades in, the title types out, and actors drop onto gVisor and microVM nodes in an Amazon EKS cluster](docs/splash.gif)
 
 | # | Screen | What happens |
 |---|---|---|
@@ -209,8 +209,9 @@ To come back to a finished install later (its summary, or Teardown):
 
 ```bash
 INSTALLER_SNAPSHOT_DIR=/tmp/shots go run . --dry-run --auto --redact
-node docs/render.mjs /tmp/shots docs 00-splash-33=splash 01-welcome=welcome 02-check=check \
+node docs/render.mjs /tmp/shots docs 01-welcome=welcome 02-check=check \
   03-settings=settings 04-review=review 05-provision-016=provision 06-done=done
+docs/splash-gif.sh    # docs/splash.gif, every frame of the opening (needs ffmpeg)
 ```
 
 With `INSTALLER_SNAPSHOT_DIR` set, the installer writes each screen as it
