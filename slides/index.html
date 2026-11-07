@@ -506,7 +506,24 @@
       <li>Its memory snapshot is <b>restored on demand with userfaultfd</b>, and its guest assets come from the S3 asset bucket.</li>
       <li>The <b>ActorTemplate looks the same</b> for both. The WorkerPool's <code>sandboxClasses</code> picks which one a workload gets.</li>
     </ul>
-    <p><i>Next:</i> a proposed third mode that stacks both.</p>
+    <p><i>Next:</i> a third node type, the installer's opening animation.</p>
+  </aside>
+</section>
+
+<!-- 7a -->
+<section class="slide">
+  <h2>gVisor, microVM, and a third node: microVM+gVisor</h2>
+  <div class="fill">
+    <img src="splash.gif" style="background:none; width:1440px; image-rendering:pixelated" alt="The installer's opening animation: the Agent Substrate mascot, the title, and actors dropping onto gVisor, microVM and microVM+gVisor nodes in an Amazon EKS cluster">
+  </div>
+  <aside class="notes">
+    <p>This is the <b>installer's opening animation</b>. <i>let it play once</i></p>
+    <ul>
+      <li>Actors drop onto <b>gVisor</b> nodes and <b>microVM</b> nodes, the two classes we just saw.</li>
+      <li>The <b>third node, microVM+gVisor</b>, is new. <i>point at it</i></li>
+      <li>It runs gVisor actors <b>inside a microVM worker Pod</b>.</li>
+    </ul>
+    <p><i>Next:</i> how that third mode works.</p>
   </aside>
 </section>
 
