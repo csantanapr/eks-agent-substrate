@@ -94,6 +94,70 @@ func (s style) css() string {
 	return strings.Join(b, ";")
 }
 
+// colors returns the colors as drawn, after reverse, with the page's
+// defaults for unset ones.
+func (s style) colors() (fg, bg string) {
+	fg, bg = s.fg, s.bg
+	if s.reverse {
+		fg, bg = bg, fg
+	}
+	if fg == "" {
+		fg = "var(--fg)"
+	}
+	if bg == "" {
+		bg = "var(--bg)"
+	}
+	return fg, bg
+}
+
+// html is text in this style. A span with a background is padded to the
+// full line height, as a terminal cell is, and the block elements ▀ ▄ █ are
+// drawn as exact halves of the cell: a font draws them shorter than the
+// line, which leaves stripes between the rows of half-block art.
+func (s style) html(text string) string {
+	var b strings.Builder
+	css := s.css()
+	cls := ""
+	if s.bg != "" || s.reverse {
+		cls = ` class="b"`
+	}
+	plain := func(t string) {
+		if t == "" {
+			return
+		}
+		if css == "" {
+			b.WriteString(html.EscapeString(t))
+			return
+		}
+		fmt.Fprintf(&b, `<span%s style="%s">%s</span>`, cls, css, html.EscapeString(t))
+	}
+	fg, bg := s.colors()
+	paint := map[rune]string{
+		'▀': "linear-gradient(" + fg + " 50%," + bg + " 50%)",
+		'▄': "linear-gradient(" + bg + " 50%," + fg + " 50%)",
+		'█': fg,
+	}
+	rs := []rune(text)
+	start := 0
+	for i := 0; i < len(rs); {
+		p, ok := paint[rs[i]]
+		if !ok {
+			i++
+			continue
+		}
+		plain(string(rs[start:i]))
+		// One span for a run of the same element, so no seams show in it.
+		j := i
+		for j < len(rs) && rs[j] == rs[i] {
+			j++
+		}
+		fmt.Fprintf(&b, `<span class="b" style="background:%s">%s</span>`, p, strings.Repeat(" ", j-i))
+		i, start = j, j
+	}
+	plain(string(rs[start:]))
+	return b.String()
+}
+
 var basic = []string{
 	"#1b1f24", "#e5534b", "#57ab5a", "#c69026", "#539bf5", "#b083f0", "#39c5cf", "#adbac7",
 	"#636e7b", "#ff938a", "#6bc46d", "#daaa3f", "#6cb6ff", "#dcbdfb", "#56d4dd", "#cdd9e5",
@@ -197,11 +261,7 @@ func HTML(ansi string) string {
 				text = rest[:loc[0]]
 			}
 			if text != "" {
-				if css := st.css(); css != "" {
-					fmt.Fprintf(&b, `<span style="%s">%s</span>`, css, html.EscapeString(text))
-				} else {
-					b.WriteString(html.EscapeString(text))
-				}
+				b.WriteString(st.html(text))
 			}
 			if loc == nil {
 				break
@@ -233,6 +293,7 @@ html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden;
 pre { margin: 0; padding: 18px 24px 22px; color: var(--fg);
   font: 21px/26px "DejaVu Sans Mono", monospace; white-space: pre; }
 .l { height: 26px; }
+.b { padding: 1px 0; }
 </style></head><body><div class="win">
 <div class="bar"><span class="dot" style="background:#ff5f57"></span><span class="dot" style="background:#febc2e"></span><span class="dot" style="background:#28c840"></span><span class="t">` + html.EscapeString(title) + `</span></div>
 <pre>` + HTML(ansi) + `</pre></div></body></html>

@@ -46,3 +46,20 @@ func TestSave(t *testing.T) {
 		t.Error("an empty Dir saves nothing and is not an error")
 	}
 }
+
+// Half blocks are drawn as halves of the cell, a run of them in one span.
+func TestHTMLHalfBlocks(t *testing.T) {
+	got := HTML("\x1b[38;2;255;0;0;48;2;0;0;255m▀▀\x1b[0mx\x1b[38;2;0;255;0m▄█\x1b[0m")
+	for _, want := range []string{
+		`<span class="b" style="background:linear-gradient(#ff0000 50%,#0000ff 50%)">  </span>x`,
+		`background:linear-gradient(var(--bg) 50%,#00ff00 50%)"> </span>`,
+		`<span class="b" style="background:#00ff00"> </span>`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("HTML missing %q in\n%s", want, got)
+		}
+	}
+	if strings.ContainsAny(got, "▀▄█") {
+		t.Errorf("block elements left as text:\n%s", got)
+	}
+}

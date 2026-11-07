@@ -34,6 +34,7 @@ const (
 	sProvision
 	sDone
 	sTeardown // the "type the cluster name" confirm
+	sSplash   // the opening animation, before Welcome
 )
 
 var rail = []string{"Welcome", "Check your setup", "Settings", "Review", "Provision", "Done"}
@@ -43,6 +44,8 @@ type Options struct {
 	Repo config.Repo
 	// RepoRev is the checkout's short commit, for the Welcome screen.
 	RepoRev string
+	// Splash plays the opening animation before Welcome (not with Last).
+	Splash bool
 	// Seed overrides the defaults (flags --cluster, --region, --profile).
 	Seed map[string]string
 	// Demos, when set, replaces the default demo choices.
@@ -123,6 +126,7 @@ type Model struct {
 	snapN   int
 	snapped map[string]bool
 	autoN   int
+	frame   int // of the splash
 }
 
 // New builds the model.
@@ -172,6 +176,8 @@ func New(opt Options) Model {
 	m.w, m.h = opt.SnapW, opt.SnapH
 	if opt.Last != nil {
 		m.loadLast(*opt.Last)
+	} else if opt.Splash {
+		m.screen = sSplash
 	}
 	return m
 }
@@ -236,6 +242,9 @@ func (m Model) Init() tea.Cmd {
 	if m.opt.Last != nil {
 		return tea.Batch(m.spin.Tick, tick(), m.snapLater("06-done"))
 	}
+	if m.screen == sSplash {
+		return tea.Batch(m.spin.Tick, tick(), splashTick())
+	}
 	return tea.Batch(m.spin.Tick, tick(), m.snapLater("01-welcome"))
 }
 
@@ -279,6 +288,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case snapMsg:
 		m.saveSnap(string(msg))
 		return m, nil
+	case splashMsg:
+		return m.onSplash()
 	case checkMsg:
 		m.checks[msg.i] = msg.res
 		m.pending--
@@ -311,6 +322,9 @@ func (m Model) onKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.cancel()
 		}
 		return m, tea.Quit
+	}
+	if m.screen == sSplash {
+		return m.endSplash() // any key skips it
 	}
 	if key == "ctrl+s" || (key == "s" && !m.edit && m.screen != sTeardown) {
 		m.snapN++

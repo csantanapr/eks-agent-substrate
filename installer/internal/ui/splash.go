@@ -1,0 +1,561 @@
+package ui
+
+import (
+	"fmt"
+	"math"
+	"strings"
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
+)
+
+// The splash before Welcome: the Agent Substrate mascot, a hooded octopus
+// holding three robot puppets, in half-block pixels; the title; and three
+// small robots (actors) landing on gVisor and microVM nodes in an Amazon EKS
+// cluster. About 3.4 seconds; any key skips it.
+
+const (
+	splashFrames = 34
+	splashEvery  = 100 * time.Millisecond
+)
+
+type splashMsg struct{}
+
+func splashTick() tea.Cmd {
+	return tea.Tick(splashEvery, func(time.Time) tea.Msg { return splashMsg{} })
+}
+
+// splashSnaps are the frames saved as 00-splash-NN when snapshots are on.
+var splashSnaps = map[int]bool{5: true, 14: true, 21: true, 33: true}
+
+func (m Model) onSplash() (tea.Model, tea.Cmd) {
+	if m.screen != sSplash {
+		return m, nil // a tick from a splash that was skipped
+	}
+	m.frame++
+	if splashSnaps[m.frame] {
+		m.saveSnap(fmt.Sprintf("00-splash-%02d", m.frame))
+	}
+	if m.frame >= splashFrames {
+		return m.endSplash()
+	}
+	return m, splashTick()
+}
+
+func (m Model) endSplash() (tea.Model, tea.Cmd) {
+	m.screen = sWelcome
+	m.autoN = 0 // --auto gives Welcome its full time
+	return m, m.snapLater("01-welcome")
+}
+
+// ---------------------------------------------------------------- art
+
+// The mascot, 48 x 38 pixels, one letter a pixel ('.' is see-through). The
+// puppets and the tentacle curls are separate so they can move; the arms
+// under the puppets reach two pixels into them, so a puppet that bobs up
+// stays on its tentacle.
+var mascotBase = []string{
+	"...................kkkkkkkkk....................",
+	"................kkkhhhhhhhhhkkk.................",
+	"..............kkhhhhhhhhhhhhhhhkk...............",
+	".............khhhhhhhhhhhhhhhhhhhk..............",
+	"............khhhhhhhhhhhhhhhhhhhhhk.............",
+	"...........khhhhhhhhhhhhhhhhhhhhhhhk............",
+	"...........khhhhhhhhkkkkkkkhhhhhhhhk............",
+	"..........khhhhhhhkkdddddddkkhhhhhhhk...........",
+	"..........khhhhhhkdddddddddddkhhhhhhk...........",
+	"..........khhhhhkdddgggggggdddkhhhhhk...........",
+	"..........khhhhhkdgggggggggggdkhhhhhk...........",
+	"..........khhhhkgggggggggggggggkhhhhk...........",
+	"..........khhhhkgggggggggggggggkhhhhk...........",
+	"..........khhhkggEEEgggggggEEEggkhhhk...........",
+	"...kggk...khhhkgEEEWEgkkkgEEEWEgkhhhk...........",
+	"...kglk...khhhkgEEEEEgkmkgEEEEEgkhhhk...........",
+	"...kggk...khhkggEEEEEggkggEEEEEggkhhk...........",
+	"..kglgk...khhkglgEEEgggggggEEEglgkhhk...........",
+	"..kgggk...khhkglllggggggggggglllgkhhk...kggk....",
+	"..kglgk...khhikgggggggggggggggggkihhk...kglk....",
+	"..kgggk...khhiiikkgggggggggggkkiiihhk...kggk....",
+	"..kgglk...khhiiiiiikkgggggkkiiiiiihhk...kkgk....",
+	"...kggk.kkkhhkkkkkkkkkkkkkkkkkkkkkhhkkk...kk....",
+	"....kkkkkhhhhhhhhhhhhkhhhkhhhhhhhhhhhhkkk.......",
+	"....kkhhhhhhhhhhhhhhhhkkkhhhhhhhhhhhhhhhhk......",
+	"....khhhhhhhhhhhhhhhfhhhhhfhhhhhhhhhhhhhk.......",
+	".....kkhhhhhhfhhhhhhfhhfhhfhhhhhhfhhhhhkkkk.....",
+	"......kkhhhhhfhhhhhfhhhfhhhfhhhhhfhhhhk.kgk.....",
+	"........khhhfhhhhhhfhhhfhhhfhhhhhhfhhhkkglk.....",
+	"........khhhfhhhhhfhhhhfhhhhfhhhhhfkkkgggk......",
+	"........khhfhhhhhhfhhhhfhhhhfhhhhhhkglggk.......",
+	".........khfhhhhhfhhhhhfhhhhhfhhhhhkggkk........",
+	".........khhhhhhhfhhhhhfhhhhhfhhhhhhkk..........",
+	"..........khhhhhfhhhhhhfhhhhhhfhhhhk............",
+	"...........khhhhfhhhhhhfhhhhhhfhhhk.............",
+	".............khhkhhhkhhhhhkhhhkhk...............",
+	"..............kkkkkkkkkkkkkkkkkk................",
+	"................................................",
+}
+
+const mascotW, mascotH = 48, 38
+
+// part is a moving piece of the mascot at x, y in its pixels.
+type part struct {
+	x, y int
+	px   []string
+}
+
+var (
+	puppetBlue = part{0, 2, []string{
+		"...kkk...",
+		"...kbk...",
+		"...kkk...",
+		"....k....",
+		"kkkkkkkkk",
+		"kbbbbbbbk",
+		"kbkbbbkbk",
+		"kbbkkkbbk",
+		"kbbbbbbbk",
+		"kkkkkkkkk",
+		".kbbbbbk.",
+		".kbbbbbk.",
+		".kbbbbbk.",
+		".kkkkkkk.",
+	}}
+	puppetYellow = part{38, 6, []string{
+		"kkk....kkk",
+		"kyk....kyk",
+		"kkk....kkk",
+		".k......k.",
+		"kkkkkkkkkk",
+		"kyyyyyyyyk",
+		"kykkyykkyk",
+		"kyyykkyyyk",
+		"kyyyyyyyyk",
+		"kkkkkkkkkk",
+		".kyyyyyyk.",
+		".kyyyyyyk.",
+		".kyyyyyyk.",
+		".kkkkkkkk.",
+	}}
+	puppetPink = part{38, 20, []string{
+		".......kkk",
+		"......kkpk",
+		"..kkkkkkk.",
+		".kpppppk..",
+		"kkpkppkpk.",
+		"kppppppk..",
+		"kkkkkkkk..",
+		"kpkpkpk...",
+		"kkkkkkk...",
+	}}
+	curlLeft = part{0, 26, []string{
+		".kkkkk..",
+		"kgglggk.",
+		"kgkkkggk",
+		"kgkgkgk.",
+		"kgkkggk.",
+		".kgggkkk",
+		"..kkk...",
+	}}
+	curlLowLeft = part{9, 31, []string{
+		"..kkkk..",
+		".kglggk.",
+		"kgkkkggk",
+		"kgkgkgk.",
+		"kggkggk.",
+		".kgggk..",
+		"..kkk...",
+	}}
+	curlLowRight = part{30, 31, []string{
+		"..kkkk..",
+		".kgglgk.",
+		"kggkkkgk",
+		".kgkgkgk",
+		".kggkggk",
+		"..kgggk.",
+		"...kkk..",
+	}}
+	// eyelids drawn over each eye (at x 16 and 26, y 13) for a blink
+	eyelid = []string{
+		"ggggg",
+		"ggggg",
+		"kgggk",
+		"gkkkg",
+		"ggggg",
+	}
+)
+
+// Actors: the puppets' small look-alikes that land on the nodes.
+var actors = []struct {
+	px  []string
+	col uint32
+}{
+	{[]string{"..c..", "ccccc", "ckckc", "ccccc"}, 0x62B2DA},
+	{[]string{"c...c", "ccccc", "ckckc", "ccccc"}, 0xF0EA6E},
+	{[]string{"...c.", "ccccc", "ckckc", "ccccc"}, 0xE678B0},
+}
+
+var mascotColors = map[byte]uint32{
+	'k': 0x0C0C10, // outline
+	'h': 0x3A3640, // hood
+	'f': 0x28252D, // folds in the cloak
+	'i': 0x1A191E, // inside the hood
+	'g': 0x5FCF65, // skin
+	'l': 0x8EEC8C, // spots and cheeks
+	'd': 0x3C8C42, // skin in the hood's shadow
+	'E': 0x161618, // eyes
+	'W': 0xFFFFFF, // eye highlights
+	'm': 0xE274AC, // tongue
+	'b': 0x62B2DA,
+	'y': 0xF0EA6E,
+	'p': 0xE678B0,
+}
+
+// Squid ink, the splash background, and the other colors as 0xRRGGBB.
+const (
+	inkBG     uint32 = 0x232F3E
+	inkOrange uint32 = 0xFF9900
+	inkText   uint32 = 0xE6EBEF
+	inkMuted  uint32 = 0x8D99A6
+	inkDim    uint32 = 0x5A6878
+	inkEyes   uint32 = 0x0C0C10
+)
+
+// ---------------------------------------------------------------- canvas
+
+// canvas is the splash screen: w x h cells, each two pixels, one above the
+// other, drawn as "▀" in two colors, and text, which pixels cover.
+type canvas struct {
+	w, h int
+	px   []uint32 // w x 2h; 0 is the background, else 0x1RRGGBB
+	ch   []rune   // w x h; 0 is no text
+	fg   []uint32
+	bold []bool
+}
+
+const opaque = 1 << 24
+
+func newCanvas(w, h int) *canvas {
+	return &canvas{w: w, h: h, px: make([]uint32, w*2*h), ch: make([]rune, w*h), fg: make([]uint32, w*h), bold: make([]bool, w*h)}
+}
+
+func (c *canvas) dot(x, y int, col uint32) {
+	if x >= 0 && x < c.w && y >= 0 && y < 2*c.h {
+		c.px[y*c.w+x] = col | opaque
+	}
+}
+
+// art draws a bitmap at pixel x, y, each pixel s x s.
+func (c *canvas) art(x, y, s int, rows []string, color func(byte) uint32) {
+	for j, row := range rows {
+		for i := 0; i < len(row); i++ {
+			if row[i] == '.' {
+				continue
+			}
+			col := color(row[i])
+			for dy := 0; dy < s; dy++ {
+				for dx := 0; dx < s; dx++ {
+					c.dot(x+i*s+dx, y+j*s+dy, col)
+				}
+			}
+		}
+	}
+}
+
+// text writes s at cell x, y.
+func (c *canvas) text(x, y int, s string, fg uint32, bold bool) int {
+	for _, r := range s {
+		if x >= 0 && x < c.w && y >= 0 && y < c.h {
+			i := y*c.w + x
+			c.ch[i], c.fg[i], c.bold[i] = r, fg, bold
+		}
+		x++
+	}
+	return x
+}
+
+func hex(c uint32) string { return fmt.Sprintf("#%06X", c&0xFFFFFF) }
+
+// render draws the canvas with the profile's colors.
+func (c *canvas) render(p termenv.Profile) string {
+	type cell struct {
+		r      rune
+		fg, bg uint32
+		bold   bool
+	}
+	var b strings.Builder
+	for y := 0; y < c.h; y++ {
+		var run []rune
+		var cur cell
+		flush := func() {
+			if len(run) == 0 {
+				return
+			}
+			st := p.String(string(run)).Foreground(p.Color(hex(cur.fg))).Background(p.Color(hex(cur.bg)))
+			if cur.bold {
+				st = st.Bold()
+			}
+			b.WriteString(st.String())
+			run = run[:0]
+		}
+		for x := 0; x < c.w; x++ {
+			top, bot := c.px[2*y*c.w+x], c.px[(2*y+1)*c.w+x]
+			k := cell{r: ' ', fg: inkBG, bg: inkBG}
+			switch {
+			case top == 0 && bot == 0 && c.ch[y*c.w+x] != 0:
+				i := y*c.w + x
+				k = cell{r: c.ch[i], fg: c.fg[i], bg: inkBG, bold: c.bold[i]}
+			case top == 0 && bot == 0:
+			case top == bot:
+				k = cell{r: ' ', fg: top &^ opaque, bg: top &^ opaque}
+			default:
+				t, u := top&^opaque, bot&^opaque
+				if top == 0 {
+					t = inkBG
+				}
+				if bot == 0 {
+					u = inkBG
+				}
+				k = cell{r: '▀', fg: t, bg: u}
+			}
+			// A space shows only its background, so it joins any run with
+			// that background.
+			if k.r == ' ' && len(run) > 0 && cur.bg == k.bg {
+				run = append(run, ' ')
+				continue
+			}
+			if len(run) > 0 && (k.fg != cur.fg || k.bg != cur.bg || k.bold != cur.bold) {
+				flush()
+			}
+			cur = k
+			run = append(run, k.r)
+		}
+		flush()
+		if y < c.h-1 {
+			b.WriteByte('\n')
+		}
+	}
+	return b.String()
+}
+
+// blend fades c toward the background; a is 0 (background) to 1 (c).
+func blend(c uint32, a float64) uint32 {
+	if a >= 1 {
+		return c
+	}
+	mix := func(sh uint) uint32 {
+		x, bg := float64(c>>sh&0xFF), float64(inkBG>>sh&0xFF)
+		return uint32(math.Round(bg+(x-bg)*a)) << sh
+	}
+	return mix(16) | mix(8) | mix(0)
+}
+
+// ---------------------------------------------------------------- frames
+
+// wave is 0 or -1, a two-step bob with the given period and phase.
+func wave(f, period, phase int) int {
+	if (f+phase)/(period/2)%2 == 1 {
+		return -1
+	}
+	return 0
+}
+
+// drawMascot draws the mascot for frame f at pixel x, y, scale s: it fades
+// in, the puppets bob, the curls wave and the eyes blink twice.
+func drawMascot(c *canvas, x, y, s, f int) {
+	a := math.Min(1, float64(f+1)/6)
+	color := func(ch byte) uint32 { return blend(mascotColors[ch], a) }
+	at := func(p part, dx, dy int) { c.art(x+(p.x+dx)*s, y+(p.y+dy)*s, s, p.px, color) }
+	c.art(x, y, s, mascotBase, color)
+	if f == 9 || f == 10 || f == 25 || f == 26 {
+		at(part{16, 13, eyelid}, 0, 0)
+		at(part{26, 13, eyelid}, 0, 0)
+	}
+	at(curlLeft, 0, wave(f, 10, 0))
+	at(curlLowLeft, wave(f, 10, 3), 0)
+	at(curlLowRight, -wave(f, 10, 6), 0)
+	at(puppetBlue, 0, wave(f, 8, 0))
+	at(puppetYellow, 0, wave(f, 8, 3))
+	at(puppetPink, 0, wave(f, 8, 6))
+}
+
+// swoosh is a smile that rises to an arrowhead on the right, drawn under
+// "on Amazon EKS".
+var swoosh = []string{
+	"#............###",
+	".#..........####",
+	"..###.....###.##",
+	"....######......",
+}
+
+// drawSwoosh draws the first cols columns of the swoosh at pixel x, y.
+func drawSwoosh(c *canvas, x, y, cols int) {
+	for j, row := range swoosh {
+		for i := 0; i < min(len(row), cols); i++ {
+			if row[i] == '#' {
+				c.dot(x+i, y+j, inkOrange)
+			}
+		}
+	}
+}
+
+// drawTitle writes the title typed up to frame f, then "on Amazon EKS" with
+// the swoosh drawn under it, in four rows from cell x, y.
+func drawTitle(c *canvas, x, y, f int) {
+	const name, ver = "Agent Substrate", " 1.0.0"
+	n := min(len(name+ver), max(0, (f-3)*2))
+	end := c.text(x, y, name[:min(n, len(name))], inkText, true)
+	if n > len(name) {
+		end = c.text(end, y, ver[:n-len(name)], inkOrange, true)
+	}
+	if n > 0 && n < len(name+ver) {
+		c.text(end, y, "▌", inkOrange, false)
+	}
+	if f >= 12 {
+		e := c.text(x, y+1, "on ", inkMuted, false)
+		c.text(e, y+1, "Amazon EKS", inkText, true)
+		drawSwoosh(c, x, 2*(y+2), len(swoosh[0])*(f-11)/7)
+	}
+}
+
+// drawCluster draws the Amazon EKS frame, pw cells wide and 6 rows high,
+// at cell x, y, with a gVisor node and a microVM node, and the actors
+// dropping onto them.
+func drawCluster(c *canvas, x, y, pw, f int) {
+	if f < 16 {
+		return
+	}
+	// The nodes, side by side with a space before, between and (when it
+	// fits) after them; gVisor holds two actors, microVM one.
+	avail := pw - 5
+	if avail < 24 {
+		avail = pw - 4
+	}
+	bw1 := max(13, avail-avail/2)
+	bw2 := avail - bw1
+	// The labels are on the bottom borders, out of the way of the drops.
+	label := " Amazon EKS "
+	c.text(x, y, "╭"+strings.Repeat("─", pw-2)+"╮", inkDim, false)
+	for r := 1; r <= 4; r++ {
+		c.text(x, y+r, "│", inkDim, false)
+		c.text(x+pw-1, y+r, "│", inkDim, false)
+	}
+	e := c.text(x, y+5, "╰─", inkDim, false)
+	e = c.text(e, y+5, label, inkOrange, true)
+	c.text(e, y+5, strings.Repeat("─", pw-3-len(label))+"╯", inkDim, false)
+
+	// Actor i drops in from above the frame between frames start and
+	// start+4, then its node's border lights up for two frames.
+	type drop struct {
+		actor, node, slot, start int
+	}
+	drops := []drop{{0, 0, 0, 19}, {1, 1, 0, 21}, {2, 0, 1, 23}}
+	nodes := []struct {
+		name string
+		x, w int
+	}{{"gVisor", x + 2, bw1}, {"microVM", x + 2 + bw1 + 1, bw2}}
+	for i, nd := range nodes {
+		border := inkDim
+		for _, d := range drops {
+			if d.node == i && f >= d.start+4 && f < d.start+6 {
+				border = inkOrange
+			}
+		}
+		name := " " + nd.name + " "
+		c.text(nd.x, y+1, "┌"+strings.Repeat("─", nd.w-2)+"┐", border, false)
+		for r := 2; r <= 3; r++ {
+			c.text(nd.x, y+r, "│", border, false)
+			c.text(nd.x+nd.w-1, y+r, "│", border, false)
+		}
+		e := c.text(nd.x, y+4, "└", border, false)
+		e = c.text(e, y+4, name, inkText, false)
+		c.text(e, y+4, strings.Repeat("─", nd.w-2-len(name))+"┘", border, false)
+	}
+	for _, d := range drops {
+		if f < d.start {
+			continue
+		}
+		nd := nodes[d.node]
+		in := nd.w - 2
+		n := 1
+		if d.node == 0 {
+			n = 2
+		}
+		ax := nd.x + 1 + (in-(6*n-1))/2 + 6*d.slot
+		y0, y1 := 2*y-2, 2*(y+2)
+		t := math.Min(1, float64(f-d.start)/4)
+		ay := y0 + int(math.Round(float64(y1-y0)*t*t))
+		a := actors[d.actor]
+		c.art(ax, ay, 1, a.px, func(ch byte) uint32 {
+			if ch == 'k' {
+				return inkEyes
+			}
+			return a.col
+		})
+	}
+}
+
+// splash draws frame m.frame at w x h cells.
+func (m Model) splash(w, h int) string {
+	if w <= 0 || h <= 0 {
+		return ""
+	}
+	f := m.frame
+	// The art needs 256 colors or more; NO_COLOR gives Ascii.
+	p := lipgloss.ColorProfile()
+	if p == termenv.Ascii || p == termenv.ANSI {
+		return splashTitle(w, h)
+	}
+	c := newCanvas(w, h)
+	hint := "press any key"
+	// The title and the cluster are 11 rows and at least 28 cells wide.
+	side := func(s int) {
+		aw, ah := s*mascotW, s*mascotH/2
+		pw := min(44, w-aw-4)
+		gap := min(3, w-aw-pw-2)
+		x0 := (w - (aw + gap + pw)) / 2
+		y0 := (h - 1 - ah) / 2
+		drawMascot(c, x0, 2*y0, s, f)
+		px, py := x0+aw+gap, y0+(ah-11)/2
+		drawTitle(c, px, py, f)
+		drawCluster(c, px, py+5, pw, f)
+	}
+	switch {
+	case w >= 2*mascotW+34+5 && h >= mascotH+2:
+		side(2) // the mascot at twice the size
+	case w >= mascotW+28+4 && h >= mascotH/2+2:
+		side(1)
+	case w >= mascotW+2 && h >= mascotH/2+5:
+		// Narrow: the mascot, then the title under it.
+		y0 := (h - 1 - (mascotH/2 + 4)) / 2
+		drawMascot(c, (w-mascotW)/2, 2*y0, 1, f)
+		drawTitle(c, (w-len("Agent Substrate 1.0.0"))/2, y0+mascotH/2, f)
+	default:
+		return splashTitle(w, h)
+	}
+	if f >= 2 {
+		c.text((w-len(hint))/2, h-1, hint, inkDim, false)
+	}
+	return c.render(p)
+}
+
+// splashTitle is the splash without the art: for a small window, or a
+// terminal without color (NO_COLOR).
+func splashTitle(w, h int) string {
+	lines := []string{
+		sTitle.Render("Agent Substrate 1.0.0"),
+		sMuted.Render("on ") + sBold.Render("Amazon EKS"),
+		"",
+		sDim.Render("press any key"),
+	}
+	top := max(0, (h-len(lines))/2)
+	out := make([]string, 0, h)
+	for i := 0; i < top; i++ {
+		out = append(out, "")
+	}
+	for _, l := range lines {
+		out = append(out, strings.Repeat(" ", max(0, (w-lipgloss.Width(l))/2))+l)
+	}
+	return fit(strings.Join(out, "\n"), w, h)
+}

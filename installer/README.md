@@ -14,6 +14,17 @@ everything it does can also be done by running those scripts yourself.
 
 ## Screens
 
+It opens with a short animation, about 3.4 seconds: the Agent Substrate
+mascot, a hooded octopus holding three robot puppets, fades in; the puppets
+bob, the tentacles wave and the octopus blinks; "Agent Substrate 1.0.0" types
+out over "on Amazon EKS" and an orange smile; then three robots (actors) drop
+onto a gVisor node and a microVM node in an Amazon EKS cluster. Any key skips
+it, and `--done` opens without it. Under 80 x 21 cells the title goes under
+the mascot, which needs 50 x 24; in a smaller window, or a terminal without
+color (`NO_COLOR`), it shows the title alone.
+
+![The opening: the mascot, the title, and actors on gVisor and microVM nodes in an Amazon EKS cluster](docs/splash.png)
+
 | # | Screen | What happens |
 |---|---|---|
 | 1 | Welcome | What it creates (EKS, node groups, S3, RDS, Secrets Manager, ECR, Pod Identity, Bedrock), about 35 minutes with the default choices, a rough hourly cost |
@@ -158,10 +169,10 @@ directory's `.work/`, so a second checkout drives a second cluster.
 | `--snapshot-size WxH` | `126x33` | the size snapshots are drawn at |
 | `--html DIR` | | rewrite `NAME.html` from every `NAME.ansi` in DIR, then exit |
 
-Keys: `enter` next, `b` back, `q` quit, `s` save a snapshot of the current
-screen; on Settings `↑↓` move, `enter` edit or toggle, `n` review; on
-Provision `↑↓ PgUp PgDn` scroll the log, `f` follow, `ctrl+c` twice stops
-the run.
+Keys: any key skips the opening animation; then `enter` next, `b` back,
+`q` quit, `s` save a snapshot of the current screen; on Settings `↑↓` move,
+`enter` edit or toggle, `n` review; on Provision `↑↓ PgUp PgDn` scroll the
+log, `f` follow, `ctrl+c` twice stops the run.
 
 ### What it writes
 
@@ -198,14 +209,15 @@ To come back to a finished install later (its summary, or Teardown):
 
 ```bash
 INSTALLER_SNAPSHOT_DIR=/tmp/shots go run . --dry-run --auto --redact
-node docs/render.mjs /tmp/shots docs 01-welcome=welcome 02-check=check \
+node docs/render.mjs /tmp/shots docs 00-splash-33=splash 01-welcome=welcome 02-check=check \
   03-settings=settings 04-review=review 05-provision-016=provision 06-done=done
 ```
 
 With `INSTALLER_SNAPSHOT_DIR` set, the installer writes each screen as it
-first shows it (`01-welcome`, `02-check`, `03-settings`, `04-review`, one
-`05-provision-NNN` per checklist step, `06-done`, and `snap-NN-*` for each
-`s`), as `NAME.ansi` and as `NAME.html`: a 1920x1080 page with the screen in
+first shows it (`00-splash-NN` for four frames of the opening, `01-welcome`,
+`02-check`, `03-settings`, `04-review`, one `05-provision-NNN` per checklist
+step, `06-done`, and `snap-NN-*` for each `s`), as `NAME.ansi` and as
+`NAME.html`: a 1920x1080 page with the screen in
 a terminal window. `docs/render.mjs` turns the pages into PNGs with headless
 Chromium (Playwright from the talk-video-record skill). The PNGs in `docs/`
 come from the command above: a `--dry-run` replay of the live install of
@@ -228,7 +240,11 @@ go vet ./... && test -z "$(gofmt -l .)" && go test ./...
 - `internal/run`: running scripts in order, stopping at the first failure,
   the record and the plain log; replay.
 - `internal/ui`: the recorded live run replayed through every screen, with
-  every screen exactly 126 x 33 cells; settings editing and validation.
+  every screen exactly 126 x 33 cells; settings editing and validation; every
+  frame of the opening animation fits 80 x 24, 126 x 33, 140 x 45 and smaller
+  windows, a key skips it, and `--done` opens without it.
+  `SPLASH_FRAMES_DIR=DIR go test -run TestSplashFits ./internal/ui/` also
+  saves every frame there as snapshots.
 - `internal/preflight`, `internal/snap`: version parsing, the vCPU quota
   math, ANSI to HTML.
 
@@ -241,8 +257,8 @@ go vet ./... && test -z "$(gofmt -l .)" && go test ./...
 | `internal/preflight` | the Check screen's read-only checks |
 | `internal/plan` | the commands per choice, their expected checklist rows, and the checklist state |
 | `internal/run` | runs the scripts (bash, own process group, stdin closed) or replays a record |
-| `internal/ui` | the screens |
-| `internal/snap` | snapshots: ANSI and HTML |
+| `internal/ui` | the screens; `splash.go` is the opening animation and its pixel art |
+| `internal/snap` | snapshots: ANSI and HTML (half blocks drawn as exact half cells) |
 | `docs/render.mjs` | HTML snapshots to PNG |
 
 ## Modules

@@ -14,6 +14,9 @@ import (
 
 // render draws the whole screen at w x h cells.
 func (m Model) render(w, h int) string {
+	if m.screen == sSplash {
+		return m.splash(w, h)
+	}
 	if w < 90 || h < 26 {
 		return fmt.Sprintf("The installer needs a terminal of at least 90 x 26 (this one is %d x %d).", w, h)
 	}

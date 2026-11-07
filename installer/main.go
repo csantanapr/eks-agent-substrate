@@ -79,7 +79,7 @@ func main() {
 		os.Setenv("GOTOOLCHAIN", v)
 	}
 	opt := ui.Options{
-		Repo: r, RepoRev: gitRev(dir), Redact: *redact, Auto: *auto, AutoQuit: *auto && *dry,
+		Repo: r, RepoRev: gitRev(dir), Redact: *redact, Auto: *auto, AutoQuit: *auto && *dry, Splash: true,
 		Seed:        map[string]string{"CLUSTER_NAME": *cluster, "AWS_REGION": *region, "AWS_PROFILE": *profile},
 		SnapshotDir: os.Getenv("INSTALLER_SNAPSHOT_DIR"),
 	}

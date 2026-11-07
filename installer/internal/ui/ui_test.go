@@ -2,6 +2,7 @@ package ui
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,11 +11,13 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 
 	"github.com/csantanapr/eks-agent-substrate/installer/internal/config"
 	"github.com/csantanapr/eks-agent-substrate/installer/internal/plan"
 	"github.com/csantanapr/eks-agent-substrate/installer/internal/preflight"
 	"github.com/csantanapr/eks-agent-substrate/installer/internal/run"
+	"github.com/csantanapr/eks-agent-substrate/installer/internal/snap"
 )
 
 func key(s string) tea.KeyMsg {
@@ -380,5 +383,115 @@ func TestRedact(t *testing.T) {
 	m := Model{opt: Options{Redact: true}}
 	if got := m.redact("substrate-tui-snap-444455556666-us-west-2"); got != "substrate-tui-snap-111122223333-us-west-2" {
 		t.Error(got)
+	}
+}
+
+// colors sets the color profile for the rest of the test.
+func colors(t *testing.T, p termenv.Profile) {
+	t.Helper()
+	old := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(p)
+	t.Cleanup(func() { lipgloss.SetColorProfile(old) })
+}
+
+// Every splash frame fits the window, with the art when there is room and
+// the plain title when there is not. SPLASH_FRAMES_DIR=DIR also saves every
+// frame at 80x24, 126x33 and 140x45 there, as snapshots.
+func TestSplashFits(t *testing.T) {
+	colors(t, termenv.TrueColor)
+	dir := os.Getenv("SPLASH_FRAMES_DIR")
+	m := Model{screen: sSplash}
+	for _, sz := range []struct {
+		w, h int
+		art  bool
+	}{{80, 24, true}, {126, 33, true}, {140, 45, true}, {200, 60, true}, {60, 26, true}, {90, 26, true}, {59, 19, false}, {79, 20, false}, {20, 6, false}} {
+		for f := 0; f <= splashFrames; f++ {
+			m.frame = f
+			name := fmt.Sprintf("splash %dx%d frame %d", sz.w, sz.h, f)
+			v := m.splash(sz.w, sz.h)
+			checkSize(t, name, v, sz.w, sz.h)
+			// The art paints cell backgrounds; the plain title does not.
+			if got := strings.Contains(v, "48;2;"); got != sz.art {
+				t.Errorf("%s: art %v, want %v", name, got, sz.art)
+			}
+			if dir != "" && sz.w*sz.h >= 80*24 && sz.w <= 140 && sz.art {
+				w := snap.Writer{Dir: filepath.Join(dir, fmt.Sprintf("%dx%d", sz.w, sz.h)), Title: "splash"}
+				if err := w.Save(fmt.Sprintf("frame-%02d", f), v); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+	}
+	m.frame = splashFrames
+	for _, sz := range [][2]int{{80, 24}, {126, 33}, {140, 45}} {
+		v := plan.StripANSI(m.splash(sz[0], sz[1]))
+		for _, want := range []string{"Agent Substrate 1.0.0", "on Amazon EKS", " Amazon EKS ", " gVisor ", " microVM ", "press any key"} {
+			if !strings.Contains(v, want) {
+				t.Errorf("%dx%d: the last frame lacks %q:\n%s", sz[0], sz[1], want, v)
+			}
+		}
+	}
+}
+
+// Without color (NO_COLOR) the splash is the plain title, with no blocks.
+func TestSplashNoColor(t *testing.T) {
+	colors(t, termenv.Ascii)
+	m := Model{screen: sSplash, frame: 20}
+	v := m.splash(80, 24)
+	checkSize(t, "no color", v, 80, 24)
+	if strings.Contains(v, "\x1b[") || strings.Contains(v, "▀") || !strings.Contains(v, "Agent Substrate 1.0.0") {
+		t.Errorf("no color:\n%s", v)
+	}
+}
+
+// The splash opens the installer, a key skips it, and it ends on its own
+// at Welcome; --done opens on Done without it.
+func TestSplashSkip(t *testing.T) {
+	repo, err := config.LoadRepo(filepath.Join("..", "..", ".."))
+	if err != nil {
+		t.Skip(err)
+	}
+	opt := Options{Repo: repo, Checks: []preflight.Result{}, Splash: true}
+	m := New(opt)
+	if m.screen != sSplash {
+		t.Fatalf("starts on screen %v", m.screen)
+	}
+	checkSize(t, "splash in the model", m.render(80, 24), 80, 24)
+	m = press(t, m, "x")
+	if m.screen != sWelcome {
+		t.Fatalf("a key goes to Welcome, screen %v", m.screen)
+	}
+	// A tick from the skipped splash changes nothing.
+	nm, c := m.Update(splashMsg{})
+	if m2 := nm.(Model); m2.screen != sWelcome || m2.frame != m.frame || c != nil {
+		t.Errorf("late tick: screen %v frame %d", m2.screen, m2.frame)
+	}
+	// enter on the splash skips it and does not also start the checks.
+	m = press(t, New(opt), "enter")
+	if m.screen != sWelcome {
+		t.Errorf("enter: screen %v", m.screen)
+	}
+	m = New(opt)
+	for i := 0; i < splashFrames; i++ {
+		if m.screen != sSplash {
+			t.Fatalf("the splash ended after %d frames", i)
+		}
+		nm, _ := m.Update(splashMsg{})
+		m = nm.(Model)
+	}
+	if m.screen != sWelcome {
+		t.Errorf("after %d frames: screen %v", splashFrames, m.screen)
+	}
+	if d := time.Duration(splashFrames) * splashEvery; d < 3*time.Second || d > 4*time.Second {
+		t.Errorf("the splash lasts %v", d)
+	}
+
+	h, evs, err := run.LoadRecord(filepath.Join("..", "..", "testdata", "install.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	opt.Last = &LastRun{Header: h, Events: evs, LogPath: "x.log"}
+	if m := New(opt); m.screen != sDone {
+		t.Errorf("--done: screen %v", m.screen)
 	}
 }
