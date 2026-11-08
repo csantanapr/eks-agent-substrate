@@ -471,7 +471,7 @@ client identity (pass it through `substrate/install.sh`).
 | `llm-gateway/` | agentgateway with the Bedrock backend |
 | `demos/` | The counter and OpenClaw demos; per-actor EFS and S3 Files volumes; DB login rotation; Secrets Manager credential injection; mode 3 (preview) |
 | `.github/` | Workflows that build the mode 3 images to GHCR |
-| `slides/` | The talk deck (open `slides/index.html`, or [on GitHub Pages](https://csantanapr.github.io/eks-agent-substrate/)); `.github/workflows/slides-pages.yaml` publishes it on every push to main |
+| `slides/` | The talk deck (open `slides/index.html`, or [on GitHub Pages](https://csantanapr.github.io/eks-agent-substrate/)); `.github/workflows/slides-pages.yaml` publishes it on every push to main. [`slides/demo.md`](slides/demo.md) has copy-paste commands for the actor demos on isolated sandboxes |
 | `installer/` | Interactive terminal installer over the scripts |
 | `.agents/skills/` | Agent skill for deploying and troubleshooting this repo; `.claude/skills` and `.kiro/skills` link to it |
 | `.work/` | Generated: kubeconfig, Substrate clone, tools (gitignored) |
