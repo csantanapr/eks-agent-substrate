@@ -27,13 +27,14 @@ if cluster_exists; then
   done
   if [ -f "$KUBECONFIG" ]; then
     ns=$(kubectl get namespace -o name) || die "kubectl cannot reach $CLUSTER_NAME"
-    for n in openclaw ate-demo-counter ate-demo-counter-microvm llm-gateway ate-db-bootstrap \
+    for n in openclaw ate-demo-counter ate-demo-counter-microvm ate-demo-counter-mode3 ate-demo-counter-iso llm-gateway ate-db-bootstrap \
              ate-system podcertificate-controller-system external-secrets external-secrets-reloader \
              ate-demo-credprovider; do
       grep -qx "namespace/$n" <<<"$ns" && found "namespace $n"
     done
     crds=$(kubectl get crd -o name | grep -E '\.ate\.dev$' || true)
     [ -n "$crds" ] && found "Substrate CRDs: $(tr '\n' ' ' <<<"$crds")"
+    kubectl get nodepool ate-isolated >/dev/null 2>&1 && found "NodePool ate-isolated"
   fi
 fi
 

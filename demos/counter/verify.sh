@@ -74,32 +74,29 @@ roundtrip() { # actor atespace template localport
   info "PASS: resumed and every counter continued"
 }
 
-roundtrip demo-gvisor ate-demo-counter counter 8001
-roundtrip demo-microvm ate-demo-counter-microvm counter-microvm 8002
-# Mode 3 (demos/mode3): the same round trip with gVisor inside a Kata microVM
-# Pod, after checking every worker Pod of the pool runs under RuntimeClass kata.
-if [ "${MODE3:-}" = on ] && kubectl get namespace ate-demo-counter-mode3 >/dev/null 2>&1; then
-  rcs=$(kubectl -n ate-demo-counter-mode3 get pods -l ate.dev/worker-transport=network \
+network_runtime() { # namespace runtimeclass: every network worker Pod runs under it
+  local rcs
+  rcs=$(kubectl -n "$1" get pods -l ate.dev/worker-transport=network \
     -o jsonpath='{range .items[*]}{.spec.runtimeClassName}{"\n"}{end}' | sort -u)
-  [ "$rcs" = kata ] || die "mode 3 worker Pods run under '${rcs:-nothing}', not RuntimeClass kata"
-  roundtrip demo-mode3 ate-demo-counter-mode3 counter-mode3 8003
+  [ "$rcs" = "$2" ] || die "$1 worker Pods run under '${rcs:-nothing}', not RuntimeClass $2"
+}
 
-  # Deleting an actor tears its sandbox down inside the worker's guest: the
-  # worker Pod logs a TerminateWorkload call for the actor's UID.
-  actor=demo-mode3-delete ns=ate-demo-counter-mode3
+# Deleting an actor tears its sandbox down inside the worker's guest: the
+# worker Pod logs a TerminateWorkload call for the actor's UID.
+delete_check() { # actor atespace template localport
+  local actor=$1 ns=$2 tpl=$3 port=$4 json uid pod found=""
   log "$actor ($ns): delete tears down the sandbox in the guest"
   kubectl ate get actor "$actor" -a "$ns" >/dev/null 2>&1 \
-    || kubectl ate create actor "$actor" -a "$ns" --template counter-mode3 >/dev/null 2>&1
-  kubectl ate proxy actor "$actor" -a "$ns" 8004:80 >"$WORK/proxy-$actor.log" 2>&1 &
+    || kubectl ate create actor "$actor" -a "$ns" --template "$tpl" >/dev/null 2>&1
+  kubectl ate proxy actor "$actor" -a "$ns" "$port:80" >"$WORK/proxy-$actor.log" 2>&1 &
   PIDS+=("$!")
-  for _ in $(seq 1 60); do curl -sf -m 10 http://127.0.0.1:8004/ >/dev/null 2>&1 && break; sleep 2; done
+  for _ in $(seq 1 60); do curl -sf -m 10 "http://127.0.0.1:$port/" >/dev/null 2>&1 && break; sleep 2; done
   [ "$(state "$actor" "$ns")" = ACTOR_STATE_RUNNING ] || die "$actor did not start"
   json=$(kubectl ate get actor "$actor" -a "$ns" -o json)
   uid=$(jq -r '.metadata.uid' <<<"$json")
   pod=$(jq -r '.status.workerAssignment.workerPod' <<<"$json")
   [ -n "$uid" ] && [ -n "$pod" ] && [ "$pod" != null ] || die "$actor has no worker Pod"
   kubectl ate delete actor "$actor" -a "$ns" >/dev/null
-  found=""
   for _ in $(seq 1 30); do
     if kubectl -n "$ns" logs "$pod" --all-containers 2>/dev/null | grep 'Handle RPC' | grep 'TerminateWorkload' | grep -q "$uid"; then
       found=1; break
@@ -108,4 +105,21 @@ if [ "${MODE3:-}" = on ] && kubectl get namespace ate-demo-counter-mode3 >/dev/n
   done
   [ -n "$found" ] || die "worker Pod $pod logged no TerminateWorkload for $actor ($uid)"
   info "PASS: the worker in Pod $pod tore down $actor's sandbox"
+}
+
+roundtrip demo-gvisor ate-demo-counter counter 8001
+roundtrip demo-microvm ate-demo-counter-microvm counter-microvm 8002
+# Mode 3 (demos/mode3): the same round trip with gVisor inside a Kata microVM
+# Pod, after checking every worker Pod of the pool runs under RuntimeClass kata.
+if [ "${MODE3:-}" = on ] && kubectl get namespace ate-demo-counter-mode3 >/dev/null 2>&1; then
+  network_runtime ate-demo-counter-mode3 kata
+  roundtrip demo-mode3 ate-demo-counter-mode3 counter-mode3 8003
+  delete_check demo-mode3-delete ate-demo-counter-mode3 counter-mode3 8004
+fi
+# Mode 3 on Auto Mode isolated sandboxes (demos/mode3-iso): the same checks,
+# with every worker Pod under RuntimeClass isolated-sandbox.
+if [ "${MODE3_ISO:-}" = on ] && kubectl get namespace ate-demo-counter-iso >/dev/null 2>&1; then
+  network_runtime ate-demo-counter-iso isolated-sandbox
+  roundtrip demo-iso ate-demo-counter-iso counter-iso 8005
+  delete_check demo-iso-delete ate-demo-counter-iso counter-iso 8006
 fi

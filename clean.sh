@@ -35,12 +35,19 @@ if cluster_exists; then
   # its StorageClass deletes the volume behind it (an EFS access point, or
   # an EBS volume from an older install), before demos/efs/clean.sh runs.
   step kubectl delete namespace openclaw ate-demo-counter ate-demo-counter-microvm ate-demo-counter-mode3 \
-    llm-gateway ate-db-bootstrap --ignore-not-found --timeout=10m
+    ate-demo-counter-iso llm-gateway ate-db-bootstrap --ignore-not-found --timeout=10m
   step kubectl delete clusterrole,clusterrolebinding openclaw-gateway-eks openclaw-dashboard --ignore-not-found
   # Mode 3: once its worker Pods are gone, kata-deploy's uninstall removes Kata
   # from the microvm nodes and the RuntimeClasses.
   if helm status kata-deploy -n kube-system >/dev/null 2>&1; then
     step helm uninstall kata-deploy -n kube-system --wait --timeout 10m
+  fi
+  # Mode 3 on isolated sandboxes: atelet-iso, then the NodePool, whose empty
+  # nodes Auto Mode then removes.
+  step kubectl -n ate-system delete daemonset atelet-iso --ignore-not-found --wait=true
+  step kubectl -n ate-system delete configmap atelet-iso-credential-provider --ignore-not-found
+  if kubectl get crd nodepools.karpenter.sh >/dev/null 2>&1; then
+    step kubectl delete nodepool ate-isolated --ignore-not-found --wait=true --timeout=10m
   fi
 
   # Before Substrate goes: deleting the actors deletes their access points.

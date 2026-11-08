@@ -362,6 +362,32 @@ the pieces fit:
 | WorkerPool | The gVisor class with `spec.networkTransport.runtimeClassName: kata`: the controller runs the worker Pods under Kata, and atelet reaches them over mutual TLS on the Pod network (port 8087, the `atelet-workers` Service) instead of the node's shared files and Unix sockets. Snapshots and sandbox assets go through a staging service. |
 | Check | `demos/counter/verify.sh` checks that every worker Pod of the pool runs under RuntimeClass `kata`, then suspends and resumes the counter on it. |
 
+## Optional, preview: mode 3 on isolated sandboxes
+
+EKS Auto Mode ships RuntimeClass `isolated-sandbox`, which runs each Pod in its
+own sandbox with its own guest kernel. A Pending Pod that asks for it makes
+Auto Mode's Karpenter launch a node that can run it, so this needs
+`AUTO_MODE=on`; it does not work on node groups. It also needs `MODE3=on`,
+since the worker Pods run gVisor actors over the Pod network as in mode 3.
+
+```bash
+printf 'MODE3=on\nMODE3_ISO=on\n' >> config.local.env
+./deploy.sh
+demos/mode3/deploy.sh           # the Kata pool, which verify.sh checks too
+demos/mode3-iso/deploy.sh       # NodePool, atelet-iso, a counter pool on isolated-sandbox
+demos/counter/verify.sh         # also runs a round trip on the isolated pool
+```
+
+Or choose "Mode 3 on isolated sandboxes" under Plugins in the installer, which
+turns on Mode 3 and Auto Mode too. `clean.sh` removes it.
+
+| Piece | What it does |
+|---|---|
+| NodePool | `ate-isolated`, a copy of `general-purpose` that labels its nodes `ate.dev/pool=isolated` and taints them `ate.dev/sandboxClass=isolated:NoSchedule`, so only the worker Pods land there. |
+| atelet-iso | A copy of the atelet DaemonSet for those nodes. They run Bottlerocket, so it mounts the ECR credential provider from `/usr/libexec/kubernetes/kubelet/plugins` and its own provider config without `AWS_PROFILE`. |
+| WorkerPool | `counter-iso` in `ate-demo-counter-iso`, with `networkTransport.runtimeClassName: isolated-sandbox` and 2 GiB per worker. It turns off the sandbox's default network and disk throttles with `sandbox.amazonaws.com/*` annotations, since resume times out with them on. |
+| Check | `demos/counter/verify.sh` checks that every worker Pod runs under `isolated-sandbox`, then suspends, resumes and deletes a counter on it. |
+
 ## Move to a new release
 
 Set `SUBSTRATE_TAG` in `config.local.env` (for example `v1.0.1`, or
