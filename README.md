@@ -355,7 +355,8 @@ demos/mode3/deploy.sh           # Kata on the microvm nodes, a counter pool on m
 demos/counter/verify.sh         # also runs a round trip on mode 3
 ```
 
-The installer checks "Mode 3" under Plugins by default. `clean.sh` removes it. How
+The installer checks "Mode 3: gVisor in a microVM Pod (kata-clh)" under Plugins
+by default. `clean.sh` removes it. How
 the pieces fit:
 
 | Piece | What it does |
@@ -382,7 +383,8 @@ demos/mode3-iso/deploy.sh       # NodePool, atelet-iso, a counter pool on isolat
 demos/counter/verify.sh         # also runs a round trip on the isolated pool
 ```
 
-The installer checks "Mode 3 on isolated sandboxes" under Plugins by default.
+The installer checks "Mode 3: gVisor in a microVM Pod (isolated-sandbox)" under
+Plugins by default.
 Unchecking it writes `MODE3_ISO=`; checking it turns on Mode 3 and Auto Mode
 too. `clean.sh` removes it.
 

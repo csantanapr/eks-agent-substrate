@@ -289,7 +289,9 @@ func autoMode(v map[string]string) string {
 
 func (m Model) settingsView(w, h int) string {
 	leftW := 66
-	rightW := w - leftW - 4
+	// The two columns and their gap fill the width, so the longest plugin
+	// title fits at the 126-cell snapshot size.
+	rightW := w - leftW - 2
 	var left []string
 	left = append(left, "", "  "+sTitle.Render("Settings")+"   "+sMuted.Render("defaults from "+filepath.Join(filepath.Base(m.opt.Repo.Dir), "config.env")))
 	section := ""
@@ -376,13 +378,13 @@ func (m Model) settingsView(w, h int) string {
 		}
 		text := box + " " + d.Title
 		if i == m.cursor {
-			right = append(right, "  "+sSel.Render(pad(" "+text+" ", rightW-2)))
+			right = append(right, "  "+sSel.Render(pad(" "+text, rightW-2)))
 		} else {
 			boxSt := sOrange
 			if d.Disabled != "" {
 				boxSt = sDim
 			}
-			right = append(right, "   "+boxSt.Render(box)+" "+st.Render(cut(d.Title, rightW-8)))
+			right = append(right, "   "+boxSt.Render(box)+" "+st.Render(cut(d.Title, rightW-7)))
 		}
 	}
 	// The help for the focused field: the comment above it in config.env,
