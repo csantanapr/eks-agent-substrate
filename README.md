@@ -373,8 +373,7 @@ Auto Mode's Karpenter launch a node that can run it, so this needs
 `AUTO_MODE=on`; it does not work on node groups. It also needs `MODE3=on`,
 since the worker Pods run gVisor actors over the Pod network as in mode 3.
 `MODE3_ISO=on` is the default in `config.env`; set `MODE3_ISO=` in
-`config.local.env` to skip it, for example in a Region where Auto Mode does
-not offer `isolated-sandbox`.
+`config.local.env` to skip it.
 
 ```bash
 ./deploy.sh

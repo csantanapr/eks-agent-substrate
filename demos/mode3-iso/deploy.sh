@@ -39,7 +39,7 @@ NS=ate-demo-counter-iso
 
 log "RuntimeClass isolated-sandbox"
 kubectl get runtimeclass isolated-sandbox >/dev/null 2>&1 \
-  || die "this cluster has no RuntimeClass isolated-sandbox (EKS Auto Mode adds it where isolated sandboxes are available)"
+  || die "this cluster has no RuntimeClass isolated-sandbox (EKS Auto Mode adds it; is AUTO_MODE=on?)"
 info "handler $(kubectl get runtimeclass isolated-sandbox -o jsonpath='{.handler}')"
 
 log "NodePool ate-isolated (a copy of general-purpose, labeled and tainted)"
