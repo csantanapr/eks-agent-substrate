@@ -66,6 +66,8 @@ var Demos = []Demo{
 	{ID: "db-rotation", Section: SectionPlugins, Title: "Secrets Manager login rotation", Note: "demos/db-rotation"},
 	{ID: "mode3", Section: SectionPlugins, Title: "Mode 3: gVisor in a microVM Pod (preview)",
 		Note: "demos/mode3, a proposal for upstream: worker Pods are Kata microVMs on the microvm nodes, with gVisor actors inside, so an escape from gVisor lands in the guest kernel. Sets MODE3=on: Substrate is installed from the proposal (MODE3_REPO at MODE3_COMMIT, images under MODE3_IMAGE_REPO), Kata from kata-deploy, and a counter pool the counter check covers. About 2 min."},
+	{ID: "mode3-iso", Section: SectionPlugins, Title: "Mode 3 on isolated sandboxes (preview)",
+		Note: "demos/mode3-iso: mode 3 with worker Pods on RuntimeClass isolated-sandbox, the microVM EKS Auto Mode provides, on nodes Auto Mode launches for them (NodePool ate-isolated); no Kata. Sets MODE3_ISO=on and turns on Mode 3 and EKS Auto Mode, which it needs. The counter check covers it. About 4 min."},
 	{ID: "credprovider-aws", Section: SectionPlugins, Title: "Secrets Manager credential provider",
 		Note: "demos/credprovider-aws: builds the provider from its checkout (CREDPROVIDER_DIR, default ~/credprovider-aws-secret-manager), then checks it injects an actor's secret and refuses the rest. About 3 min."},
 }
@@ -205,12 +207,25 @@ var mode3 = Command{
 	},
 }
 
+var mode3ISO = Command{
+	ID: "mode3-iso", Title: "Mode 3 on isolated sandboxes", Args: []string{"demos/mode3-iso/deploy.sh"},
+	Minutes: 4, Summary: "RuntimeClass isolated-sandbox, NodePool ate-isolated, atelet-iso, a counter pool", Rows: []Row{
+		{Title: "RuntimeClass isolated-sandbox", Match: []string{"RuntimeClass isolated-sandbox"}},
+		{Title: "NodePool ate-isolated", Match: []string{"NodePool ate-isolated"}},
+		{Title: "atelet on the isolated nodes", Match: []string{"atelet-iso on the isolated nodes"}},
+		{Title: "Counter on isolated sandboxes", Match: []string{"Counter on mode 3, isolated sandboxes"}},
+	},
+}
+
 // Install returns the commands for an install with the chosen demos.
 func Install(demos map[string]bool) []Command {
 	cmds := []Command{createCluster, deploy}
 	// Before the counter check, which checks mode 3 too when it is there.
 	if demos["mode3"] {
 		cmds = append(cmds, mode3)
+	}
+	if demos["mode3-iso"] {
+		cmds = append(cmds, mode3ISO)
 	}
 	if demos["counter-verify"] {
 		cmds = append(cmds, counterVerify)
@@ -262,7 +277,7 @@ func Teardown() []Command {
 // teardown), for replaying a recorded log.
 func ByID(id string) (Command, bool) {
 	all := append(Install(map[string]bool{"counter-verify": true, "s3files": true, "db-rotation": true,
-		"credprovider-aws": true, "openclaw": true, "mode3": true}), Teardown()...)
+		"credprovider-aws": true, "openclaw": true, "mode3": true, "mode3-iso": true}), Teardown()...)
 	all = append(all, retired...)
 	for _, c := range all {
 		if c.ID == id {

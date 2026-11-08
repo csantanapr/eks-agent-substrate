@@ -234,6 +234,23 @@ func TestSettingsEditAndValidate(t *testing.T) {
 	if m.demos["mode3"] || m.values["MODE3"] != "" {
 		t.Errorf("mode3 off: %v %q", m.demos["mode3"], m.values["MODE3"])
 	}
+	// Mode 3 on isolated sandboxes: on writes MODE3_ISO=on and turns on mode 3
+	// and Auto Mode; turning mode 3 off turns it off too.
+	for m.fields[m.cursor].key != "mode3-iso" {
+		m = press(t, m, "down")
+	}
+	m.values["AUTO_MODE"] = ""
+	m = press(t, m, " ")
+	if !m.demos["mode3-iso"] || m.values["MODE3_ISO"] != "on" || !m.demos["mode3"] || m.values["MODE3"] != "on" || m.values["AUTO_MODE"] != "on" {
+		t.Errorf("mode3-iso on: %v %q, mode3 %v %q, auto %q", m.demos["mode3-iso"], m.values["MODE3_ISO"], m.demos["mode3"], m.values["MODE3"], m.values["AUTO_MODE"])
+	}
+	for m.fields[m.cursor].key != "mode3" {
+		m = press(t, m, "up")
+	}
+	m = press(t, m, " ")
+	if m.demos["mode3-iso"] || m.values["MODE3_ISO"] != "" {
+		t.Errorf("mode3 off leaves mode3-iso: %v %q", m.demos["mode3-iso"], m.values["MODE3_ISO"])
+	}
 	for m.fields[m.cursor].key != "s3files" {
 		m = press(t, m, "up")
 	}

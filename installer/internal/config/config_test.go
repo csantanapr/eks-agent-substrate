@@ -78,7 +78,7 @@ func TestParseRepoConfig(t *testing.T) {
 		t.Skip("no config.env next to installer/")
 	}
 	// These are empty in config.env on purpose: no profile, no OpenClaw, no mode 3.
-	emptyOK := map[string]bool{"AWS_PROFILE": true, "OPENCLAW_DIR": true, "OPENCLAW_REPO": true, "OPENCLAW_REF": true, "MODE3": true}
+	emptyOK := map[string]bool{"AWS_PROFILE": true, "OPENCLAW_DIR": true, "OPENCLAW_REPO": true, "OPENCLAW_REF": true, "MODE3": true, "MODE3_ISO": true}
 	for _, k := range Managed {
 		v, ok := f.Get(k)
 		if !ok || (v == "" && !emptyOK[k]) {

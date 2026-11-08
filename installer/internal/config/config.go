@@ -169,8 +169,8 @@ var Managed = []string{
 	"TAGS", "EKS_PUBLIC_ACCESS_CIDRS", "SUBSTRATE_TAG",
 	// Set by the OpenClaw choice on the Settings screen.
 	"OPENCLAW_DIR", "OPENCLAW_REPO", "OPENCLAW_REF",
-	// Set by the mode 3 choice.
-	"MODE3",
+	// Set by the mode 3 choices.
+	"MODE3", "MODE3_ISO",
 }
 
 // Always lists the managed keys written even when they equal config.env, so

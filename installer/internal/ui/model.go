@@ -162,6 +162,9 @@ func New(opt Options) Model {
 		if d.ID == "mode3" {
 			m.demos[d.ID] = m.values["MODE3"] == "on"
 		}
+		if d.ID == "mode3-iso" {
+			m.demos[d.ID] = m.values["MODE3_ISO"] == "on"
+		}
 		if opt.Demos != nil && d.Disabled == "" && !d.Locked {
 			m.demos[d.ID] = opt.Demos[d.ID]
 		}

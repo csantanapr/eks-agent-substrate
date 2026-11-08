@@ -86,6 +86,18 @@ func (m Model) setOpenClaw(on bool) {
 	}
 }
 
+// setMode3ISO sets the mode 3 on isolated sandboxes choice and MODE3_ISO.
+// On also turns on mode 3 and EKS Auto Mode, which it needs.
+func (m Model) setMode3ISO(on bool) {
+	m.demos["mode3-iso"] = on
+	m.values["MODE3_ISO"] = ""
+	if on {
+		m.values["MODE3_ISO"] = "on"
+		m.demos["mode3"], m.values["MODE3"] = true, "on"
+		m.values["AUTO_MODE"] = "on"
+	}
+}
+
 // credproviderDir is the provider checkout demos/credprovider-aws/deploy.sh
 // builds from: CREDPROVIDER_DIR, else ~/credprovider-aws-secret-manager.
 // toolbox.sh passes CREDPROVIDER_DIR into the toolbox.
@@ -150,6 +162,10 @@ func (m Model) settingsKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 			} else {
 				m.values[f.key] = "on"
 			}
+			// Mode 3 on isolated sandboxes needs Auto Mode.
+			if f.key == "AUTO_MODE" && m.values[f.key] == "" {
+				m.setMode3ISO(false)
+			}
 			return m, nil
 		}
 		if f.kind == fDemo {
@@ -169,7 +185,12 @@ func (m Model) settingsKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.values["MODE3"] = ""
 					if m.demos["mode3"] {
 						m.values["MODE3"] = "on"
+					} else {
+						m.setMode3ISO(false)
 					}
+				}
+				if f.key == "mode3-iso" {
+					m.setMode3ISO(m.demos["mode3-iso"])
 				}
 				// S3 Files and OpenClaw need EFS.
 				if (f.key == "s3files" || f.key == "openclaw") && m.demos[f.key] {

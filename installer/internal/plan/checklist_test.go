@@ -211,6 +211,7 @@ func TestInstallOrder(t *testing.T) {
 		{map[string]bool{"openclaw": true}, "create-cluster deploy efs efs-verify openclaw openclaw-verify"},
 		// Mode 3 goes before the counter check, which checks it too.
 		{map[string]bool{"mode3": true, "counter-verify": true}, "create-cluster deploy mode3 counter-verify"},
+		{map[string]bool{"mode3": true, "mode3-iso": true, "counter-verify": true}, "create-cluster deploy mode3 mode3-iso counter-verify"},
 		{map[string]bool{"db-rotation": true, "credprovider-aws": true, "openclaw": true},
 			"create-cluster deploy efs efs-verify db-rotation credprovider-aws credprovider-aws-verify openclaw openclaw-verify"},
 	} {
