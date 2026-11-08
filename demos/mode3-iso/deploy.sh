@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Optional, preview: mode 3 on EKS Auto Mode isolated sandboxes. Like
+# Optional: mode 3 on EKS Auto Mode isolated sandboxes. Like
 # demos/mode3, the worker Pod is a microVM that runs actors with gVisor
 # inside; here the microVM is the RuntimeClass isolated-sandbox that EKS Auto
 # Mode provides, on nodes Auto Mode launches for those Pods. No node group

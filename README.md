@@ -362,7 +362,7 @@ the pieces fit:
 | WorkerPool | The gVisor class with `spec.networkTransport.runtimeClassName: kata`: the controller runs the worker Pods under Kata, and atelet reaches them over mutual TLS on the Pod network (port 8087, the `atelet-workers` Service) instead of the node's shared files and Unix sockets. Snapshots and sandbox assets go through a staging service. |
 | Check | `demos/counter/verify.sh` checks that every worker Pod of the pool runs under RuntimeClass `kata`, then suspends and resumes the counter on it. |
 
-## Optional, preview: mode 3 on isolated sandboxes
+## Optional: mode 3 on isolated sandboxes
 
 EKS Auto Mode ships RuntimeClass `isolated-sandbox`, which runs each Pod in its
 own sandbox with its own guest kernel. A Pending Pod that asks for it makes

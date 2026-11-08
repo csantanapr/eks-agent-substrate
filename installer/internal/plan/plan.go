@@ -66,7 +66,7 @@ var Demos = []Demo{
 	{ID: "db-rotation", Section: SectionPlugins, Title: "Secrets Manager login rotation", Note: "demos/db-rotation"},
 	{ID: "mode3", Section: SectionPlugins, Title: "Mode 3: gVisor in a microVM Pod (preview)",
 		Note: "demos/mode3, a proposal for upstream: worker Pods are Kata microVMs on the microvm nodes, with gVisor actors inside, so an escape from gVisor lands in the guest kernel. Sets MODE3=on: Substrate is installed from the proposal (MODE3_REPO at MODE3_COMMIT, images under MODE3_IMAGE_REPO), Kata from kata-deploy, and a counter pool the counter check covers. About 2 min."},
-	{ID: "mode3-iso", Section: SectionPlugins, Title: "Mode 3 on isolated sandboxes (preview)",
+	{ID: "mode3-iso", Section: SectionPlugins, Title: "Mode 3 on isolated sandboxes",
 		Note: "demos/mode3-iso: mode 3 with worker Pods on RuntimeClass isolated-sandbox, the microVM EKS Auto Mode provides, on nodes Auto Mode launches for them (NodePool ate-isolated); no Kata. Sets MODE3_ISO=on and turns on Mode 3 and EKS Auto Mode, which it needs. The counter check covers it. About 4 min."},
 	{ID: "credprovider-aws", Section: SectionPlugins, Title: "Secrets Manager credential provider",
 		Note: "demos/credprovider-aws: builds the provider from its checkout (CREDPROVIDER_DIR, default ~/credprovider-aws-secret-manager), then checks it injects an actor's secret and refuses the rest. About 3 min."},
