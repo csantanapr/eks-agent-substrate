@@ -1,0 +1,36 @@
+# Publishes slides/ to GitHub Pages on every push to main that changes it.
+# The deck is a static page, so the site is slides/ as it is.
+name: slides-pages
+on:
+  push:
+    branches: [main]
+    paths: [slides/**, .github/workflows/slides-pages.yaml]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: slides-pages
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+      with:
+        persist-credentials: false
+    - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+    - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+      with:
+        path: slides
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+    - id: deploy
+      uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
