@@ -331,7 +331,7 @@ Things to know:
 - Registering the provider reinstalls Substrate with the preview gates the
   cluster runs (for example `ExternalVolumes` from `demos/efs`).
 
-## Optional, preview: mode 3, gVisor inside a microVM Pod
+## Preview, on by default: mode 3, gVisor inside a microVM Pod
 
 A proposal for upstream, in the `microvm-mode-3` branch of
 [csantanapr/substrate](https://github.com/csantanapr/substrate/tree/microvm-mode-3).
@@ -345,14 +345,17 @@ The worker Pod is itself a microVM, and the worker runs actors with gVisor
 inside it. An escape from gVisor then lands in the microVM's guest kernel, not
 on the node or in other Pods. It is not part of a Substrate release.
 
+`MODE3=on` is the default in `config.env`. To install the release instead, set
+`MODE3=` and `MODE3_ISO=` in `config.local.env`. In the installer, unchecking
+Mode 3 unchecks mode 3 on isolated sandboxes too.
+
 ```bash
-echo MODE3=on >> config.local.env
 ./deploy.sh                     # Substrate from the proposal
 demos/mode3/deploy.sh           # Kata on the microvm nodes, a counter pool on mode 3
 demos/counter/verify.sh         # also runs a round trip on mode 3
 ```
 
-Or choose "Mode 3" under Plugins in the installer. `clean.sh` removes it. How
+The installer checks "Mode 3" under Plugins by default. `clean.sh` removes it. How
 the pieces fit:
 
 | Piece | What it does |
@@ -362,24 +365,27 @@ the pieces fit:
 | WorkerPool | The gVisor class with `spec.networkTransport.runtimeClassName: kata`: the controller runs the worker Pods under Kata, and atelet reaches them over mutual TLS on the Pod network (port 8087, the `atelet-workers` Service) instead of the node's shared files and Unix sockets. Snapshots and sandbox assets go through a staging service. |
 | Check | `demos/counter/verify.sh` checks that every worker Pod of the pool runs under RuntimeClass `kata`, then suspends and resumes the counter on it. |
 
-## Optional: mode 3 on isolated sandboxes
+## On by default: mode 3 on isolated sandboxes
 
 EKS Auto Mode ships RuntimeClass `isolated-sandbox`, which runs each Pod in its
 own sandbox with its own guest kernel. A Pending Pod that asks for it makes
 Auto Mode's Karpenter launch a node that can run it, so this needs
 `AUTO_MODE=on`; it does not work on node groups. It also needs `MODE3=on`,
 since the worker Pods run gVisor actors over the Pod network as in mode 3.
+`MODE3_ISO=on` is the default in `config.env`; set `MODE3_ISO=` in
+`config.local.env` to skip it, for example in a Region where Auto Mode does
+not offer `isolated-sandbox`.
 
 ```bash
-printf 'MODE3=on\nMODE3_ISO=on\n' >> config.local.env
 ./deploy.sh
 demos/mode3/deploy.sh           # the Kata pool, which verify.sh checks too
 demos/mode3-iso/deploy.sh       # NodePool, atelet-iso, a counter pool on isolated-sandbox
 demos/counter/verify.sh         # also runs a round trip on the isolated pool
 ```
 
-Or choose "Mode 3 on isolated sandboxes" under Plugins in the installer, which
-turns on Mode 3 and Auto Mode too. `clean.sh` removes it.
+The installer checks "Mode 3 on isolated sandboxes" under Plugins by default.
+Unchecking it writes `MODE3_ISO=`; checking it turns on Mode 3 and Auto Mode
+too. `clean.sh` removes it.
 
 | Piece | What it does |
 |---|---|

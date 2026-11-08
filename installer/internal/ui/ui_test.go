@@ -169,6 +169,32 @@ func TestDryRunReplay(t *testing.T) {
 	}
 }
 
+// Mode 3 on isolated sandboxes is on in config.env, but starts off when
+// config.local.env turns off mode 3 or EKS Auto Mode, which it needs.
+func TestMode3ISODefault(t *testing.T) {
+	repo, err := config.LoadRepo(filepath.Join("..", "..", ".."))
+	if err != nil {
+		t.Skip(err)
+	}
+	for _, tc := range []struct{ local, want string }{
+		{"", "on"},
+		{"AUTO_MODE=\n", ""},
+		{"MODE3=\n", ""},
+	} {
+		f := filepath.Join(t.TempDir(), "config.local.env")
+		if err := os.WriteFile(f, []byte(tc.local), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if repo.Local, err = config.ParseFile(f); err != nil {
+			t.Fatal(err)
+		}
+		m := New(Options{Repo: repo, Checks: []preflight.Result{}})
+		if got := m.values["MODE3_ISO"]; got != tc.want || m.demos["mode3-iso"] != (tc.want == "on") {
+			t.Errorf("local %q: MODE3_ISO=%q, chosen %v; want %q", tc.local, got, m.demos["mode3-iso"], tc.want)
+		}
+	}
+}
+
 func TestSettingsEditAndValidate(t *testing.T) {
 	repo, err := config.LoadRepo(filepath.Join("..", "..", ".."))
 	if err != nil {
@@ -181,6 +207,7 @@ func TestSettingsEditAndValidate(t *testing.T) {
 	m.setOpenClaw(false)
 	m.demos["openclaw"] = false
 	m.demos["mode3"], m.values["MODE3"] = false, ""
+	m.setMode3ISO(false)
 	m = press(t, m, "enter", "enter") // welcome -> check -> settings
 	if m.screen != sSettings {
 		t.Fatalf("screen %v", m.screen)

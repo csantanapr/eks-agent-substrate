@@ -163,7 +163,11 @@ func New(opt Options) Model {
 			m.demos[d.ID] = m.values["MODE3"] == "on"
 		}
 		if d.ID == "mode3-iso" {
-			m.demos[d.ID] = m.values["MODE3_ISO"] == "on"
+			// It needs mode 3 and EKS Auto Mode, which config.local.env can turn off.
+			m.demos[d.ID] = m.values["MODE3_ISO"] == "on" && m.values["MODE3"] == "on" && m.values["AUTO_MODE"] == "on"
+			if !m.demos[d.ID] {
+				m.values["MODE3_ISO"] = ""
+			}
 		}
 		if opt.Demos != nil && d.Disabled == "" && !d.Locked {
 			m.demos[d.ID] = opt.Demos[d.ID]
