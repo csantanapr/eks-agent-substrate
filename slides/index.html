@@ -40,7 +40,10 @@
   th { color: var(--muted); font-weight: 600; font-size: 1rem; text-transform: uppercase; letter-spacing: .05em; }
   code.nw { white-space: nowrap; }
   .title-slide { justify-content: center; }
-  .title-slide h1 { font-size: 4rem; }
+  .title-slide h1 { font-size: 4.6rem; }
+  .title-slide > p, .thanks p { font-size: 1.8rem; }
+  .title-slide .big { font-size: 2.2rem; }
+  .thanks .pill { font-size: 1.6rem; }
   .pill { display: inline-block; padding: .25em .8em; border-radius: 999px; background: var(--panel);
     border: 1px solid var(--line); margin: .2em .3em .2em 0; font-size: 1.05rem; }
   .big { font-size: 1.8rem; line-height: 1.4; }
@@ -49,12 +52,12 @@
   .installer .term { aspect-ratio: 1640 / 940; overflow: hidden; border-radius: 12px; }
   .installer .term img { width: 117.07%; margin: -4.27% 0 0 -8.54%; display: block; }
   .thanks { display: grid; grid-template-columns: 1fr auto; gap: 3rem; align-items: center; }
-  .speaker { display: flex; align-items: center; gap: 1.2rem; margin-top: 2.5rem; font-size: 1.4rem; }
-  .speaker img { width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 3px solid #ff9900; }
-  .speaker-name { font-size: 1.8rem; font-weight: 700; }
+  .speaker { display: flex; align-items: center; gap: 1.4rem; margin-top: 2.5rem; font-size: 1.8rem; }
+  .speaker img { width: 150px; height: 150px; border-radius: 50%; object-fit: cover; border: 3px solid #ff9900; }
+  .speaker-name { font-size: 2.2rem; font-weight: 700; }
   .qr { margin: 0; text-align: center; }
-  .qr img { width: 340px; height: 340px; display: block; border-radius: 12px; }
-  .qr figcaption { margin-top: .8rem; font-size: 1.1rem; line-height: 1.5; color: var(--muted, #9aa7b4); }
+  .qr img { width: 380px; height: 380px; display: block; border-radius: 12px; }
+  .qr figcaption { margin-top: .8rem; font-size: 1.6rem; line-height: 1.4; color: var(--muted, #9aa7b4); }
   .foot { position: fixed; bottom: 2.2vh; left: 6vw; right: 6vw; display: flex; justify-content: space-between;
     color: var(--muted); font-size: .9rem; pointer-events: none; }
   .notes { display: none; position: fixed; bottom: 0; left: 0; right: 0; max-height: 34vh; overflow: auto;
@@ -117,6 +120,19 @@
   .crop { aspect-ratio: 6080 / 3228; height: 80vh; max-width: 100%; overflow: hidden; border-radius: 10px; background: #fff; }
   .fill .crop img { width: 100%; height: auto; max-width: none; max-height: none; display: block; border-radius: 0; }
   .grid3 .card li, .card.roomy li { font-size: 1.25rem; }
+  /* Text slides: class "readable" sizes text for a 1920x1080 projector (about 29px body, 22px code).
+     Diagram, screenshot and GIF slides do not carry it, so they keep their own sizes. */
+  section.slide.readable p, section.slide.readable li, section.slide.readable table { font-size: 1.8rem; line-height: 1.35; }
+  section.slide.readable .card h3 { font-size: 1.9rem; }
+  section.slide.readable th { font-size: 1.75rem; }
+  section.slide.readable h2 .tag { font-size: 1.75rem; }
+  section.slide.readable .pill { font-size: 1.75rem; }
+  section.slide.readable .watch ol { padding-left: 2.6rem; }
+  section.slide.readable pre, section.slide.readable .terminal { font-size: 1.4rem; line-height: 1.4; }
+  section.slide.readable .stack { display: grid; gap: 1.2rem; }
+  section.slide.readable .cols ul { columns: 2; column-gap: 2.4rem; }
+  section.slide.readable .cols li { break-inside: avoid; margin: 0 0 .4em; }
+  section.slide.readable .notes p, section.slide.readable .notes li { font-size: inherit; line-height: 1.5; }
 </style>
 </head>
 <body>
@@ -124,10 +140,10 @@
 
 <!-- 1 -->
 <section class="slide title-slide">
-  <p class="accent" style="font-size:1.2rem;letter-spacing:.12em;text-transform:uppercase;margin:0">Agent Substrate Day</p>
+  <p class="accent" style="font-size:1.8rem;letter-spacing:.12em;text-transform:uppercase;margin:0">Agent Substrate Day</p>
   <h1>Running Agent Substrate<br>on EKS</h1>
   <p class="muted big">What it takes on AWS, which services to use,<br>and where AWS can help the project</p>
-  <p style="margin:2rem 0 0;font-size:1.5rem;font-weight:600">Carlos Santana</p>
+  <p style="margin:2.4rem 0 0;font-size:2.2rem;font-weight:600">Carlos Santana</p>
   <p class="muted" style="margin:.2rem 0 0">Sr. Specialist Solutions Architect, Amazon Web Services</p>
   <aside class="notes">
     <p>This talk has <b>two goals</b>.</p>
@@ -141,20 +157,16 @@
 </section>
 
 <!-- 2 -->
-<section class="slide">
+<section class="slide readable">
   <h2>Agenda</h2>
   <div class="grid2">
     <div>
       <ol>
-        <li>Agent Substrate in one slide</li>
-        <li>The architecture on AWS</li>
-        <li>Cluster and sandboxes: EKS 1.37, gVisor, microVM, proposed third mode</li>
-        <li>Snapshots on S3, one IAM role per component</li>
-        <li>State on RDS, with rotating logins</li>
-        <li>Actor secrets and Bedrock, through the egress gateway</li>
-        <li>Per-actor volumes: Amazon EFS and S3 Files</li>
-        <li>Two demos</li>
-        <li>Lessons, where AWS can help, production checklist</li>
+        <li>Agent Substrate and its architecture on AWS</li>
+        <li>Cluster, gVisor, microVM, proposed third mode</li>
+        <li>Snapshots on S3, IAM roles, state on RDS</li>
+        <li>Secrets, Bedrock and per-actor volumes</li>
+        <li>Two demos, lessons, production checklist</li>
       </ol>
     </div>
     <div class="card">
@@ -163,7 +175,7 @@
       <span class="pill">m8i (nested virt)</span><span class="pill">S3</span><span class="pill">RDS for PostgreSQL 18</span>
       <span class="pill">Secrets Manager</span><span class="pill">ECR</span><span class="pill">Bedrock</span>
       <span class="pill">EFS</span><span class="pill">S3 Files</span></p>
-      <p class="muted">No public application endpoints: every Service is ClusterIP.</p>
+      <p class="muted">Every Service is ClusterIP: no public endpoints</p>
     </div>
   </div>
   <aside class="notes">
@@ -172,14 +184,14 @@
       <li>What Agent Substrate is, and how it <b>maps onto AWS</b>.</li>
       <li>Then the pieces, one at a time:
         <ul>
-          <li>the cluster and its <b>two sandbox classes</b>, plus a <b>proposed third mode</b></li>
-          <li>snapshots and identity</li>
-          <li>state and rotating logins</li>
-          <li>secrets and inference through the <b>egress gateway</b></li>
-          <li>per-actor volumes</li>
+          <li>the cluster on <b>EKS 1.37</b> and its <b>two sandbox classes</b>, gVisor and microVM, plus a <b>proposed third mode</b></li>
+          <li>snapshots on S3, and <b>one IAM role per component</b></li>
+          <li>state on RDS, with <b>rotating logins</b></li>
+          <li>actor secrets and Bedrock, through the <b>egress gateway</b></li>
+          <li>per-actor volumes on <b>Amazon EFS and S3 Files</b></li>
         </ul>
       </li>
-      <li><b>Two demos</b>, then what we learned.</li>
+      <li><b>Two demos</b>, then what we learned: the <b>lessons</b>, <b>where AWS can help</b>, and a <b>production checklist</b>.</li>
       <li><i>point at the right card</i> Everything shown runs on the <b>published release images</b> from <code>ghcr.io/agent-substrate/substrate</code>.</li>
       <li>Plus a <b>small local installer patch</b> for S3 and EKS paths.</li>
       <li><b>No application endpoint is public</b>: every Service is <code>ClusterIP</code>, and every demo goes through a port forward.</li>
@@ -364,20 +376,20 @@
 </section>
 
 <!-- 5 -->
-<section class="slide">
+<section class="slide readable">
   <h2>Every Substrate dependency maps to an AWS service</h2>
   <table>
     <tr><th>Agent Substrate needs</th><th>On AWS</th><th>Status in v1.0.0</th></tr>
-    <tr><td>Kubernetes with PodCertificate + ClusterTrustBundle</td><td>EKS 1.37 (both GA)</td><td class="ok">works, no flags</td></tr>
-    <tr><td>Snapshot object store</td><td>Amazon S3 via <code>objectstore-plugin</code> (<code>ATE_STORAGE_BACKEND=s3</code>)</td><td class="ok">works</td></tr>
-    <tr><td>microVM guest assets</td><td>S3 asset bucket, read-only for atelet</td><td class="warn">works; stock installer stages to GCS, small patch for S3</td></tr>
-    <tr><td>PostgreSQL</td><td>Amazon RDS for PostgreSQL, BYO DSN + server CA</td><td class="ok">works</td></tr>
-    <tr><td>Workload identity</td><td>EKS Pod Identity (atelet, ate-api-server, LLM gateway)</td><td class="ok">works</td></tr>
-    <tr><td>Actor image pulls</td><td>ECR via the kubelet <code>ecr-credential-provider</code> that atelet runs</td><td class="ok">works</td></tr>
-    <tr><td>Nested virt for microVM</td><td>Intel 7th/8th-gen families (m8i here) with <code>NestedVirtualization=enabled</code></td><td class="ok">works</td></tr>
-    <tr><td>Per-actor volumes (CSI)</td><td>Amazon EFS and S3 Files through the EFS CSI driver add-on</td><td class="warn">works; ExternalVolumes preview, mTLS-fronted controller</td></tr>
-    <tr><td>Egress credential injection</td><td>AWS Secrets Manager through the <code>aws-sm-credential-provider</code> plugin</td><td class="ok">works</td></tr>
-    <tr><td>Metrics</td><td>Amazon Managed Service for Prometheus</td><td class="warn">install ships a GKE PodMonitoring</td></tr>
+    <tr><td>PodCertificate + ClusterTrustBundle</td><td>EKS 1.37 (both GA)</td><td class="ok">works, no flags</td></tr>
+    <tr><td>Snapshot object store</td><td>Amazon S3</td><td class="ok">works</td></tr>
+    <tr><td>microVM guest assets</td><td>S3 asset bucket</td><td class="warn">works; small patch for S3</td></tr>
+    <tr><td>PostgreSQL</td><td>Amazon RDS for PostgreSQL</td><td class="ok">works</td></tr>
+    <tr><td>Workload identity</td><td>EKS Pod Identity</td><td class="ok">works</td></tr>
+    <tr><td>Actor image pulls</td><td>Amazon ECR</td><td class="ok">works</td></tr>
+    <tr><td>Nested virt for microVM</td><td>Intel 7th/8th gen (m8i here)</td><td class="ok">works</td></tr>
+    <tr><td>Per-actor volumes (CSI)</td><td>Amazon EFS and S3 Files</td><td class="warn">works; ExternalVolumes preview</td></tr>
+    <tr><td>Egress credential injection</td><td>AWS Secrets Manager</td><td class="ok">works</td></tr>
+    <tr><td>Metrics</td><td>Amazon Managed Service for Prometheus</td><td class="warn">ships a GKE PodMonitoring</td></tr>
   </table>
   <aside class="notes">
     <p><i>Read the green column first</i>: <b>almost everything works</b> on a stock EKS cluster with the published release.</p>
@@ -387,20 +399,34 @@
       <li><b>Per-actor volumes</b> work through the <code>ExternalVolumes</code> preview and a <b>second EFS CSI controller behind Envoy</b>.</li>
       <li><b>Metrics</b>: the install ships a GKE <code>PodMonitoring</code> object, so on EKS you <b>wire Prometheus yourself</b>.</li>
       <li>Each orange row comes back on the <b>"where AWS can help"</b> slide.</li>
+      <li><i>Detail behind the rows, if asked:</i>
+        <ul>
+          <li>Kubernetes needs <code>PodCertificate</code> and <code>ClusterTrustBundle</code></li>
+          <li>S3 through the <code>objectstore-plugin</code> sidecar, with <code>ATE_STORAGE_BACKEND=s3</code></li>
+          <li>the asset bucket is <b>read-only for atelet</b></li>
+          <li>RDS: bring your own DSN and the server CA</li>
+          <li>Pod Identity for <code>atelet</code>, <code>ate-api-server</code> and the LLM gateway</li>
+          <li>ECR through the kubelet <code>ecr-credential-provider</code> that atelet runs</li>
+          <li>nested virtualization with <code>NestedVirtualization=enabled</code></li>
+          <li>volumes through the <b>EFS CSI driver add-on</b>, with an mTLS-fronted controller</li>
+          <li>Secrets Manager through the <code>aws-sm-credential-provider</code> plugin</li>
+        </ul>
+      </li>
     </ul>
     <p><i>Next:</i> the cluster config.</p>
   </aside>
 </section>
 
 <!-- 6 -->
-<section class="slide">
+<section class="slide readable">
   <h2>One node group per sandbox class, network policy on <span class="tag">eksctl · EKS 1.37 · AL2023</span></h2>
-  <div class="grid2">
+  <div class="grid2" style="grid-template-columns:1.15fr 1fr">
 <pre><code><span class="k">apiVersion</span>: eksctl.io/v1alpha5
 <span class="k">kind</span>: ClusterConfig
-<span class="k">metadata</span>: { name: substrate-day, region: us-west-2, version: <span class="s">"1.37"</span> }
+<span class="k">metadata</span>: { name: substrate-day,
+            region: us-west-2, version: <span class="s">"1.37"</span> }
 <span class="k">addons</span>:
-  - name: vpc-cni          <span class="c"># + enableNetworkPolicy: "true"</span>
+  - name: vpc-cni  <span class="c"># + enableNetworkPolicy: "true"</span>
   - name: eks-pod-identity-agent
   - name: aws-ebs-csi-driver
 <span class="k">managedNodeGroups</span>:
@@ -422,8 +448,8 @@
     <div>
       <ul>
         <li>One tainted node group per sandbox class</li>
-        <li>Turn on <b>VPC CNI network policy</b>: Substrate's default-deny policies need it</li>
-        <li>PodCertificate and ClusterTrustBundle are GA in 1.37: mTLS works on a stock cluster</li>
+        <li>Turn on <b>VPC CNI network policy</b></li>
+        <li>mTLS needs no feature flags in 1.37</li>
         <li>Private subnets for nodes and data stores</li>
       </ul>
     </div>
@@ -435,7 +461,7 @@
       <li>Substrate's worker pods carry the <b>matching toleration</b> on their own, so nothing else lands there.</li>
       <li><b>Turn on network policy</b> in the <code>vpc-cni</code> add-on. Substrate ships <b>default-deny</b> NetworkPolicies for <code>ate-system</code> and one per WorkerPool.</li>
       <li>Without enforcement, those policies <b>do nothing</b>.</li>
-      <li><code>PodCertificateRequest</code> and <code>ClusterTrustBundle</code> are <b>GA in Kubernetes 1.37</b>, so Substrate's mTLS identity layer needs <b>no feature flags</b>.</li>
+      <li><code>PodCertificateRequest</code> and <code>ClusterTrustBundle</code> are <b>GA in Kubernetes 1.37</b>, so Substrate's mTLS identity layer needs <b>no feature flags</b> and works on a <b>stock cluster</b>.</li>
       <li><code>disablePodIMDS</code> sets <b>IMDSv2 with a hop limit of 1</b>, so pods can't use the node's credentials.</li>
       <li>The <code>microvm</code> group gets the same settings, plus <b>nested virtualization</b>, from its launch template.</li>
     </ul>
@@ -506,13 +532,13 @@
       <li>Its memory snapshot is <b>restored on demand with userfaultfd</b>, and its guest assets come from the S3 asset bucket.</li>
       <li>The <b>ActorTemplate looks the same</b> for both. The WorkerPool's <code>sandboxClasses</code> picks which one a workload gets.</li>
     </ul>
-    <p><i>Next:</i> a third node type, the installer's opening animation.</p>
+    <p><i>Next:</i> a 3rd mode, the installer's opening animation.</p>
   </aside>
 </section>
 
 <!-- 7a -->
 <section class="slide">
-  <h2>gVisor, microVM, and a third node: microVM+gVisor</h2>
+  <h2>gVisor, microVM, and a 3rd mode: microVM+gVisor</h2>
   <div class="fill">
     <img src="splash.gif" style="background:none; width:1440px; image-rendering:pixelated" alt="The installer's opening animation: the Agent Substrate mascot, the title, and actors dropping onto gVisor, microVM and microVM+gVisor nodes in an Amazon EKS cluster">
   </div>
@@ -520,7 +546,7 @@
     <p>This is the <b>installer's opening animation</b>. <i>let it play once</i></p>
     <ul>
       <li>Actors drop onto <b>gVisor</b> nodes and <b>microVM</b> nodes, the two classes we just saw.</li>
-      <li>The <b>third node, microVM+gVisor</b>, is new. <i>point at it</i></li>
+      <li>The <b>3rd mode, microVM+gVisor</b>, is new. <i>point at it</i></li>
       <li>It runs gVisor actors <b>inside a microVM worker Pod</b>.</li>
     </ul>
     <p><i>Next:</i> the installer this animation opens.</p>
@@ -531,7 +557,7 @@
 <section class="slide">
   <h2>An interactive installer on top of the same scripts</h2>
   <div class="installer">
-    <div class="term"><img src="installer-settings.png" alt="The installer's Settings screen: cluster name, Region, profile, tags and node groups on the left; the demos and plugins with every box checked on the right, and the Mode 3 plugin's description below them"></div>
+    <div class="term"><img src="installer-tour.gif" alt="A loop through the installer's six screens: Welcome, Check your setup, Settings with the demos and plugins checked, Review with the config file and the commands in order, Provision with its live checklist and log at three points in the run, and Done with what was created and the step times"></div>
     <div class="card"><h3 class="accent">What it adds</h3><ul>
       <li><b>Checks first:</b> tools, account, Region, vCPU quota, nested virtualization</li>
       <li><b>Pick</b> the cluster name, Region, node groups, demos and plugins</li>
@@ -556,7 +582,8 @@
       <li>Then it shows a <b>review of the settings</b> and the commands it will run.</li>
       <li>While it installs, it turns the scripts' steps into a <b>live checklist with times</b>, next to the log.</li>
       <li>The <b>Done screen</b> prints how to reach the cluster, and has a Teardown action that runs <code>clean.sh</code> and <code>delete-cluster.sh</code>.</li>
-      <li>A full install took <b>about 28 minutes</b>. It lives in the <code>installer</code> folder of the talk repo.</li>
+      <li>The default choices take <b>about 30 minutes</b>; this run, with every demo and plugin, took about an hour. It lives in the <code>installer</code> folder of the talk repo.</li>
+      <li><i>The loop walks the six screens in order, about 40 seconds; talk through each step as it comes up.</i></li>
       <li>It is the <b>fastest way to deploy</b>; the same scripts still run on their own.</li>
     </ul>
     <p><i>Next:</i> a proposed third mode, and how it works.</p>
@@ -658,20 +685,112 @@
       <li>You turn it on per WorkerPool with <code>networkTransport.runtimeClassName: kata</code>, for the gVisor class, behind the <code>NetworkWorkers</code> preview gate.</li>
       <li>The guest can't see the node's files, so atelet reaches the worker over <b>mutual TLS on the Pod network</b>, through the <code>atelet-workers</code> Service on port 8087, and moves sandbox assets and snapshots through a <b>staging service</b>.</li>
     </ul>
+    <p><i>Next:</i> the same mode on AWS Nitro Sandbox, with no Kata to install.</p>
+  </aside>
+</section>
+
+<!-- 7c -->
+<section class="slide">
+  <h2>Mode 3 on AWS Nitro Sandbox: each worker Pod gets its own kernel</h2>
+  <div class="fill">
+    <svg viewBox="0 0 1720 560" role="img" aria-label="A Pending worker Pod asks for RuntimeClass isolated-sandbox. EKS Auto Mode's built-in Karpenter, through NodePool ate-isolated, launches an EC2 node for it. On that node atelet reaches two worker Pods over mutual TLS on port 8087. Each worker Pod is an AWS Nitro Sandbox with its own guest kernel, and inside it a gVisor sandbox holds the actor; two boundaries.">
+      <defs><marker id="nsa" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
+      <g font-size="21">
+        <!-- Pending Pod -->
+        <rect x="15" y="64" width="470" height="190" rx="14" fill="#0b1016" stroke="#2a3542" stroke-width="2"/>
+        <text x="37" y="100" fill="#e8edf2" font-weight="700">1 · worker Pod, Pending</text>
+        <text x="37" y="138" fill="#ffd166" font-size="19">runtimeClassName: isolated-sandbox</text>
+        <text x="37" y="168" fill="#9aa7b4" font-size="18">nodeSelector ate.dev/pool=isolated</text>
+        <text x="37" y="196" fill="#9aa7b4" font-size="18">the gVisor class, 2 GiB per worker</text>
+        <path d="M250 258 V298" stroke="#9aa7b4" stroke-width="2.5" marker-end="url(#nsa)"/>
+
+        <!-- Auto Mode -->
+        <rect x="15" y="304" width="470" height="184" rx="14" fill="#161d26" stroke="#ff9900" stroke-width="2"/>
+        <text x="37" y="340" fill="#ff9900" font-weight="700">2 · EKS Auto Mode</text>
+        <text x="37" y="378" fill="#e8edf2" font-size="19">built-in Karpenter</text>
+        <text x="37" y="408" fill="#9aa7b4" font-size="18">NodePool ate-isolated</text>
+        <text x="37" y="436" fill="#9aa7b4" font-size="18">picks the instance and launches it</text>
+        <path d="M489 396 H557" stroke="#ff9900" stroke-width="2.5" marker-end="url(#nsa)"/>
+        <text x="250" y="530" text-anchor="middle" fill="#9aa7b4">no node group, no Kata install</text>
+
+        <!-- node -->
+        <rect x="565" y="64" width="1140" height="424" rx="14" fill="#161d26" stroke="#ff9900" stroke-width="2"/>
+        <text x="587" y="98"><tspan fill="#ff9900" font-weight="700">3 · EC2 node</tspan><tspan dx="12" fill="#9aa7b4" font-size="18">launched for these Pods</tspan></text>
+        <rect x="1060" y="116" width="180" height="44" rx="10" fill="#0b1016" stroke="#9aa7b4" stroke-width="1.5"/>
+        <text x="1150" y="145" text-anchor="middle" fill="#e8edf2" font-weight="700" font-size="20">atelet</text>
+        <path d="M1100 162 L860 202" stroke="#ff9900" stroke-width="2.5" marker-end="url(#nsa)"/>
+        <path d="M1200 162 L1420 202" stroke="#ff9900" stroke-width="2.5" marker-end="url(#nsa)"/>
+        <text x="1262" y="134" fill="#ff9900" font-size="18" font-weight="700">mutual TLS, port 8087</text>
+        <text x="1262" y="156" fill="#9aa7b4" font-size="16">Pod network, as in mode 3</text>
+
+        <!-- worker Pod A -->
+        <rect x="585" y="206" width="540" height="264" rx="12" fill="#0b1016" stroke="#ffd166" stroke-width="3"/>
+        <text x="607" y="236" fill="#ffd166" font-weight="700">worker Pod is a Nitro sandbox</text>
+        <text x="607" y="258" fill="#9aa7b4" font-size="17">its own guest kernel</text>
+        <rect x="605" y="274" width="500" height="178" rx="12" fill="#161d26" stroke="#3ecf8e" stroke-width="3"/>
+        <text x="627" y="304" fill="#3ecf8e" font-weight="700">gVisor sandbox</text>
+        <text x="627" y="326" fill="#9aa7b4" font-size="17">runsc, inside the guest kernel</text>
+        <rect x="625" y="344" width="460" height="90" rx="12" fill="#0b1016" stroke="#4aa3ff" stroke-width="2"/>
+        <text x="647" y="384" fill="#4aa3ff" font-weight="700">actor</text>
+        <text x="647" y="410" fill="#9aa7b4" font-size="17">the agent's own processes</text>
+
+        <!-- worker Pod B -->
+        <rect x="1145" y="206" width="540" height="264" rx="12" fill="#0b1016" stroke="#ffd166" stroke-width="3"/>
+        <text x="1167" y="236" fill="#ffd166" font-weight="700">worker Pod is a Nitro sandbox</text>
+        <text x="1167" y="258" fill="#9aa7b4" font-size="17">its own guest kernel</text>
+        <rect x="1165" y="274" width="500" height="178" rx="12" fill="#161d26" stroke="#3ecf8e" stroke-width="3"/>
+        <text x="1187" y="304" fill="#3ecf8e" font-weight="700">gVisor sandbox</text>
+        <text x="1187" y="326" fill="#9aa7b4" font-size="17">runsc, inside the guest kernel</text>
+        <rect x="1185" y="344" width="460" height="90" rx="12" fill="#0b1016" stroke="#4aa3ff" stroke-width="2"/>
+        <text x="1207" y="384" fill="#4aa3ff" font-weight="700">actor</text>
+        <text x="1207" y="410" fill="#9aa7b4" font-size="17">the agent's own processes</text>
+
+        <text x="1135" y="530" text-anchor="middle"><tspan fill="#ff9900" font-weight="700">2 boundaries</tspan><tspan fill="#9aa7b4">: the Nitro sandbox, then gVisor</tspan></text>
+      </g>
+    </svg>
+  </div>
+  <div class="grid2" style="flex:0;margin-top:1.2rem;align-items:stretch;grid-template-columns:1fr 1.6fr">
+<pre><code><span class="k">apiVersion</span>: ate.dev/v1
+<span class="k">kind</span>: WorkerPool
+<span class="k">spec</span>:
+  <span class="k">sandboxClasses</span>:
+  - name: gvisor
+  <span class="k">networkTransport</span>:
+    <span class="k">runtimeClassName</span>: <span class="s">isolated-sandbox</span>  <span class="c"># from Auto Mode</span></code></pre>
+    <div class="card roomy watch">
+      <h3>Why it matters</h3>
+      <ul>
+        <li><b>Hardware isolation per Pod:</b> each worker gets its own guest kernel on AWS Nitro</li>
+        <li><b>A Pending Pod is the request:</b> Auto Mode launches an instance that fits</li>
+        <li>VPC networking, Pod Identity and network policies work as for any Pod</li>
+        <li>Try it: the installer's <b>Mode 3 on isolated sandboxes</b> plugin</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    <p>The same mode 3, with the microVM coming from <b>AWS Nitro Sandbox</b> in EKS Auto Mode instead of Kata.</p>
+    <ul>
+      <li><i>point at the left</i> The worker Pod asks for RuntimeClass <code>isolated-sandbox</code>, which <b>Auto Mode already provides</b>. While it is Pending, Auto Mode's built-in Karpenter <b>picks and launches an instance</b> that can run it.</li>
+      <li>NodePool <code>ate-isolated</code> is a copy of the built-in <code>general-purpose</code> NodePool, with a label and a taint so <b>only worker Pods</b> land there.</li>
+      <li><i>point at the right</i> Each worker Pod runs in <b>its own Nitro sandbox, with its own guest kernel</b>, and the worker runs actors with <b>gVisor</b> inside it. Two boundaries, as on the previous slide.</li>
+      <li><b>No node group, no nested virtualization setup, no Kata install.</b> The Pods keep full VPC networking, EKS Pod Identity and network policies.</li>
+      <li>Several sandboxes share one instance, so a node holds many workers.</li>
+      <li>It needs <b>EKS Auto Mode</b>; it does not run on managed node groups.</li>
+    </ul>
     <p><i>Next:</i> how microVMs run without bare metal.</p>
   </aside>
 </section>
 
 <!-- 8 -->
-<section class="slide">
+<section class="slide readable">
   <h2>Nested virtualization runs microVMs without bare metal</h2>
   <div class="grid2">
     <div>
       <ul>
-        <li>Supported on recent Intel families. In us-west-2 today: <span class="pill">c7i</span><span class="pill">m7i</span><span class="pill">r7i</span><span class="pill">c8i</span><span class="pill">m8i</span><span class="pill">r8i</span><span class="pill">i7i</span><span class="pill">x8i</span> plus flex and <code>d</code> variants. This demo uses m8i.2xlarge.</li>
-        <li>Turned on per instance through the launch template's <code>CpuOptions</code>.</li>
-        <li>No bare metal needed to run Kata microVMs on EKS.</li>
-        <li>Check from a node: <code>/dev/kvm</code> exists and the CPU exposes <code>vmx</code>.</li>
+        <li>Recent Intel families in us-west-2:<br><span class="pill">c7i</span><span class="pill">m7i</span><span class="pill">r7i</span><span class="pill">c8i</span><span class="pill">m8i</span><span class="pill">r8i</span><span class="pill">i7i</span><span class="pill">x8i</span></li>
+        <li>Turned on per instance with <code>CpuOptions</code></li>
+        <li>No bare metal needed for Kata microVMs</li>
+        <li>Check a node for <code>/dev/kvm</code> and <code>vmx</code></li>
       </ul>
     </div>
 <pre><code><span class="c"># launch template data for the microvm node group</span>
@@ -697,7 +816,7 @@ kernel 6.18.56-125.164.amzn2023.x86_64</code></pre>
     <p>The microVM sandbox needs KVM, and <b>nested virtualization provides it without bare metal</b>.</p>
     <ul>
       <li>Without nested virtualization, KVM means <b>bare metal instances</b>.</li>
-      <li><b>Recent Intel families</b> support it. This demo uses <b>m8i.2xlarge</b>.</li>
+      <li><b>Recent Intel families</b> support it, plus their flex and <code>d</code> variants. This demo uses <b>m8i.2xlarge</b>.</li>
       <li>You turn it on per instance with <code>CpuOptions</code> in the launch template, so the <code>microvm</code> node group has <b>its own template</b>.</li>
       <li>The same template keeps <b>IMDSv2 with a hop limit of 1</b> and an <b>encrypted 200 GB</b> volume.</li>
       <li><code>create-cluster.sh</code> checks the instance type with the <code>describe-instance-types</code> filter shown here, <b>before it creates anything</b>.</li>
@@ -709,21 +828,20 @@ kernel 6.18.56-125.164.amzn2023.x86_64</code></pre>
 </section>
 
 <!-- 9 -->
-<section class="slide">
+<section class="slide readable">
   <h2>Suspended actors live in S3, moved by a sidecar</h2>
   <div class="grid2">
     <div>
       <ul>
-        <li>The <code>objectstore-plugin</code> sidecar moves every snapshot</li>
-        <li><code>ATE_STORAGE_BACKEND=s3</code>, credentials from Pod Identity</li>
-        <li>A separate, read-only <b>asset bucket</b> for microVM guest assets</li>
+        <li><code>objectstore-plugin</code> sidecar moves every snapshot</li>
+        <li><code>ATE_STORAGE_BACKEND=s3</code> with Pod Identity</li>
+        <li>Read-only <b>asset bucket</b> for microVM assets</li>
       </ul>
       <div class="card" style="margin-top:1.4rem"><h3>Bucket best practices</h3>
         <p><span class="pill">Block Public Access</span><span class="pill">BucketOwnerEnforced</span><span class="pill">default encryption</span><span class="pill">TLS-only bucket policy</span><span class="pill">abort incomplete uploads</span></p>
       </div>
     </div>
-<pre><code><span class="c"># a golden (tag) snapshot in S3; an actor's own suspends</span>
-<span class="c"># go to atespaces/&lt;a&gt;/actors/&lt;uid&gt;/snapshots/&lt;name&gt;/</span>
+<pre><code><span class="c"># a golden (tag) snapshot in S3</span>
 atespaces/ate-demo-counter/tags/&lt;uid&gt;/
   manifest.json
   pages.img.zstd          <span class="c"># process memory</span>
@@ -746,7 +864,7 @@ microvm-assets/amd64/&lt;sha256&gt;   <span class="c"># guest rootfs</span></cod
       <li>Select S3 with <code>ATE_STORAGE_BACKEND=s3</code>. The sidecar uses the AWS SDK default chain, so its credentials come from <b>Pod Identity</b>.</li>
       <li>The snapshot location is <b>one cluster-wide flag</b>: <code>--snapshot-location s3://bucket/</code>.</li>
       <li><i>point at the code</i> A golden snapshot for a template tag holds <b>process memory, durable volumes and root filesystem writes</b>.</li>
-      <li>An actor's own suspends go under <code>atespaces/&lt;a&gt;/actors/&lt;uid&gt;/snapshots/</code>.</li>
+      <li>An actor's own suspends go under <code>atespaces/&lt;a&gt;/actors/&lt;uid&gt;/snapshots/&lt;name&gt;/</code>.</li>
       <li>A separate <b>asset bucket</b> holds the microVM guest kernel, rootfs, VMM and <code>virtiofsd</code>, content addressed by <code>sha256</code>, <b>read-only for <code>atelet</code></b>.</li>
       <li>Bucket settings:
         <ul>
@@ -762,9 +880,9 @@ microvm-assets/amd64/&lt;sha256&gt;   <span class="c"># guest rootfs</span></cod
 </section>
 
 <!-- 10 -->
-<section class="slide">
+<section class="slide readable">
   <h2>Identity: EKS Pod Identity, one role per ServiceAccount</h2>
-  <div class="grid2" style="flex:0;grid-template-columns:1.15fr 1fr">
+  <div class="grid2" style="flex:0;grid-template-columns:auto 1fr">
 <pre><code><span class="c"># trust policy, scoped to this account and cluster</span>
 { <span class="k">"Principal"</span>: { <span class="k">"Service"</span>: <span class="s">"pods.eks.amazonaws.com"</span> },
   <span class="k">"Action"</span>: [<span class="s">"sts:AssumeRole"</span>, <span class="s">"sts:TagSession"</span>],
@@ -775,15 +893,15 @@ microvm-assets/amd64/&lt;sha256&gt;   <span class="c"># guest rootfs</span></cod
 aws eks create-pod-identity-association \
   --namespace ate-system --service-account atelet \
   --role-arn arn:aws:iam::&lt;account&gt;:role/substrate-day-us-west-2-atelet</code></pre>
-    <table>
-      <tr><th>ServiceAccount</th><th>Allowed</th></tr>
-      <tr><td><code class="nw">ate-system/ate-api-server</code></td><td>snapshot bucket: get, put, delete, list</td></tr>
-      <tr><td><code class="nw">ate-system/atelet</code></td><td>snapshot bucket: get, put (no delete) · asset bucket read · ECR pull</td></tr>
-      <tr><td><code class="nw">llm-gateway/llm-gateway</code></td><td><code>bedrock:InvokeModel*</code> on its pinned inference profiles</td></tr>
-      <tr><td>actors</td><td class="ok">nothing: no role, no keys, no IMDS</td></tr>
-    </table>
+    <div class="card"><h3>Lesson: atelet pulls actor images with its own role</h3><p>ECR pull goes on <b>atelet's Pod Identity role</b>, not the node role</p></div>
   </div>
-  <div class="card" style="margin-top:1.6rem"><h3>Lesson: atelet pulls actor images with its own role</h3><p style="font-size:1.25rem">atelet runs the node's <code>ecr-credential-provider</code> itself, so ECR pull on your actor repositories goes on <b>atelet's Pod Identity role</b>, not the node role.</p></div>
+  <table style="margin-top:1.6rem">
+    <tr><th>ServiceAccount</th><th>Allowed</th></tr>
+    <tr><td><code class="nw">ate-system/ate-api-server</code></td><td>snapshot bucket: get, put, delete, list</td></tr>
+    <tr><td><code class="nw">ate-system/atelet</code></td><td>snapshot bucket: get, put (no delete) · asset bucket read · ECR pull</td></tr>
+    <tr><td><code class="nw">llm-gateway/llm-gateway</code></td><td><code>bedrock:InvokeModel*</code> on its pinned inference profiles</td></tr>
+    <tr><td>actors</td><td class="ok">nothing: no role, no keys, no IMDS</td></tr>
+  </table>
   <aside class="notes">
     <p>Every component that calls AWS gets <b>its own IAM role</b> through EKS Pod Identity, <b>one per ServiceAccount</b>.</p>
     <ul>
@@ -903,21 +1021,22 @@ aws eks create-pod-identity-association \
 </section>
 
 <!-- 11 -->
-<section class="slide">
+<section class="slide readable">
   <h2>Actor state lives in RDS: private, TLS verify-full, two logins</h2>
   <div class="grid2">
     <div>
       <ul>
-        <li>Private subnets; 5432 open only to the cluster security group</li>
-        <li>Two logins: <b>owner</b> (migrations) and <b>readwrite</b> (runtime), each in its own secret</li>
+        <li>Private subnets; 5432 only from the cluster</li>
+        <li>Two logins: <b>owner</b> and <b>readwrite</b></li>
         <li><code>sslmode=verify-full</code> against the RDS CA bundle</li>
-        <li>Connection strings in environment variables, never flags</li>
+        <li>Connection strings as env vars, never flags</li>
       </ul>
     </div>
 <pre><code><span class="c"># install: logins read from Secrets Manager</span>
 export ATE_API_POSTGRES_OWNER_CONNECTION_STRING=\
 <span class="s">"postgres://substrate_owner_user:…@&lt;rds&gt;:5432/atepg\
-?sslmode=verify-full&amp;sslrootcert=/run/postgres-server-ca/server-ca.pem"</span>
+?sslmode=verify-full\
+&amp;sslrootcert=/run/postgres-server-ca/server-ca.pem"</span>
 export ATE_API_POSTGRES_READ_WRITE_CONNECTION_STRING=…
 
 ate-setup deploy ate-system \
@@ -925,12 +1044,7 @@ ate-setup deploy ate-system \
   --image-tag v1.0.0 \
   --snapshot-location s3://&lt;snapshots&gt;/ \
   --ateapi-postgres-server-ca-file global-bundle.pem \
-  --sandbox-classes gvisor,microvm
-
-<span class="c"># bootstrap tips for RDS</span>
-<span class="c"># - grant substrate_owner to the master user first:</span>
-<span class="c">#   rds_superuser is not a superuser</span>
-<span class="c"># - run setup.sql with --single-transaction</span></code></pre>
+  --sandbox-classes gvisor,microvm</code></pre>
   </div>
   <aside class="notes">
     <p>Substrate keeps <b>actor and template state in PostgreSQL</b>, and <b>Amazon RDS</b> runs it.</p>
@@ -943,7 +1057,7 @@ ate-setup deploy ate-system \
       <li><b>Two bootstrap tips</b> for RDS:
         <ul>
           <li>the master user is <code>rds_superuser</code>, which is <b>not a real superuser</b>, so grant <code>substrate_owner</code> to it first</li>
-          <li>run <code>setup.sql</code> in a <b>single transaction</b></li>
+          <li>run <code>setup.sql</code> in a <b>single transaction</b>, with <code>--single-transaction</code></li>
         </ul>
       </li>
     </ul>
@@ -1045,9 +1159,9 @@ ate-setup deploy ate-system \
 </section>
 
 <!-- 11c -->
-<section class="slide">
+<section class="slide readable">
   <h2>Rotation wiring, with no change to the Substrate manifests</h2>
-  <div class="grid2" style="grid-template-columns:1.25fr 1fr">
+  <div class="grid2" style="grid-template-columns:1.35fr 1fr">
 <pre><code><span class="k">apiVersion</span>: external-secrets.io/v1
 <span class="k">kind</span>: ExternalSecret
 <span class="k">metadata</span>: { name: ate-db, namespace: ate-system }
@@ -1060,11 +1174,12 @@ ate-setup deploy ate-system \
     <span class="k">template</span>:
       <span class="k">data</span>:
         <span class="k">ATE_API_POSTGRES_READ_WRITE_CONNECTION_STRING</span>: <span class="s">&gt;-
-          postgres://{{ .user }}:{{ .pw | urlquery }}@&lt;rds&gt;:5432/atepg
-          ?sslmode=verify-full&amp;sslrootcert=/run/postgres-server-ca/server-ca.pem</span>
+          postgres://{{ .user }}:{{ .pw | urlquery }}@&lt;rds&gt;:5432/…</span>
   <span class="k">data</span>:
-  - { secretKey: user, remoteRef: { key: &lt;cluster&gt;/ate-readwrite, property: username } }
-  - { secretKey: pw,   remoteRef: { key: &lt;cluster&gt;/ate-readwrite, property: password } }
+  - secretKey: user
+    remoteRef: { key: &lt;cluster&gt;/ate-readwrite, property: username }
+  - secretKey: pw
+    remoteRef: { key: &lt;cluster&gt;/ate-readwrite, property: password }
 <span class="c">  # the owner login: the same, with ate-owner</span>
 ---
 <span class="k">apiVersion</span>: reloader.external-secrets.io/v1alpha1
@@ -1074,9 +1189,9 @@ ate-setup deploy ate-system \
   <span class="k">destinationsToWatch</span>:
   - { type: Deployment, deployment: { names: [ate-api-server] } }</code></pre>
     <div>
-      <div class="card"><h3>Rotation</h3><ul><li>AWS-hosted <code>PostgreSQLMultiUser</code> Lambda</li><li>Private subnets, its own security group</li><li>Every 30 days, or <code>rotate-secret</code> now</li></ul></div>
-      <div class="card" style="margin-top:1rem"><h3>External Secrets Operator</h3><ul><li>Templates both DSNs from username and password</li><li>Controller only: no webhook, nothing listening</li><li>IAM: <code>secretsmanager:GetSecretValue</code> on <code>&lt;cluster&gt;/ate-*</code></li></ul></div>
-      <div class="card" style="margin-top:1rem"><h3>ESO Reloader</h3><ul><li>Rolls ate-api-server when the Secret changes</li><li>No change to the ate-api-server manifest</li></ul></div>
+      <div class="card"><h3>Rotation</h3><ul><li>AWS-hosted <code>PostgreSQLMultiUser</code> Lambda</li><li>Every 30 days, or <code>rotate-secret</code> now</li></ul></div>
+      <div class="card" style="margin-top:1rem"><h3>External Secrets Operator</h3><ul><li>Templates both DSNs</li><li>Controller only: nothing listening</li></ul></div>
+      <div class="card" style="margin-top:1rem"><h3>ESO Reloader</h3><ul><li>Rolls ate-api-server on Secret change</li></ul></div>
     </div>
   </div>
   <aside class="notes">
@@ -1085,7 +1200,9 @@ ate-setup deploy ate-system \
       <li>The <code>ExternalSecret</code> writes into the Secret <code>ate-setup</code> <b>already created</b>. <i>point at the top of the YAML</i></li>
       <li><code>creationPolicy: Merge</code> means it updates <b>only the keys it templates</b>, and leaves the schema key alone.</li>
       <li>The <code>SecretStore</code> has <b>no auth block</b>, so ESO uses its controller's Pod Identity role: <code>GetSecretValue</code> on this cluster's <b>two login secrets only</b>.</li>
-      <li>The template <b>URL-encodes the password</b>, because it sits inside a URL.</li>
+      <li>The template <b>URL-encodes the password</b>, because it sits inside a URL. It builds both DSNs from the username and password, and keeps <code>sslmode=verify-full</code> and the CA path from the RDS slide.</li>
+      <li>The rotation Lambda is the <b>AWS-hosted</b> <code>PostgreSQLMultiUser</code> function, in the private subnets with <b>its own security group</b>.</li>
+      <li>ESO runs as a <b>controller only</b>: no webhook, nothing listening. Its IAM is <code>secretsmanager:GetSecretValue</code> on <code>&lt;cluster&gt;/ate-*</code>.</li>
       <li>The ESO Reloader <code>Config</code> <b>lives outside the Deployment</b>, so nothing goes into the <code>ate-setup</code> manifests, and <b>a redeploy can't drop it</b>:
         <ul>
           <li>it watches Secrets, and rolls any Deployment in its list that reads the changed Secret through <code>envFrom</code></li>
@@ -1183,9 +1300,9 @@ ate-setup deploy ate-system \
 </section>
 
 <!-- 16b -->
-<section class="slide">
+<section class="slide readable">
   <h2>Actor secrets: the wiring and its three gates</h2>
-  <div class="grid2" style="grid-template-columns:1.25fr 1fr">
+  <div class="grid2" style="grid-template-columns:1.4fr 1fr">
 <pre><code><span class="c"># EgressPolicy on the actor</span>
 <span class="k">rules</span>:
 - <span class="k">https</span>:
@@ -1204,20 +1321,21 @@ ate-setup deploy ate-system \
   <span class="k">allowedSecrets</span>:
   - { <span class="k">account</span>: <span class="s">"&lt;id&gt;"</span>, <span class="k">region</span>: us-west-2, <span class="k">namePrefix</span>: ate/team-a/ }</code></pre>
     <div>
-      <div class="card"><h3>Three gates</h3><ul><li>mTLS: only atenet-egress may ask</li><li>Provider policy: the atespace must be granted the secret</li><li>IAM: <code>GetSecretValue</code> on <code>ate/*</code> with tag <code>ate.dev/injectable=true</code></li></ul></div>
-      <div class="card" style="margin-top:1rem"><h3>On EKS</h3><ul><li>Pod Identity role, no keys</li><li>NetworkPolicy admits only atenet-egress</li><li>Registered next to the bundled <code>k8s.io</code> provider</li></ul></div>
-      <div class="card" style="margin-top:1rem"><h3>Rotation</h3><ul><li><code>AWSCURRENT</code> cached 30s</li><li>Rotate in Secrets Manager; actors pick it up, no redeploy</li></ul></div>
+      <div class="card"><h3>Three gates</h3><ul><li>mTLS: only atenet-egress may ask</li><li>Provider policy per atespace</li><li>IAM: <code>ate/*</code>, tag <code>ate.dev/injectable</code></li></ul></div>
+      <div class="card" style="margin-top:1rem"><h3>On EKS</h3><ul><li>Pod Identity role, no keys</li></ul></div>
+      <div class="card" style="margin-top:1rem"><h3>Rotation</h3><ul><li><code>AWSCURRENT</code> cached 30s, no redeploy</li></ul></div>
     </div>
   </div>
   <aside class="notes">
     <p>Three pieces of configuration put <b>three gates</b> between an actor and a secret.</p>
     <ul>
       <li>The actor's <code>EgressPolicy</code> names the <b>host, the header and the secret URI</b>: account, Region, name and stage. <i>point at the top of the YAML</i></li>
-      <li>The provider's own policy maps each atespace to its secrets by <b>account, Region and name prefix</b>. Everything else is <b>denied</b>.</li>
-      <li>The provider's IAM role only reads secrets under <code>ate/</code> that carry the <code>ate.dev/injectable</code> tag.</li>
+      <li>The provider's own policy maps each atespace to its secrets by <b>account, Region and name prefix</b>. Everything else is <b>denied</b>: the atespace must be granted the secret.</li>
+      <li>The provider's IAM role only reads secrets under <code>ate/</code> that carry the <code>ate.dev/injectable</code> tag: <code>GetSecretValue</code> on <code>ate/*</code> with <code>ate.dev/injectable=true</code>.</li>
       <li><i>point at the Three gates card</i> So the gates are <b>mTLS</b> (only <code>atenet-egress</code> may ask), the <b>provider policy</b>, and <b>IAM</b>.</li>
       <li>On EKS, the provider gets its role through <b>Pod Identity</b>, and ships a <code>NetworkPolicy</code> that only lets the egress gateway in.</li>
-      <li>It is registered with the gateway <b>next to the bundled Kubernetes Secrets provider</b>, so both work at once.</li>
+      <li>It is registered with the gateway <b>next to the bundled Kubernetes Secrets provider</b> (<code>k8s.io</code>), so both work at once.</li>
+      <li><b>Rotation:</b> <code>AWSCURRENT</code> is cached for 30s. Rotate in Secrets Manager, and actors pick it up with <b>no redeploy</b>.</li>
       <li>The full example policy is <code>demos/credprovider-aws/egress-policy.example.yaml</code>. The plugin is <code>github.com/csantanapr/credprovider-aws-secret-manager</code>.</li>
     </ul>
     <p><i>Next:</i> Bedrock, where a header swap is not enough.</p>
@@ -1379,9 +1497,9 @@ ate-setup deploy ate-system \
 </section>
 
 <!-- 12c -->
-<section class="slide">
+<section class="slide readable">
   <h2>EFS wiring, and an actor moving between zones</h2>
-  <div class="grid2" style="grid-template-columns:1.1fr 1fr">
+  <div class="grid2">
 <pre><code><span class="c"># StorageClass: one access point per actor</span>
 <span class="k">provisioner</span>: efs.csi.aws.com
 <span class="k">parameters</span>:
@@ -1392,11 +1510,14 @@ ate-setup deploy ate-system \
   <span class="k">gid</span>: <span class="s">"&lt;gid&gt;"</span>
   <span class="k">basePath</span>: /ate
 ---
-<span class="c"># CSIDriverConfig: where ate-api-server finds the controller</span>
+<span class="c"># CSIDriverConfig: ate-api-server finds the controller</span>
 <span class="k">driverName</span>: efs.csi.aws.com
-<span class="k">controllerEndpoint</span>: tcp://efs-csi-controller-ate.kube-system.svc…:50052
-<span class="k">tls</span>: { enabled: true, usePodIdentity: true,
-       serverName: efs-csi-controller-ate.kube-system.svc }
+<span class="k">controllerEndpoint</span>:
+  tcp://efs-csi-controller-ate.kube-system.svc…:50052
+<span class="k">tls</span>:
+  enabled: true
+  usePodIdentity: true
+  serverName: efs-csi-controller-ate.kube-system.svc
 ---
 <span class="c"># ActorTemplate</span>
 <span class="k">volumes</span>:
@@ -1407,17 +1528,16 @@ ate-setup deploy ate-system \
 - <span class="k">volumeMounts</span>: [{ name: data, mountPath: /home/counter }]</code></pre>
     <div>
       <table>
-        <tr><th>Storage</th><th>Sandbox</th><th>Suspended in</th><th>Resumed in</th></tr>
-        <tr><td>EFS</td><td>gVisor</td><td>us-west-2c</td><td>us-west-2b</td></tr>
-        <tr><td>EFS</td><td>microVM</td><td>us-west-2a</td><td>us-west-2b</td></tr>
-        <tr><td>S3 Files</td><td>gVisor</td><td>us-west-2b</td><td>us-west-2c</td></tr>
-        <tr><td>S3 Files</td><td>microVM</td><td>us-west-2b</td><td>us-west-2a</td></tr>
+        <tr><th>Storage</th><th>Sandbox</th><th>Zones</th></tr>
+        <tr><td>EFS</td><td>gVisor</td><td>us-west-2c → us-west-2b</td></tr>
+        <tr><td>EFS</td><td>microVM</td><td>us-west-2a → us-west-2b</td></tr>
+        <tr><td>S3 Files</td><td>gVisor</td><td>us-west-2b → us-west-2c</td></tr>
+        <tr><td>S3 Files</td><td>microVM</td><td>us-west-2b → us-west-2a</td></tr>
       </table>
-      <p class="caption">A captured run: the counter wrote its file on the first node and kept counting on the second, from the same access point.</p>
+      <p class="caption">A captured run: same access point, new zone</p>
       <div class="card" style="margin-top:1rem"><h3>Best practices</h3><ul>
-        <li>Match the access point's uid to the actor's user: actors run without <code>CAP_DAC_OVERRIDE</code></li>
-        <li>Run actors as non-root; on S3 Files, root needs <code>ClientRootAccess</code></li>
-        <li>Turning on the preview reinstalls Substrate and rolls workers: plan it</li>
+        <li>Give the access point the actor's uid</li>
+        <li>Run actors as non-root</li>
       </ul></div>
     </div>
   </div>
@@ -1432,8 +1552,16 @@ ate-setup deploy ate-system \
       <li>The <code>ActorTemplate</code> just declares the volume and where to mount it.</li>
       <li><i>point at the table</i> A <b>captured run on this cluster</b>, for both storage types and both sandbox classes:
         <ul>
+          <li>each row: the zone it was <b>suspended in</b>, then the zone it <b>resumed in</b></li>
           <li>we counted on one node, suspended, emptied that node, and resumed</li>
-          <li><b>every actor came back in a different Availability Zone</b>, and its file kept counting</li>
+          <li><b>every actor came back in a different Availability Zone</b>, and its file kept counting, from the same access point</li>
+        </ul>
+      </li>
+      <li><b>Best practices:</b>
+        <ul>
+          <li>match the access point's uid to the actor's user: actors run without <code>CAP_DAC_OVERRIDE</code></li>
+          <li>run actors as non-root; on S3 Files, root needs <code>ClientRootAccess</code></li>
+          <li>turning on the preview <b>reinstalls Substrate and rolls workers</b>: plan it</li>
         </ul>
       </li>
     </ul>
@@ -1442,17 +1570,19 @@ ate-setup deploy ate-system \
 </section>
 
 <!-- 13 -->
-<section class="slide">
+<section class="slide readable">
   <h2>Demo: suspend frees the worker, and every count keeps going <span class="tag">gVisor and microVM</span></h2>
   <div class="grid2">
     <div>
       <div class="card watch"><h3>Watch for</h3><ol>
-        <li>Each actor counts in <b>memory</b>, a <b>file</b> and the <b>root filesystem</b>: 3, 3, 3</li>
-        <li>Suspend: the state turns <code>SUSPENDED</code> and the worker is free</li>
-        <li>The next request resumes it: all three read <b class="accent">4</b></li>
+        <li>Counts in <b>memory</b>, a <b>file</b> and <b>rootfs</b>: 3, 3, 3</li>
+        <li>Suspend: <code>SUSPENDED</code>, the worker is free</li>
+        <li>Next request resumes it: all three read <b class="accent">4</b></li>
       </ol></div>
-<pre style="margin-top:1.4rem"><code>kubectl ate create actor demo-gvisor -a ate-demo-counter --template counter
-kubectl ate proxy actor demo-gvisor -a ate-demo-counter 8001:80 &amp;
+<pre style="margin-top:1.4rem"><code>kubectl ate create actor demo-gvisor \
+  -a ate-demo-counter --template counter
+kubectl ate proxy actor demo-gvisor \
+  -a ate-demo-counter 8001:80 &amp;
 curl localhost:8001
 kubectl ate suspend actor demo-gvisor -a ate-demo-counter
 curl localhost:8001     <span class="c"># resumes</span></code></pre>
@@ -1460,14 +1590,16 @@ curl localhost:8001     <span class="c"># resumes</span></code></pre>
     <div>
 <div class="terminal"><span class="d">== demo-gvisor (gVisor)</span>
 <span class="o">memory: 3 | file: 3 | rootfs: 3</span>
-<span class="p">$ kubectl ate suspend actor demo-gvisor -a ate-demo-counter</span>
+<span class="p">$ kubectl ate suspend actor demo-gvisor \
+    -a ate-demo-counter</span>
 <span class="d">state: ACTOR_STATE_SUSPENDED</span>
 <span class="hl">memory: 4 | file: 4 | rootfs: 4</span>
 <span class="d">state: ACTOR_STATE_RUNNING</span>
 
 <span class="d">== demo-microvm (Kata + Cloud Hypervisor)</span>
 <span class="o">memory: 3 | file: 3 | rootfs: 3</span>
-<span class="p">$ kubectl ate suspend actor demo-microvm -a ate-demo-counter-microvm</span>
+<span class="p">$ kubectl ate suspend actor demo-microvm \
+    -a ate-demo-counter-microvm</span>
 <span class="d">state: ACTOR_STATE_SUSPENDED</span>
 <span class="hl">memory: 4 | file: 4 | rootfs: 4</span>
 <span class="d">state: ACTOR_STATE_RUNNING</span></div>
@@ -1479,7 +1611,7 @@ curl localhost:8001     <span class="c"># resumes</span></code></pre>
     <ul>
       <li><i>Tell the room what to watch before you run it. Point at the Watch for card.</i></li>
       <li><b>One counter actor per sandbox class</b>: gVisor and microVM.</li>
-      <li>Each one counts in <b>three places</b>: in memory, in a file on a durable volume, and in its root filesystem.</li>
+      <li>Each one counts in <b>three places</b>: in memory, in a file on a durable volume, and in its root filesystem (<code>rootfs</code>).</li>
       <li>You reach it with <code>kubectl ate proxy actor</code>, a <b>localhost-only forward</b> through <code>atenet-router</code>, so nothing is exposed.</li>
       <li>Call it a few times: all three counters read <b>3</b>.</li>
       <li>Suspend it with <code>kubectl ate suspend actor</code>: the state turns <b>SUSPENDED</b>, and the worker pod is <b>free for another actor</b>.
@@ -1494,25 +1626,25 @@ curl localhost:8001     <span class="c"># resumes</span></code></pre>
 </section>
 
 <!-- 14 -->
-<section class="slide">
+<section class="slide readable">
   <h2>Demo: an always-on agent that sleeps between messages <span class="tag">OpenClaw</span></h2>
-  <div class="grid2">
+  <div class="grid2" style="grid-template-columns:1fr 1.2fr">
     <div>
       <ul>
         <li>An <b>always-on gateway</b> holds the chat channel</li>
-        <li>Each conversation's agent is a <b>suspendable actor</b></li>
+        <li>Each agent is a <b>suspendable actor</b></li>
         <li>It thinks with <b>Bedrock</b> and holds no keys</li>
       </ul>
       <div class="card watch" style="margin-top:1.4rem"><h3>Watch for</h3><ol>
         <li>The actor answers, then suspends to S3</li>
-        <li>The next message wakes it from its snapshot, and it answers again</li>
+        <li>The next message wakes it from its snapshot</li>
         <li>A new conversation gets a new actor</li>
       </ol></div>
     </div>
     <div>
       <div class="card">
         <h3>Flow</h3>
-        <p>chat message → gateway → atenet-router <span class="muted">(mTLS, pod certificate)</span> → actor <span class="muted">(resumes from S3)</span> → atenet-egress <span class="muted">(actor JWT)</span> → LLM gateway → Bedrock → reply</p>
+        <p>chat message → gateway → atenet-router → actor →<br>atenet-egress → LLM gateway → Bedrock → reply</p>
       </div>
 <div class="terminal" style="margin-top:1rem"><span class="d">actor oc-agent and its egress policy exist</span>
 <span class="d">actor answers /readyz through atenet-router</span>
@@ -1532,6 +1664,7 @@ curl localhost:8001     <span class="c"># resumes</span></code></pre>
       <li>On EKS, the agent <b>thinks with Bedrock</b> through the LLM gateway, so the actor holds <b>no AWS keys</b>.</li>
       <li>The images are in <b>ECR</b>. The gateway and its dashboard are <code>ClusterIP</code> services behind a port forward.</li>
       <li><i>Watch the log:</i> the actor answers, it is suspended, the next message resumes it on demand, and it answers again.</li>
+      <li><i>The flow, hop by hop:</i> <code>atenet-router</code> uses <b>mTLS with a pod certificate</b>, the actor <b>resumes from S3</b>, and <code>atenet-egress</code> carries the <b>actor JWT</b>.</li>
       <li>A new conversation gets a <b>brand-new actor</b>, with its own egress policy.</li>
       <li><b>Tip for your own apps:</b> the v1 router adds forwarded headers.
         <ul>
@@ -1544,7 +1677,7 @@ curl localhost:8001     <span class="c"># resumes</span></code></pre>
 </section>
 
 <!-- 15 -->
-<section class="slide">
+<section class="slide readable">
   <h2>What works on EKS today, and the rough edges</h2>
   <div class="grid2">
     <div class="card roomy">
@@ -1553,7 +1686,6 @@ curl localhost:8001     <span class="c"># resumes</span></code></pre>
         <li>Published images on stock EKS 1.37 and AL2023</li>
         <li>gVisor and microVM suspend and resume</li>
         <li>S3, RDS, ECR and Bedrock with Pod Identity</li>
-        <li>NetworkPolicy with the VPC CNI</li>
         <li>Actor secrets injected from Secrets Manager</li>
         <li>Per-actor EFS and S3 Files volumes (preview)</li>
       </ul>
@@ -1562,11 +1694,10 @@ curl localhost:8001     <span class="c"># resumes</span></code></pre>
       <h3 class="warn">Rough edges</h3>
       <ul>
         <li><code>ate-setup</code> assumes GKE for any real cluster</li>
-        <li>GKE paths and a GKE <code>PodMonitoring</code> in the install</li>
-        <li>S3 transfers use the pod's role, not <b>per-actor</b> tokens</li>
+        <li>S3 uses the pod's role, not <b>per-actor</b> tokens</li>
         <li>RDS needs a role grant before <code>setup.sql</code></li>
         <li>DB password rotation needs a rolling restart</li>
-        <li>EFS needs a second, Envoy-fronted CSI controller</li>
+        <li>EFS needs a second CSI controller</li>
       </ul>
     </div>
   </div>
@@ -1613,20 +1744,19 @@ curl localhost:8001     <span class="c"># resumes</span></code></pre>
 </section>
 
 <!-- 17 -->
-<section class="slide">
+<section class="slide readable">
   <h2>Where AWS can help the project next</h2>
-  <div class="grid3">
-    <div class="card"><h3 class="accent">Neutral install seams</h3><ul>
-      <li><code>ate-setup deploy --component</code>: install one piece at a time</li>
-      <li><code>ate-setup render</code>: hand the manifests to your own tooling</li>
-      <li>The <b>EKS blueprint</b> stays outside the project: eksctl, Terraform or CDK</li>
+  <div class="stack">
+    <div class="card cols"><h3 class="accent">Neutral install seams</h3><ul>
+      <li><code>ate-setup deploy --component</code>: one piece at a time</li>
+      <li><code>ate-setup render</code>: manifests to your own tooling</li>
     </ul></div>
-    <div class="card"><h3 class="accent">Per-actor AWS access</h3><ul>
+    <div class="card cols"><h3 class="accent">Per-actor AWS access</h3><ul>
       <li><b>Per-actor S3 credentials</b> for snapshot transfers</li>
       <li><b>Actor JWT to AWS</b> token exchange</li>
     </ul></div>
-    <div class="card"><h3 class="accent">Plugins and drivers</h3><ul>
-      <li><b>Secrets Manager provider</b> in the project's plugins repo</li>
+    <div class="card cols"><h3 class="accent">Plugins and drivers</h3><ul>
+      <li><b>Secrets Manager provider</b> in the plugins repo</li>
       <li><b>Password file</b> for the database logins</li>
       <li><b>EFS CSI endpoint</b> Substrate can call</li>
     </ul></div>
@@ -1669,12 +1799,12 @@ curl localhost:8001     <span class="c"># resumes</span></code></pre>
 </section>
 
 <!-- 18 -->
-<section class="slide">
+<section class="slide readable">
   <h2>Production checklist for EKS</h2>
-  <div class="grid3">
-    <div class="card"><h3>Cluster</h3><ul><li>EKS 1.37+</li><li>Node group per sandbox class, tainted</li><li>Nested-virt Intel family (m8i, c8i, r8i, 7i) for microVM</li><li>VPC CNI network policy on</li><li>IMDSv2 with hop limit 1</li></ul></div>
-    <div class="card"><h3>Data</h3><ul><li>S3: private, TLS-only, encrypted, lifecycle</li><li>Separate read-only asset bucket</li><li>RDS private, verify-full, owner/readwrite split</li><li>DB logins rotated, synced, rolled out</li><li>Per-actor EFS access points, uid of the actor's user</li></ul></div>
-    <div class="card"><h3>Identity &amp; access</h3><ul><li>Pod Identity role per ServiceAccount</li><li>No credentials in actors</li><li>Bedrock through a gateway, pinned profiles</li><li><code class="nw">--ateapi-authz-bootstrap-owners</code> set to your operators</li><li>ClusterIP only, port-forward to operate</li><li>Private or CIDR-restricted EKS API endpoint</li></ul></div>
+  <div class="stack">
+    <div class="card cols"><h3>Cluster</h3><ul><li>EKS 1.37+</li><li>Node group per sandbox class, tainted</li><li>Nested-virt Intel (m8i, c8i, r8i, 7i) for microVM</li><li>VPC CNI network policy on, IMDSv2 hop limit 1</li></ul></div>
+    <div class="card cols"><h3>Data</h3><ul><li>S3: private, TLS-only, encrypted, lifecycle</li><li>Separate read-only asset bucket</li><li>RDS private, verify-full, owner/readwrite split</li><li>DB logins rotated, synced, rolled out</li></ul></div>
+    <div class="card cols"><h3>Identity &amp; access</h3><ul><li>Pod Identity role per ServiceAccount</li><li>No credentials in actors</li><li><code class="nw">--ateapi-authz-bootstrap-owners</code>: your operators</li><li>ClusterIP only, private EKS API endpoint</li></ul></div>
   </div>
   <aside class="notes">
     <p><b>If you take one slide home, take this one.</b></p>
@@ -1714,7 +1844,7 @@ curl localhost:8001     <span class="c"># resumes</span></code></pre>
   <div class="thanks">
     <div>
       <h1>Thank you</h1>
-      <p class="big muted">Agent Substrate runs on EKS today.<br>Help us make it boring: plugins, neutral install seams, per-actor credentials.</p>
+      <p class="big muted">Agent Substrate runs on EKS today.<br>Help us make it boring:<br>plugins, neutral install seams, per-actor credentials.</p>
       <p><span class="pill">github.com/agent-substrate/substrate</span><span class="pill">agent-substrate-plugins</span></p>
       <div class="speaker">
         <img src="carlos-santana.jpg" alt="Carlos Santana">
