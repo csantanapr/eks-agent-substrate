@@ -71,6 +71,9 @@ same skills. Add a new skill under `.agents/skills/` only.
 
 ## Checks before you finish
 
+`.github/ci/checks.sh` runs these checks on every tracked script. The
+`checks` workflow runs it on every pull request and every push to main.
+
 ```bash
 for f in *.sh lib/*.sh aws/*.sh substrate/*.sh llm-gateway/*.sh demos/*/*.sh toolbox/*.sh installer/*.sh; do bash -n "$f"; done
 shellcheck -S warning -x *.sh lib/*.sh aws/*.sh substrate/*.sh llm-gateway/*.sh demos/*/*.sh toolbox/*.sh installer/*.sh
