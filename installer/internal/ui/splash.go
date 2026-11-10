@@ -13,9 +13,8 @@ import (
 
 // The splash before Welcome: the Agent Substrate mascot, a hooded octopus
 // holding three robot puppets, in half-block pixels; the title; and four
-// small robots (actors) landing on gVisor, microVM and microVM+gVisor (a
-// gVisor box inside a microVM box) nodes in an Amazon EKS cluster. About
-// 3.6 seconds; any key skips it.
+// small robots (actors) landing on gVisor, microVM and AWS Nitro Sandbox
+// nodes in an Amazon EKS cluster. About 3.6 seconds; any key skips it.
 
 const (
 	splashFrames = 36
@@ -425,16 +424,15 @@ func drawTitle(c *canvas, x, y, f int) {
 const clusterRows = 13
 
 // drawCluster draws the Amazon EKS frame, pw cells wide and clusterRows
-// high, at cell x, y: a gVisor node and a microVM node side by side, a
-// microVM+gVisor node under them (a gVisor box inside a microVM box), and
-// the actors dropping onto them.
+// high, at cell x, y: a gVisor node and a microVM node side by side, an
+// AWS Nitro Sandbox node under them, and the actors dropping onto them.
 func drawCluster(c *canvas, x, y, pw, f int) {
 	if f < 16 {
 		return
 	}
 	// The nodes, side by side with a space before, between and (when it
 	// fits) after them; gVisor holds two actors, microVM one. The
-	// microVM+gVisor node below spans both, after a blank row.
+	// AWS Nitro Sandbox node below spans both, after a blank row.
 	avail := pw - 5
 	if avail < 24 {
 		avail = pw - 4
@@ -463,15 +461,14 @@ func drawCluster(c *canvas, x, y, pw, f int) {
 	boxes := []box{
 		{name: "gVisor", x: x + 2, y: y + 1, w: bw1, h: 4, slots: 2},
 		{name: "microVM", x: x + 3 + bw1, y: y + 1, w: bw2, h: 4, slots: 1},
-		{name: "microVM+gVisor", x: x + 2, y: y + 6, w: avail + 1, h: 6},
-		{name: "gVisor", x: x + 4, y: y + 7, w: avail - 3, h: 4, slots: 1},
+		{name: "AWS Nitro Sandbox", x: x + 2, y: y + 6, w: avail + 1, h: 6, slots: 1},
 	}
 	// Actor i drops from three rows above its box between frames start
 	// and start+4, then that box's border lights up for two frames.
 	type drop struct {
 		actor, box, slot, start int
 	}
-	drops := []drop{{0, 0, 0, 19}, {1, 1, 0, 21}, {2, 0, 1, 23}, {3, 3, 0, 25}}
+	drops := []drop{{0, 0, 0, 19}, {1, 1, 0, 21}, {2, 0, 1, 23}, {3, 2, 0, 25}}
 	for i, b := range boxes {
 		border := inkDim
 		for _, d := range drops {

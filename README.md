@@ -43,7 +43,7 @@ inside the [toolbox](#run-with-only-docker), so you need only Docker with
 buildx, git, and AWS credentials for an account that meets the
 [prerequisites](#prerequisites):
 
-![The installer's opening animation: the Agent Substrate mascot, the title, and actors dropping onto gVisor, microVM and microVM+gVisor nodes in an Amazon EKS cluster](installer/docs/splash.gif)
+![The installer's opening animation: the Agent Substrate mascot, the title, and actors dropping onto gVisor, microVM and AWS Nitro Sandbox nodes in an Amazon EKS cluster](installer/docs/splash.gif)
 
 ```bash
 git clone https://github.com/csantanapr/eks-agent-substrate.git
@@ -331,7 +331,7 @@ Things to know:
 - Registering the provider reinstalls Substrate with the preview gates the
   cluster runs (for example `ExternalVolumes` from `demos/efs`).
 
-## Preview, on by default: mode 3, gVisor inside a microVM Pod
+## Preview, on by default: mode 3, actor in a microVM Pod
 
 A proposal for upstream, in the `microvm-mode-3` branch of
 [csantanapr/substrate](https://github.com/csantanapr/substrate/tree/microvm-mode-3).
@@ -355,7 +355,7 @@ demos/mode3/deploy.sh           # Kata on the microvm nodes, a counter pool on m
 demos/counter/verify.sh         # also runs a round trip on mode 3
 ```
 
-The installer checks "Mode 3: gVisor in a microVM Pod (kata-clh)" under Plugins
+The installer checks "Mode 3: actor in a microVM Pod (kata-clh)" under Plugins
 by default. `clean.sh` removes it. How
 the pieces fit:
 
@@ -383,7 +383,7 @@ demos/mode3-iso/deploy.sh       # NodePool, atelet-iso, a counter pool on isolat
 demos/counter/verify.sh         # also runs a round trip on the isolated pool
 ```
 
-The installer checks "Mode 3: gVisor in a microVM Pod (isolated-sandbox)" under
+The installer checks "Mode 3: actor in a microVM Pod (isolated-sandbox)" under
 Plugins by default.
 Unchecking it writes `MODE3_ISO=`; checking it turns on Mode 3 and Auto Mode
 too. `clean.sh` removes it.
