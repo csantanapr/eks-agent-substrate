@@ -500,7 +500,7 @@ func TestSplashFits(t *testing.T) {
 	m.frame = splashFrames
 	for _, sz := range [][2]int{{80, 24}, {126, 33}, {140, 45}} {
 		v := plan.StripANSI(m.splash(sz[0], sz[1]))
-		for _, want := range []string{"Agent Substrate 1.0.0", "on Amazon EKS", " Amazon EKS ", " gVisor ", " microVM ", " microVM+gVisor ", "press any key"} {
+		for _, want := range []string{"Agent Substrate 1.0.0", "on Amazon EKS", " Amazon EKS ", " gVisor ", " microVM ", " AWS Nitro Sandbox ", "press any key"} {
 			if !strings.Contains(v, want) {
 				t.Errorf("%dx%d: the last frame lacks %q:\n%s", sz[0], sz[1], want, v)
 			}
