@@ -169,7 +169,7 @@
     <div>
       <ol>
         <li>Agent Substrate and its architecture on AWS</li>
-        <li>Cluster, gVisor, microVM, proposed third mode</li>
+        <li>Cluster, gVisor, microVM, mode 3 on AWS Nitro Sandbox</li>
         <li>Snapshots on S3, IAM roles, state on RDS</li>
         <li>Secrets, Bedrock and per-actor volumes</li>
         <li>Two demos, lessons, production checklist</li>
@@ -190,7 +190,7 @@
       <li>What Agent Substrate is, and how it <b>maps onto AWS</b>.</li>
       <li>Then the pieces, one at a time:
         <ul>
-          <li>the cluster on <b>EKS 1.37</b> and its <b>two sandbox classes</b>, gVisor and microVM, plus a <b>proposed third mode</b></li>
+          <li>the cluster on <b>EKS 1.37</b> and its <b>two sandbox classes</b>, gVisor and microVM, plus a <b>third mode on AWS Nitro Sandbox</b></li>
           <li>snapshots on S3, and <b>one IAM role per component</b></li>
           <li>state on RDS, with <b>rotating logins</b></li>
           <li>actor secrets and Bedrock, through the <b>egress gateway</b></li>
@@ -538,22 +538,22 @@
       <li>Its memory snapshot is <b>restored on demand with userfaultfd</b>, and its guest assets come from the S3 asset bucket.</li>
       <li>The <b>ActorTemplate looks the same</b> for both. The WorkerPool's <code>sandboxClasses</code> picks which one a workload gets.</li>
     </ul>
-    <p><i>Next:</i> a 3rd mode, the installer's opening animation.</p>
+    <p><i>Next:</i> a 3rd mode on AWS Nitro Sandbox, the installer's opening animation.</p>
   </aside>
 </section>
 
 <!-- 7a -->
 <section class="slide">
-  <h2>gVisor, microVM, and a 3rd mode: microVM+gVisor</h2>
+  <h2>gVisor, microVM, and a 3rd mode on AWS Nitro Sandbox</h2>
   <div class="fill">
-    <img src="splash.gif" style="background:none; width:1440px; image-rendering:pixelated" alt="The installer's opening animation: the Agent Substrate mascot, the title, and actors dropping onto gVisor, microVM and microVM+gVisor nodes in an Amazon EKS cluster">
+    <img src="splash.gif" style="background:none; width:1440px; image-rendering:pixelated" alt="The installer's opening animation: the Agent Substrate mascot, the title, and actors dropping onto gVisor, microVM and AWS Nitro Sandbox nodes in an Amazon EKS cluster">
   </div>
   <aside class="notes">
     <p>This is the <b>installer's opening animation</b>. <i>let it play once</i></p>
     <ul>
       <li>Actors drop onto <b>gVisor</b> nodes and <b>microVM</b> nodes, the two classes we just saw.</li>
-      <li>The <b>3rd mode, microVM+gVisor</b>, is new. <i>point at it</i></li>
-      <li>It runs gVisor actors <b>inside a microVM worker Pod</b>.</li>
+      <li>The <b>3rd mode</b> is new. <i>point at it</i></li>
+      <li>Each worker Pod is its own <b>AWS Nitro Sandbox</b>, with <b>hardware isolation</b>.</li>
     </ul>
     <p><i>Next:</i> the installer this animation opens.</p>
   </aside>
@@ -592,20 +592,20 @@
       <li><i>The loop walks the six screens in order, about 40 seconds; talk through each step as it comes up.</i></li>
       <li>It is the <b>fastest way to deploy</b>; the same scripts still run on their own.</li>
     </ul>
-    <p><i>Next:</i> a proposed third mode, and how it works.</p>
+    <p><i>Next:</i> the third mode, on AWS Nitro Sandbox.</p>
   </aside>
 </section>
 
 <!-- 7b -->
 <section class="slide">
-  <h2>Proposal: a third mode, gVisor inside a microVM Pod <span class="tag">upstream proposal</span></h2>
+  <h2>A third mode: each worker Pod is an AWS Nitro Sandbox <span class="tag">upstream proposal</span></h2>
   <div class="fill">
-    <svg viewBox="0 0 1720 560" role="img" aria-label="Three nested stacks. gVisor today: an EC2 node holds atelet and a regular worker Pod, which holds a gVisor sandbox, which holds the actor; one boundary. microVM today: an EC2 node with nested virtualization holds atelet and a regular worker Pod with /dev/kvm, which holds a Cloud Hypervisor microVM, which holds the actor; one boundary. Proposed mode 3: the worker Pod itself is a Kata microVM on RuntimeClass kata, reached by atelet over mutual TLS on port 8087, and inside it a gVisor sandbox holds the actor; two boundaries.">
+    <svg viewBox="0 0 1720 560" role="img" aria-label="Three stacks. gVisor today: an EC2 node holds atelet and a regular worker Pod, which holds a gVisor sandbox, which holds the actor; soft isolation by a userspace kernel. microVM today: an EC2 node holds atelet and a regular worker Pod with /dev/kvm, which holds a Cloud Hypervisor microVM with its own guest kernel, which holds the actor; VM isolation. Proposed mode 3: an EC2 node that EKS Auto Mode launches holds atelet and worker Pods, each one an AWS Nitro Sandbox on RuntimeClass isolated-sandbox, reached by atelet over mutual TLS on port 8087, and the actor runs inside it; hardware isolation.">
       <defs><marker id="m3a" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
       <rect x="1160" y="1" width="558" height="558" rx="18" fill="#1d2733" stroke="#ff9900" stroke-width="2.5"/>
       <g font-size="21">
         <!-- gVisor -->
-        <text x="15" y="40"><tspan fill="#3ecf8e" font-weight="700" font-size="26">gVisor</tspan><tspan dx="12" fill="#9aa7b4" font-size="20">v1.0.0</tspan></text>
+        <text x="15" y="40"><tspan fill="#3ecf8e" font-weight="700" font-size="26">1 · gVisor</tspan><tspan dx="12" fill="#9aa7b4" font-size="20">v1.0.0</tspan></text>
         <rect x="15" y="64" width="530" height="424" rx="14" fill="#161d26" stroke="#ff9900" stroke-width="2"/>
         <text x="37" y="98"><tspan fill="#ff9900" font-weight="700">EC2 node</tspan><tspan dx="12" fill="#9aa7b4" font-size="18">gVisor node group</tspan></text>
         <rect x="37" y="116" width="140" height="44" rx="10" fill="#0b1016" stroke="#9aa7b4" stroke-width="1.5"/>
@@ -622,10 +622,10 @@
         <rect x="75" y="344" width="410" height="90" rx="12" fill="#0b1016" stroke="#4aa3ff" stroke-width="2"/>
         <text x="97" y="384" fill="#4aa3ff" font-weight="700">actor</text>
         <text x="97" y="410" fill="#9aa7b4" font-size="17">the agent's own processes</text>
-        <text x="280" y="530" text-anchor="middle"><tspan fill="#e8edf2" font-weight="700">1 boundary</tspan><tspan fill="#9aa7b4">: gVisor</tspan></text>
+        <text x="280" y="530" text-anchor="middle"><tspan fill="#3ecf8e" font-weight="700">soft isolation</tspan><tspan fill="#9aa7b4">: a userspace kernel</tspan></text>
 
         <!-- microVM -->
-        <text x="595" y="40"><tspan fill="#b18cff" font-weight="700" font-size="26">microVM</tspan><tspan dx="12" fill="#9aa7b4" font-size="20">v1.0.0</tspan></text>
+        <text x="595" y="40"><tspan fill="#b18cff" font-weight="700" font-size="26">2 · microVM</tspan><tspan dx="12" fill="#9aa7b4" font-size="20">v1.0.0</tspan></text>
         <rect x="595" y="64" width="530" height="424" rx="14" fill="#161d26" stroke="#ff9900" stroke-width="2"/>
         <text x="617" y="98"><tspan fill="#ff9900" font-weight="700">EC2 node</tspan><tspan dx="12" fill="#9aa7b4" font-size="18">nested virtualization on</tspan></text>
         <rect x="617" y="116" width="140" height="44" rx="10" fill="#0b1016" stroke="#9aa7b4" stroke-width="1.5"/>
@@ -642,64 +642,46 @@
         <rect x="655" y="344" width="410" height="90" rx="12" fill="#0b1016" stroke="#4aa3ff" stroke-width="2"/>
         <text x="677" y="384" fill="#4aa3ff" font-weight="700">actor</text>
         <text x="677" y="410" fill="#9aa7b4" font-size="17">the agent's own processes</text>
-        <text x="860" y="530" text-anchor="middle"><tspan fill="#e8edf2" font-weight="700">1 boundary</tspan><tspan fill="#9aa7b4">: the VM</tspan></text>
+        <text x="860" y="530" text-anchor="middle"><tspan fill="#b18cff" font-weight="700">VM isolation</tspan><tspan fill="#9aa7b4">: its own guest kernel</tspan></text>
 
         <!-- mode 3 -->
-        <text x="1175" y="40"><tspan fill="#ff9900" font-weight="700" font-size="26">gVisor in a microVM Pod</tspan><tspan dx="12" fill="#9aa7b4" font-size="20">proposed</tspan></text>
+        <text x="1175" y="40"><tspan fill="#ff9900" font-weight="700" font-size="26">3 · AWS Nitro Sandbox</tspan></text>
         <rect x="1175" y="64" width="530" height="424" rx="14" fill="#161d26" stroke="#ff9900" stroke-width="2"/>
-        <text x="1197" y="98"><tspan fill="#ff9900" font-weight="700">EC2 node</tspan><tspan dx="12" fill="#9aa7b4" font-size="18">nested virtualization on</tspan></text>
+        <text x="1197" y="98"><tspan fill="#ff9900" font-weight="700">EC2 node</tspan><tspan dx="12" fill="#9aa7b4" font-size="18">launched by EKS Auto Mode</tspan></text>
         <rect x="1197" y="116" width="140" height="44" rx="10" fill="#0b1016" stroke="#9aa7b4" stroke-width="1.5"/>
         <text x="1267" y="145" text-anchor="middle" fill="#e8edf2" font-weight="700" font-size="20">atelet</text>
         <path d="M1267 162 V202" stroke="#ff9900" stroke-width="2.5" marker-start="url(#m3a)" marker-end="url(#m3a)"/>
         <text x="1357" y="134" fill="#ff9900" font-size="18" font-weight="700">mutual TLS, port 8087</text>
-        <text x="1357" y="156" fill="#9aa7b4" font-size="16">Pod network, staging service</text>
-        <rect x="1195" y="206" width="490" height="264" rx="12" fill="#0b1016" stroke="#b18cff" stroke-width="3"/>
-        <text x="1217" y="236" fill="#b18cff" font-weight="700">worker Pod is a microVM</text>
-        <text x="1217" y="258" fill="#9aa7b4" font-size="17">Kata on Cloud Hypervisor · RuntimeClass kata</text>
-        <rect x="1215" y="274" width="450" height="178" rx="12" fill="#161d26" stroke="#3ecf8e" stroke-width="3"/>
-        <text x="1237" y="304" fill="#3ecf8e" font-weight="700">gVisor sandbox</text>
-        <text x="1237" y="326" fill="#9aa7b4" font-size="17">runsc, inside the guest kernel</text>
-        <rect x="1235" y="344" width="410" height="90" rx="12" fill="#0b1016" stroke="#4aa3ff" stroke-width="2"/>
-        <text x="1257" y="384" fill="#4aa3ff" font-weight="700">actor</text>
-        <text x="1257" y="410" fill="#9aa7b4" font-size="17">the agent's own processes</text>
-        <text x="1440" y="530" text-anchor="middle"><tspan fill="#ff9900" font-weight="700">2 boundaries</tspan><tspan fill="#9aa7b4">: the VM, then gVisor</tspan></text>
+        <text x="1357" y="156" fill="#9aa7b4" font-size="16">over the Pod network</text>
+        <rect x="1195" y="206" width="490" height="264" rx="12" fill="#0b1016" stroke="#ffd166" stroke-width="3"/>
+        <text x="1217" y="236" fill="#ffd166" font-weight="700">worker Pod is a Nitro sandbox</text>
+        <text x="1217" y="258" fill="#9aa7b4" font-size="17">RuntimeClass isolated-sandbox</text>
+        <rect x="1235" y="324" width="410" height="110" rx="12" fill="#161d26" stroke="#4aa3ff" stroke-width="2"/>
+        <text x="1257" y="370" fill="#4aa3ff" font-weight="700">actor</text>
+        <text x="1257" y="398" fill="#9aa7b4" font-size="17">the agent's own processes</text>
+        <text x="1440" y="530" text-anchor="middle"><tspan fill="#ff9900" font-weight="700">hardware isolation</tspan><tspan fill="#9aa7b4">: AWS Nitro</tspan></text>
       </g>
     </svg>
   </div>
-  <div class="grid2" style="flex:0;margin-top:1.2rem;align-items:stretch;grid-template-columns:1fr 1.6fr">
-<pre><code><span class="k">apiVersion</span>: ate.dev/v1
-<span class="k">kind</span>: WorkerPool
-<span class="k">spec</span>:
-  <span class="k">sandboxClasses</span>:
-  - name: gvisor          <span class="c"># gVisor class only</span>
-  <span class="k">networkTransport</span>:       <span class="c"># NetworkWorkers preview gate</span>
-    <span class="k">runtimeClassName</span>: <span class="s">kata</span></code></pre>
-    <div class="card roomy watch">
-      <h3>Why it matters</h3>
-      <ul>
-        <li><b>Defense in depth:</b> a gVisor escape lands in the guest kernel, not on the node or in other Pods</li>
-        <li>Images from the proposal branch: <code>ghcr.io/csantanapr/substrate</code></li>
-        <li>Try it: the installer's <b>Mode 3</b> plugin adds Kata to the microVM nodes</li>
-      </ul>
-    </div>
-  </div>
+  <p class="muted" style="margin:.8rem 0 0">Mode 3 runs on images from the proposal branch, <code>ghcr.io/csantanapr/substrate</code>. The installer turns it on.</p>
   <aside class="notes">
-    <p>This is a <b>proposal for upstream</b>, not part of v1.0.0: a third mode that <b>stacks both boundaries</b>.</p>
+    <p>Mode 3 is a <b>proposal for upstream</b>, not part of v1.0.0. The worker Pod itself runs as an <b>AWS Nitro Sandbox</b>.</p>
     <ul>
-      <li><i>point at the right column</i> The worker Pod itself runs as a <b>Kata microVM</b> on Cloud Hypervisor, on the nested-virtualization node group, and inside that guest the worker runs actors with <b>gVisor</b>.</li>
-      <li>That is <b>defense in depth</b>: a gVisor escape still lands in the microVM's guest kernel, not on the node or in another tenant's Pod.</li>
-      <li>You turn it on per WorkerPool with <code>networkTransport.runtimeClassName: kata</code>, for the gVisor class, behind the <code>NetworkWorkers</code> preview gate.</li>
-      <li>The guest can't see the node's files, so atelet reaches the worker over <b>mutual TLS on the Pod network</b>, through the <code>atelet-workers</code> Service on port 8087, and moves sandbox assets and snapshots through a <b>staging service</b>.</li>
+      <li><i>point at the left two columns</i> The two modes in v1.0.0: <b>gVisor is soft isolation</b>, a userspace kernel; <b>microVM is VM isolation</b>, Cloud Hypervisor with its own guest kernel.</li>
+      <li><i>point at the right column</i> In mode 3, <b>each worker Pod is its own Nitro sandbox</b>, on RuntimeClass <code>isolated-sandbox</code>. That is <b>hardware isolation</b> from AWS Nitro, per Pod.</li>
+      <li>EKS Auto Mode launches the nodes for these Pods. <b>No node group and no extra runtime</b> to install.</li>
+      <li>The sandbox can't see the node's files, so atelet reaches the worker over <b>mutual TLS on the Pod network</b>, through the <code>atelet-workers</code> Service on port 8087, and moves sandbox assets and snapshots through a <b>staging service</b>.</li>
+      <li><i>Only if asked:</i> the WorkerPool still names the <code>gvisor</code> sandbox class; <code>networkTransport.runtimeClassName</code> is what puts its workers in Nitro sandboxes, behind the <code>NetworkWorkers</code> preview gate.</li>
     </ul>
-    <p><i>Next:</i> the same mode on AWS Nitro Sandbox, with no Kata to install.</p>
+    <p><i>Next:</i> how mode 3 runs on EKS Auto Mode.</p>
   </aside>
 </section>
 
 <!-- 7c -->
 <section class="slide">
-  <h2>Mode 3 on AWS Nitro Sandbox: each worker Pod gets its own kernel</h2>
+  <h2>Mode 3 on AWS Nitro Sandbox: hardware isolation per worker Pod</h2>
   <div class="fill">
-    <svg viewBox="0 0 1720 560" role="img" aria-label="A Pending worker Pod asks for RuntimeClass isolated-sandbox. EKS Auto Mode's built-in Karpenter, through NodePool ate-isolated, launches an EC2 node for it. On that node atelet reaches two worker Pods over mutual TLS on port 8087. Each worker Pod is an AWS Nitro Sandbox with its own guest kernel, and inside it a gVisor sandbox holds the actor; two boundaries.">
+    <svg viewBox="0 0 1720 560" role="img" aria-label="A Pending worker Pod asks for RuntimeClass isolated-sandbox. EKS Auto Mode's built-in Karpenter, through NodePool ate-isolated, launches an EC2 node for it. On that node atelet reaches two worker Pods over mutual TLS on port 8087. Each worker Pod is an AWS Nitro Sandbox, with hardware isolation, and runs an actor.">
       <defs><marker id="nsa" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
       <g font-size="21">
         <!-- Pending Pod -->
@@ -707,7 +689,7 @@
         <text x="37" y="100" fill="#e8edf2" font-weight="700">1 · worker Pod, Pending</text>
         <text x="37" y="138" fill="#ffd166" font-size="19">runtimeClassName: isolated-sandbox</text>
         <text x="37" y="168" fill="#9aa7b4" font-size="18">nodeSelector ate.dev/pool=isolated</text>
-        <text x="37" y="196" fill="#9aa7b4" font-size="18">the gVisor class, 2 GiB per worker</text>
+        <text x="37" y="196" fill="#9aa7b4" font-size="18">2 GiB per worker</text>
         <path d="M250 258 V298" stroke="#9aa7b4" stroke-width="2.5" marker-end="url(#nsa)"/>
 
         <!-- Auto Mode -->
@@ -717,7 +699,7 @@
         <text x="37" y="408" fill="#9aa7b4" font-size="18">NodePool ate-isolated</text>
         <text x="37" y="436" fill="#9aa7b4" font-size="18">picks the instance and launches it</text>
         <path d="M489 396 H557" stroke="#ff9900" stroke-width="2.5" marker-end="url(#nsa)"/>
-        <text x="250" y="530" text-anchor="middle" fill="#9aa7b4">no node group, no Kata install</text>
+        <text x="250" y="530" text-anchor="middle" fill="#9aa7b4">no node group to manage</text>
 
         <!-- node -->
         <rect x="565" y="64" width="1140" height="424" rx="14" fill="#161d26" stroke="#ff9900" stroke-width="2"/>
@@ -727,31 +709,25 @@
         <path d="M1100 162 L860 202" stroke="#ff9900" stroke-width="2.5" marker-end="url(#nsa)"/>
         <path d="M1200 162 L1420 202" stroke="#ff9900" stroke-width="2.5" marker-end="url(#nsa)"/>
         <text x="1262" y="134" fill="#ff9900" font-size="18" font-weight="700">mutual TLS, port 8087</text>
-        <text x="1262" y="156" fill="#9aa7b4" font-size="16">Pod network, as in mode 3</text>
+        <text x="1262" y="156" fill="#9aa7b4" font-size="16">over the Pod network</text>
 
         <!-- worker Pod A -->
         <rect x="585" y="206" width="540" height="264" rx="12" fill="#0b1016" stroke="#ffd166" stroke-width="3"/>
         <text x="607" y="236" fill="#ffd166" font-weight="700">worker Pod is a Nitro sandbox</text>
-        <text x="607" y="258" fill="#9aa7b4" font-size="17">its own guest kernel</text>
-        <rect x="605" y="274" width="500" height="178" rx="12" fill="#161d26" stroke="#3ecf8e" stroke-width="3"/>
-        <text x="627" y="304" fill="#3ecf8e" font-weight="700">gVisor sandbox</text>
-        <text x="627" y="326" fill="#9aa7b4" font-size="17">runsc, inside the guest kernel</text>
-        <rect x="625" y="344" width="460" height="90" rx="12" fill="#0b1016" stroke="#4aa3ff" stroke-width="2"/>
-        <text x="647" y="384" fill="#4aa3ff" font-weight="700">actor</text>
-        <text x="647" y="410" fill="#9aa7b4" font-size="17">the agent's own processes</text>
+        <text x="607" y="258" fill="#9aa7b4" font-size="17">hardware isolation</text>
+        <rect x="625" y="324" width="460" height="110" rx="12" fill="#161d26" stroke="#4aa3ff" stroke-width="2"/>
+        <text x="647" y="370" fill="#4aa3ff" font-weight="700">actor</text>
+        <text x="647" y="398" fill="#9aa7b4" font-size="17">the agent's own processes</text>
 
         <!-- worker Pod B -->
         <rect x="1145" y="206" width="540" height="264" rx="12" fill="#0b1016" stroke="#ffd166" stroke-width="3"/>
         <text x="1167" y="236" fill="#ffd166" font-weight="700">worker Pod is a Nitro sandbox</text>
-        <text x="1167" y="258" fill="#9aa7b4" font-size="17">its own guest kernel</text>
-        <rect x="1165" y="274" width="500" height="178" rx="12" fill="#161d26" stroke="#3ecf8e" stroke-width="3"/>
-        <text x="1187" y="304" fill="#3ecf8e" font-weight="700">gVisor sandbox</text>
-        <text x="1187" y="326" fill="#9aa7b4" font-size="17">runsc, inside the guest kernel</text>
-        <rect x="1185" y="344" width="460" height="90" rx="12" fill="#0b1016" stroke="#4aa3ff" stroke-width="2"/>
-        <text x="1207" y="384" fill="#4aa3ff" font-weight="700">actor</text>
-        <text x="1207" y="410" fill="#9aa7b4" font-size="17">the agent's own processes</text>
+        <text x="1167" y="258" fill="#9aa7b4" font-size="17">hardware isolation</text>
+        <rect x="1185" y="324" width="460" height="110" rx="12" fill="#161d26" stroke="#4aa3ff" stroke-width="2"/>
+        <text x="1207" y="370" fill="#4aa3ff" font-weight="700">actor</text>
+        <text x="1207" y="398" fill="#9aa7b4" font-size="17">the agent's own processes</text>
 
-        <text x="1135" y="530" text-anchor="middle"><tspan fill="#ff9900" font-weight="700">2 boundaries</tspan><tspan fill="#9aa7b4">: the Nitro sandbox, then gVisor</tspan></text>
+        <text x="1135" y="530" text-anchor="middle"><tspan fill="#ff9900" font-weight="700">hardware isolation</tspan><tspan fill="#9aa7b4"> for every worker Pod</tspan></text>
       </g>
     </svg>
   </div>
@@ -759,27 +735,25 @@
 <pre><code><span class="k">apiVersion</span>: ate.dev/v1
 <span class="k">kind</span>: WorkerPool
 <span class="k">spec</span>:
-  <span class="k">sandboxClasses</span>:
-  - name: gvisor
   <span class="k">networkTransport</span>:
-    <span class="k">runtimeClassName</span>: <span class="s">isolated-sandbox</span>  <span class="c"># from Auto Mode</span></code></pre>
+    <span class="k">runtimeClassName</span>: <span class="s">isolated-sandbox</span>  <span class="c"># from EKS Auto Mode</span></code></pre>
     <div class="card roomy watch">
       <h3>Why it matters</h3>
       <ul>
-        <li><b>Hardware isolation per Pod:</b> each worker gets its own guest kernel on AWS Nitro</li>
+        <li><b>Hardware isolation per Pod:</b> each worker Pod is its own AWS Nitro Sandbox</li>
         <li><b>A Pending Pod is the request:</b> Auto Mode launches an instance that fits</li>
         <li>VPC networking, Pod Identity and network policies work as for any Pod</li>
-        <li>Try it: the installer's <b>Mode 3 on isolated sandboxes</b> plugin</li>
+        <li>Try it: the installer's <b>isolated-sandbox</b> Mode 3 plugin</li>
       </ul>
     </div>
   </div>
   <aside class="notes">
-    <p>The same mode 3, with the microVM coming from <b>AWS Nitro Sandbox</b> in EKS Auto Mode instead of Kata.</p>
+    <p>Mode 3 on <b>AWS Nitro Sandbox</b> in EKS Auto Mode.</p>
     <ul>
       <li><i>point at the left</i> The worker Pod asks for RuntimeClass <code>isolated-sandbox</code>, which <b>Auto Mode already provides</b>. While it is Pending, Auto Mode's built-in Karpenter <b>picks and launches an instance</b> that can run it.</li>
       <li>NodePool <code>ate-isolated</code> is a copy of the built-in <code>general-purpose</code> NodePool, with a label and a taint so <b>only worker Pods</b> land there.</li>
-      <li><i>point at the right</i> Each worker Pod runs in <b>its own Nitro sandbox, with its own guest kernel</b>, and the worker runs actors with <b>gVisor</b> inside it. Two boundaries, as on the previous slide.</li>
-      <li><b>No node group, no nested virtualization setup, no Kata install.</b> The Pods keep full VPC networking, EKS Pod Identity and network policies.</li>
+      <li><i>point at the right</i> Each worker Pod runs in <b>its own Nitro sandbox</b>: <b>hardware isolation</b> from AWS Nitro, per Pod.</li>
+      <li><b>No node group and no extra runtime to install.</b> The Pods keep full VPC networking, EKS Pod Identity and network policies.</li>
       <li>Several sandboxes share one instance, so a node holds many workers.</li>
       <li>It needs <b>EKS Auto Mode</b>; it does not run on managed node groups.</li>
     </ul>
@@ -795,7 +769,7 @@
       <ul>
         <li>Recent Intel families in us-west-2:<br><span class="pill">c7i</span><span class="pill">m7i</span><span class="pill">r7i</span><span class="pill">c8i</span><span class="pill">m8i</span><span class="pill">r8i</span><span class="pill">i7i</span><span class="pill">x8i</span></li>
         <li>Turned on per instance with <code>CpuOptions</code></li>
-        <li>No bare metal needed for Kata microVMs</li>
+        <li>No bare metal needed for microVMs</li>
         <li>Check a node for <code>/dev/kvm</code> and <code>vmx</code></li>
       </ul>
     </div>
