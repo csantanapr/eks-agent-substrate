@@ -1,0 +1,30 @@
+# Runs .github/ci/checks.sh on every pull request and every push to main:
+# bash syntax, shellcheck, the account-id check and the installer's Go tests.
+name: checks
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+    - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+      with:
+        persist-credentials: false
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: installer/go.mod
+        cache-dependency-path: installer/go.sum
+    - name: Install shellcheck
+      run: .github/ci/install-shellcheck.sh
+    - name: Checks
+      run: .github/ci/checks.sh
+      env:
+        GOTOOLCHAIN: local
