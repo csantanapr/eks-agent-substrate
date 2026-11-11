@@ -19,7 +19,9 @@
 #   host): the host's aws CLI exports its credentials to a 0600 file in
 #   .work/toolbox/creds/ every 2 minutes while the script runs, and the
 #   container's profile reads that file. The file is deleted on exit.
-# - any other profile (SSO, static keys, assume-role): ~/.aws is mounted.
+# - any other profile (SSO, static keys, assume-role): ~/.aws is mounted,
+#   and so are the folders of AWS_CONFIG_FILE and AWS_SHARED_CREDENTIALS_FILE
+#   when they are set (read-only, at the same path).
 # - AWS_ACCESS_KEY_ID and the other standard variables are passed through
 #   when set.
 #
@@ -81,6 +83,13 @@ case "${DOCKER_HOST:-}" in unix://*) sock="${DOCKER_HOST#unix://}" ;; ?*) die "D
 args+=(-v "$sock:/var/run/docker.sock")
 if [ "$(uname -s)" = Darwin ]; then
   args+=(--user 0:0)
+  # The AWS CLI keeps a SQLite database in ~/.aws/cli/cache/session.db. On
+  # macOS the checkout (and so HOME) is a Docker Desktop file share, where
+  # SQLite under concurrent aws calls (the installer's checks run side by
+  # side) dies with SIGBUS. Keep that folder in memory, in the container.
+  # The mount point is made here, as you, so Docker does not make it.
+  if [ -d "$HOME/.aws" ]; then mkdir -p "$HOME/.aws/cli/cache"; else mkdir -p "$TB/home/.aws/cli/cache"; fi
+  args+=(--tmpfs "$TB/home/.aws/cli/cache:mode=0700")
 else
   gid=$(docker run --rm -v "$sock:/s" "$IMAGE" stat -c %g /s) || die "cannot read the group of $sock"
   args+=(--user "$(id -u):$(id -g)" --group-add "$gid")
@@ -113,8 +122,21 @@ if [ -n "$helper" ]; then
   (umask 077; printf '[profile %s]\nregion = %s\ncredential_process = cat %s\n' \
     "$PROFILE" "$REGION" "$run_creds/$PROFILE.json" > "$run_creds/config")
   args+=(-e AWS_CONFIG_FILE="$run_creds/config" -e AWS_SHARED_CREDENTIALS_FILE="$run_creds/none")
-elif [ -d "$HOME/.aws" ]; then
-  args+=(-v "$HOME/.aws:$TB/home/.aws")
+else
+  # The mount point is made here, as you: Docker on Linux would make it as root.
+  if [ -d "$HOME/.aws" ]; then
+    mkdir -p "$TB/home/.aws"
+    args+=(-v "$HOME/.aws:$TB/home/.aws")
+  fi
+  # A config or credentials file outside ~/.aws (AWS_CONFIG_FILE,
+  # AWS_SHARED_CREDENTIALS_FILE): mount its folder read-only at the same
+  # path, so a file the host rewrites stays current, and pass the variable.
+  for n in AWS_CONFIG_FILE AWS_SHARED_CREDENTIALS_FILE; do
+    f="${!n:-}"; f="${f/#\~/$HOME}"
+    [ -n "$f" ] && [ -f "$f" ] || continue
+    case "$f" in /*) ;; *) f="$PWD/$f" ;; esac
+    args+=(-v "$(dirname "$f"):$(dirname "$f"):ro" -e "$n=$f")
+  done
 fi
 
 [ "$#" -gt 0 ] || set -- bash

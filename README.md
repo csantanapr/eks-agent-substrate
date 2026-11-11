@@ -109,7 +109,13 @@ with buildx, git, and AWS credentials:
   (a helper that exists only on the host), the host's `aws` CLI exports
   short-lived credentials to a `0600` file under `.work/toolbox/creds/`
   every 2 minutes while the script runs, and deletes it on exit. Any other
-  profile (SSO, static keys, assume-role) is read from `~/.aws`, mounted.
+  profile (SSO, static keys, assume-role) is read from `~/.aws`, mounted,
+  and from the folders of `AWS_CONFIG_FILE` and `AWS_SHARED_CREDENTIALS_FILE`
+  when they are set (read-only, at the same path).
+- On macOS the AWS CLI's cache, `~/.aws/cli/cache`, is a tmpfs in the
+  container: the checkout is a Docker Desktop file share, where the CLI's
+  SQLite file there crashed concurrent `aws` calls with a bus error. Linux
+  keeps it on the bind mount.
 - The credential provider checkout (`CREDPROVIDER_DIR`) and `OPENCLAW_DIR`
   are mounted when they exist; add others with `TOOLBOX_MOUNTS`.
 - Tested on Linux (amd64). On macOS the container runs as root, because
