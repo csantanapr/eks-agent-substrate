@@ -72,6 +72,8 @@ type (
 		DescribeSecurityGroups(context.Context, *ec2.DescribeSecurityGroupsInput, ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error)
 		CreateSecurityGroup(context.Context, *ec2.CreateSecurityGroupInput, ...func(*ec2.Options)) (*ec2.CreateSecurityGroupOutput, error)
 		AuthorizeSecurityGroupIngress(context.Context, *ec2.AuthorizeSecurityGroupIngressInput, ...func(*ec2.Options)) (*ec2.AuthorizeSecurityGroupIngressOutput, error)
+		DescribeSecurityGroupRules(context.Context, *ec2.DescribeSecurityGroupRulesInput, ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupRulesOutput, error)
+		CreateTags(context.Context, *ec2.CreateTagsInput, ...func(*ec2.Options)) (*ec2.CreateTagsOutput, error)
 	}
 	RDSAPI interface {
 		DescribeDBSubnetGroups(context.Context, *rds.DescribeDBSubnetGroupsInput, ...func(*rds.Options)) (*rds.DescribeDBSubnetGroupsOutput, error)
@@ -282,9 +284,7 @@ func (e *env) rdsNetwork(ctx context.Context, rc *rdsClients, net *rdsNet) error
 	}
 	if state == ingressOK {
 		slog.Info("security group admits only 5432 from the cluster", "group", net.dbSG)
-		return nil
-	}
-	return e.act(fmt.Sprintf("allow tcp/%d into %s from the cluster security group %s", dbPort, id, net.clusterSG), func() error {
+	} else if err := e.act(fmt.Sprintf("allow tcp/%d into %s from the cluster security group %s", dbPort, id, net.clusterSG), func() error {
 		_, err := rc.EC2.AuthorizeSecurityGroupIngress(ctx, &ec2.AuthorizeSecurityGroupIngressInput{
 			GroupId: aws.String(net.dbSG),
 			IpPermissions: []ec2types.IpPermission{{
@@ -294,6 +294,44 @@ func (e *env) rdsNetwork(ctx context.Context, rc *rdsClients, net *rdsNet) error
 			TagSpecifications: e.ec2Tags(ec2types.ResourceTypeSecurityGroupRule),
 		})
 		return err
+	}); err != nil {
+		return err
+	}
+	return e.tagSGRules(ctx, rc.EC2, id, net.dbSG)
+}
+
+// tagSGRules tags the group's rules that lack this deployment's tags: the
+// allow-all egress rule EC2 adds to every new group by itself, and a rule an
+// older run (aws/infra.sh) added untagged.
+func (e *env) tagSGRules(ctx context.Context, c EC2API, name, group string) error {
+	if group == "" {
+		return nil // --plan, and the group is not made yet
+	}
+	out, err := c.DescribeSecurityGroupRules(ctx, &ec2.DescribeSecurityGroupRulesInput{
+		Filters: []ec2types.Filter{{Name: aws.String("group-id"), Values: []string{group}}},
+	})
+	if err != nil {
+		return fmt.Errorf("describe the rules of security group %s: %w", name, err)
+	}
+	var ids []string
+	for _, r := range out.SecurityGroupRules {
+		have := sgTagMap(r.Tags)
+		for k, v := range e.tags {
+			if have[k] != v {
+				ids = append(ids, aws.ToString(r.SecurityGroupRuleId))
+				break
+			}
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	return e.act(fmt.Sprintf("tag %d rule(s) of security group %s", len(ids), name), func() error {
+		_, err := c.CreateTags(ctx, &ec2.CreateTagsInput{Resources: ids, Tags: e.ec2Tags(ec2types.ResourceTypeSecurityGroupRule)[0].Tags})
+		if err != nil {
+			return fmt.Errorf("tag the rules of security group %s: %w", name, err)
+		}
+		return nil
 	})
 }
 

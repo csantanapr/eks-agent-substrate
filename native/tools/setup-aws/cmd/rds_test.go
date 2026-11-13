@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -31,7 +32,8 @@ const (
 // mutating call, as fakeAWS does for bootstrap.
 type fakeDB struct {
 	sgs          map[string]*ec2types.SecurityGroup // name -> group
-	subnetGroups map[string]map[string]string       // name -> tags
+	rules        []ec2types.SecurityGroupRule
+	subnetGroups map[string]map[string]string // name -> tags
 	instances    map[string]*rdstypes.DBInstance
 	created      *rds.CreateDBInstanceInput
 	secrets      map[string]*secretsmanager.DescribeSecretOutput
@@ -102,6 +104,8 @@ func (f *fec2) DescribeSecurityGroups(_ context.Context, in *ec2.DescribeSecurit
 func (f *fec2) CreateSecurityGroup(_ context.Context, in *ec2.CreateSecurityGroupInput, _ ...func(*ec2.Options)) (*ec2.CreateSecurityGroupOutput, error) {
 	name := aws.ToString(in.GroupName)
 	f.sgs[name] = &ec2types.SecurityGroup{GroupId: aws.String("sg-" + name), GroupName: in.GroupName, Tags: in.TagSpecifications[0].Tags}
+	// EC2 adds an allow-all egress rule to a new group, without tags.
+	f.rules = append(f.rules, ec2types.SecurityGroupRule{SecurityGroupRuleId: aws.String("sgr-egress-" + name), GroupId: aws.String("sg-" + name), IsEgress: aws.Bool(true)})
 	(*fakeDB)(f).writes = append(f.writes, "CreateSecurityGroup "+name)
 	return &ec2.CreateSecurityGroupOutput{GroupId: aws.String("sg-" + name)}, nil
 }
@@ -114,8 +118,28 @@ func (f *fec2) AuthorizeSecurityGroupIngress(_ context.Context, in *ec2.Authoriz
 	if len(in.TagSpecifications) == 0 || sgTagMap(in.TagSpecifications[0].Tags)["auto-delete"] != "no" {
 		return nil, fmt.Errorf("ingress rule without tags")
 	}
+	f.rules = append(f.rules, ec2types.SecurityGroupRule{SecurityGroupRuleId: aws.String("sgr-in-" + aws.ToString(in.GroupId)),
+		GroupId: in.GroupId, IsEgress: aws.Bool(false), Tags: in.TagSpecifications[0].Tags})
 	(*fakeDB)(f).writes = append(f.writes, "AuthorizeSecurityGroupIngress "+aws.ToString(in.GroupId))
 	return &ec2.AuthorizeSecurityGroupIngressOutput{}, nil
+}
+func (f *fec2) DescribeSecurityGroupRules(_ context.Context, in *ec2.DescribeSecurityGroupRulesInput, _ ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupRulesOutput, error) {
+	out := &ec2.DescribeSecurityGroupRulesOutput{}
+	for _, r := range f.rules {
+		if aws.ToString(r.GroupId) == filterValue(in.Filters, "group-id") {
+			out.SecurityGroupRules = append(out.SecurityGroupRules, r)
+		}
+	}
+	return out, nil
+}
+func (f *fec2) CreateTags(_ context.Context, in *ec2.CreateTagsInput, _ ...func(*ec2.Options)) (*ec2.CreateTagsOutput, error) {
+	for i := range f.rules {
+		if slices.Contains(in.Resources, aws.ToString(f.rules[i].SecurityGroupRuleId)) {
+			f.rules[i].Tags = in.Tags
+		}
+	}
+	(*fakeDB)(f).writes = append(f.writes, "CreateTags "+strings.Join(in.Resources, ","))
+	return &ec2.CreateTagsOutput{}, nil
 }
 
 type frds fakeDB
@@ -228,7 +252,7 @@ func TestCreateRDSFreshAccountCreatesOnce(t *testing.T) {
 	for prefix, want := range map[string]int{
 		"CreateDBSubnetGroup demo-pg": 1, "CreateSecurityGroup demo-pg": 1, "AuthorizeSecurityGroupIngress sg-demo-pg": 1,
 		"CreateDBInstance demo-pg": 1, "CreateSecret demo/ate-owner": 1, "CreateSecret demo/ate-readwrite": 1,
-		"TagResource rds!db-demo-pg": 1,
+		"TagResource rds!db-demo-pg": 1, "CreateTags sgr-egress-demo-pg": 1, "CreateTags ": 1,
 	} {
 		if got := count(f.writes, prefix); got != want {
 			t.Errorf("%s: got %d, want %d (writes %v)", prefix, got, want, f.writes)
