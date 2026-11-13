@@ -28,6 +28,35 @@ import (
 type clusterRole struct {
 	name, trust string
 	policies    []string // under arn:<partition>:iam::aws:policy/
+	// inline are inline policies, name -> document.
+	inline map[string]string
+}
+
+// volumeTagPolicyName is the Auto Mode cluster role's inline policy that
+// lets EKS Auto Mode create EBS volumes with this deployment's tags.
+const volumeTagPolicyName = "auto-mode-volume-tags"
+
+// volumeTagPolicy is that policy. AmazonEKSBlockStoragePolicy allows
+// ec2:CreateVolume only with Auto Mode's own tag keys (ForAllValues
+// aws:TagKeys), so a StorageClass tagSpecification_N would be denied. This
+// adds the one call, on volumes in this account and Region, requested for
+// this cluster (eks:eks-cluster-name, the session tag EKS sets on the role)
+// and carrying this deployment's owner tag. Tagging at create is already
+// allowed by the managed policy (ec2:CreateTags with ec2:CreateAction).
+//
+//	https://docs.aws.amazon.com/eks/latest/userguide/auto-cluster-iam-role.html (Custom AWS tags for EKS Auto resources)
+func (r *clusterRun) volumeTagPolicy() string {
+	n := r.e.names
+	doc := map[string]any{"Version": "2012-10-17", "Statement": []any{map[string]any{
+		"Sid": "CreateVolumesWithDeploymentTags", "Effect": "Allow", "Action": "ec2:CreateVolume",
+		"Resource": fmt.Sprintf("arn:%s:ec2:%s:%s:volume/*", n.Partition, n.Region, n.Account),
+		"Condition": map[string]any{"StringEquals": map[string]string{
+			"aws:RequestTag/eks:eks-cluster-name": "${aws:PrincipalTag/eks:eks-cluster-name}",
+			"aws:RequestTag/" + OwnerTagKey:       n.OwnerValue,
+		}},
+	}}}
+	b, _ := json.Marshal(doc)
+	return string(b)
 }
 
 // shortcut: the service principals are the aws partition's; aws-cn spells
@@ -58,22 +87,26 @@ func (r *clusterRun) neededRoles() []clusterRole {
 		if r.auto {
 			p = append(p, "AmazonEKSComputePolicy", "AmazonEKSBlockStoragePolicy", "AmazonEKSLoadBalancingPolicy", "AmazonEKSNetworkingPolicy")
 		}
-		out = append(out, clusterRole{r.clusterRoleName(), eksTrustPolicy, p})
+		cr := clusterRole{name: r.clusterRoleName(), trust: eksTrustPolicy, policies: p}
 		if r.auto {
-			out = append(out, clusterRole{r.autoNodeRoleName(), ec2TrustPolicy,
-				[]string{"AmazonEKSWorkerNodeMinimalPolicy", "AmazonEC2ContainerRegistryPullOnly"}})
+			cr.inline = map[string]string{volumeTagPolicyName: r.volumeTagPolicy()}
+		}
+		out = append(out, cr)
+		if r.auto {
+			out = append(out, clusterRole{name: r.autoNodeRoleName(), trust: ec2TrustPolicy,
+				policies: []string{"AmazonEKSWorkerNodeMinimalPolicy", "AmazonEC2ContainerRegistryPullOnly"}})
 		}
 	}
 	for _, g := range r.groups() {
 		if r.nodegroups[g.Name] == nil {
-			out = append(out, clusterRole{r.nodeRoleName(), ec2TrustPolicy,
-				[]string{"AmazonEKSWorkerNodePolicy", "AmazonEKS_CNI_Policy", "AmazonEC2ContainerRegistryPullOnly"}})
+			out = append(out, clusterRole{name: r.nodeRoleName(), trust: ec2TrustPolicy,
+				policies: []string{"AmazonEKSWorkerNodePolicy", "AmazonEKS_CNI_Policy", "AmazonEC2ContainerRegistryPullOnly"}})
 			break
 		}
 	}
 	if r.addons["aws-ebs-csi-driver"] == nil {
 		// Only EKS Pod Identity, for this cluster, may assume it (iam.go).
-		out = append(out, clusterRole{r.ebsRoleName(), r.e.trustPolicy(), []string{"service-role/AmazonEBSCSIDriverPolicy"}})
+		out = append(out, clusterRole{name: r.ebsRoleName(), trust: r.e.trustPolicy(), policies: []string{"service-role/AmazonEBSCSIDriverPolicy"}})
 	}
 	return out
 }
@@ -149,6 +182,31 @@ func (r *clusterRun) ensureRole(ctx context.Context, role clusterRole) error {
 		what := "attach " + name + " to " + role.name
 		// A new role's attachments are part of creating it; on an existing
 		// role a missing one is a change.
+		if exists {
+			err = r.change(what, do)
+		} else {
+			err = r.e.act(what, do)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	for _, name := range sortedKeys(role.inline) {
+		doc := role.inline[name]
+		if exists {
+			got, err := r.c.IAM.GetRolePolicy(ctx, &iam.GetRolePolicyInput{RoleName: aws.String(role.name), PolicyName: aws.String(name)})
+			if err != nil && !isNotFound(err) {
+				return fmt.Errorf("get inline policy %s: %w", name, err)
+			}
+			if err == nil && sameJSON(decodedPolicy(aws.ToString(got.PolicyDocument)), doc) {
+				continue
+			}
+		}
+		do := func() error {
+			_, err := r.c.IAM.PutRolePolicy(ctx, &iam.PutRolePolicyInput{RoleName: aws.String(role.name), PolicyName: aws.String(name), PolicyDocument: aws.String(doc)})
+			return err
+		}
+		what := "put inline policy " + name + " on " + role.name
 		if exists {
 			err = r.change(what, do)
 		} else {

@@ -15,8 +15,8 @@ nothing that already exists, and a run that stopped part way is completed.
 |---|---|---|
 | Cluster | `setup-aws create cluster` | A VPC with public and private subnets across two or more Availability Zones and a NAT gateway. The cluster and node IAM roles. An EKS cluster (Auto Mode by default, standard optional) whose public endpoint accepts only `EKS_PUBLIC_ACCESS_CIDRS`, with an access entry for you and the add-ons. A launch template with nested virtualization, IMDSv2 (hop limit 1) and encrypted gp3. The `system`, `gvisor` and `microvm` managed node groups, labeled `ate.dev/pool` and tainted for their sandbox class. |
 | Provision | `setup-aws bootstrap` | S3 buckets for snapshots and microVM assets. EKS Pod Identity roles for ate-api-server and atelet. Private ECR repositories. |
-| Database | `setup-aws create rds` | A private RDS for PostgreSQL instance in the private subnets. Port 5432 is open only to the cluster security group. RDS manages the admin password, and the owner and read-write logins are in Secrets Manager. The schema is created from inside the cluster. With `--database=bundled`, Substrate's bundled PostgreSQL runs in the cluster instead. |
-| Control plane | `ate-setup deploy ate-system` | The pinned Substrate release with its published images, the gVisor and microVM sandbox classes, the microVM assets staged in S3, and the EKS changes in `deploy/eks`. |
+| Database | `setup-aws create rds` | A private RDS for PostgreSQL instance in the private subnets. Port 5432 is open only to the cluster security group. RDS manages the admin password, and the owner and read-write logins are in Secrets Manager. The schema is created from inside the cluster. With `--database=bundled`, Substrate's bundled PostgreSQL runs in the cluster instead, on an encrypted gp3 EBS volume from the installer's StorageClass. |
+| Control plane | `ate-setup deploy ate-system` | A StorageClass for encrypted gp3 EBS volumes that carry the owner tag and `TAGS` (`substrate-eks-auto-ebs` on Auto Mode, `substrate-eks-ebs` on a standard cluster), the default class on a cluster the installer created. The pinned Substrate release with its published images, the gVisor and microVM sandbox classes, the microVM assets staged in S3, and the EKS changes in `deploy/eks`. |
 | Demo (`--demo`) | the counter image build, `kubectl apply`, `kubectl ate create` | The counter image, built from the release source and pushed to the private ECR repository `<cluster>/counter`. The counter demo on gVisor and on microVM, each pinned to its node group. |
 
 Every AWS resource carries the owner tag
@@ -24,6 +24,14 @@ Every AWS resource carries the owner tag
 `project=agent-substrate auto-delete=no`). A bucket, IAM role, launch
 template or security group that already has the name but not this owner tag
 is never reused, changed or deleted: the run stops and names it.
+
+EBS volumes for PersistentVolumeClaims get the same tags from the
+StorageClass. EKS Auto Mode adds custom tags only when the cluster role
+allows it, so `setup-aws create cluster` gives its Auto Mode cluster role one
+statement for that (`ec2:CreateVolume` with this cluster's and this
+deployment's tags). On an Auto Mode cluster you created yourself, the volume
+gets no owner tag; teardown and inventory find it by its
+`eks:eks-cluster-name` tag and namespace `ate-system`.
 
 Services are ClusterIP. No Ingress, LoadBalancer or NodePort is created.
 Workloads get AWS access from EKS Pod Identity, with no static keys.
