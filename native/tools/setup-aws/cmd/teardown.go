@@ -561,7 +561,7 @@ func (e *tdEnv) stepRepositories(ctx context.Context) ([]tdTarget, []string, err
 	}
 	var ts []tdTarget
 	var rs []string
-	for _, name := range sortedKeysOf(repos) {
+	for _, name := range tdKeys(repos) {
 		if r := e.refuse("ECR repository", name, repos[name]); r != "" {
 			rs = append(rs, r)
 			continue
@@ -647,7 +647,7 @@ func (e *tdEnv) stepClusterRoles(ctx context.Context) ([]tdTarget, []string, err
 		return nil, nil, err
 	}
 	var names []string
-	for _, n := range sortedKeysOf(roles) {
+	for _, n := range tdKeys(roles) {
 		if !e.isSubstrateRole(n) {
 			names = append(names, n)
 		}

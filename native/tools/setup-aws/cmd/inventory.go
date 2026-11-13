@@ -795,7 +795,7 @@ func (e *tdEnv) inventory(ctx context.Context) ([]tdRow, error) {
 	if err != nil {
 		return nil, err
 	}
-	for _, name := range sortedKeysOf(roles) {
+	for _, name := range tdKeys(roles) {
 		if e.owned(roles[name]) || e.isSubstrateRole(name) {
 			add(tdRow{"IAM role", name, roles[name], !e.isSubstrateRole(name)})
 		}
@@ -842,7 +842,7 @@ func (e *tdEnv) inventory(ctx context.Context) ([]tdRow, error) {
 	if err != nil {
 		return nil, err
 	}
-	for _, r := range sortedKeysOf(repos) {
+	for _, r := range tdKeys(repos) {
 		add(tdRow{"ECR repository", r, repos[r], false})
 	}
 
@@ -907,7 +907,7 @@ func (e *tdEnv) inventory(ctx context.Context) ([]tdRow, error) {
 	return rows, nil
 }
 
-func sortedKeysOf[V any](m map[string]V) []string {
+func tdKeys[V any](m map[string]V) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)
