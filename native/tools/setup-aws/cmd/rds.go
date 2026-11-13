@@ -86,7 +86,6 @@ type (
 		DescribeSecret(context.Context, *secretsmanager.DescribeSecretInput, ...func(*secretsmanager.Options)) (*secretsmanager.DescribeSecretOutput, error)
 		GetRandomPassword(context.Context, *secretsmanager.GetRandomPasswordInput, ...func(*secretsmanager.Options)) (*secretsmanager.GetRandomPasswordOutput, error)
 		CreateSecret(context.Context, *secretsmanager.CreateSecretInput, ...func(*secretsmanager.Options)) (*secretsmanager.CreateSecretOutput, error)
-		TagResource(context.Context, *secretsmanager.TagResourceInput, ...func(*secretsmanager.Options)) (*secretsmanager.TagResourceOutput, error)
 	}
 )
 
@@ -546,31 +545,10 @@ func (e *env) rdsWait(ctx context.Context, rc *rdsClients) error {
 	if err != nil {
 		return fmt.Errorf("wait for RDS instance %s: %w", id, err)
 	}
-	db := out.DBInstances[0]
-	if db.Endpoint != nil {
+	// RDS gives the master user secret it makes the instance's tags (seen
+	// on a live instance), so it needs no tagging here.
+	if db := out.DBInstances[0]; db.Endpoint != nil {
 		slog.Info("RDS instance available", "instance", id, "endpoint", aws.ToString(db.Endpoint.Address))
-	}
-	// RDS creates the master user's secret itself, without our tags; add
-	// them, so the account's cleanup tools see an owned, keep-me resource.
-	if db.MasterUserSecret == nil || db.MasterUserSecret.SecretArn == nil {
-		return fmt.Errorf("RDS instance %s has no managed master user secret; it was not created by this tool", id)
-	}
-	arn := db.MasterUserSecret.SecretArn
-	s, err := rc.SM.DescribeSecret(ctx, &secretsmanager.DescribeSecretInput{SecretId: arn})
-	if err != nil {
-		return fmt.Errorf("describe the master user secret of %s: %w", id, err)
-	}
-	have := smTagMap(s.Tags)
-	for k, v := range e.tags {
-		if have[k] != v {
-			return e.act("tag the master user secret of "+id, func() error {
-				_, err := rc.SM.TagResource(ctx, &secretsmanager.TagResourceInput{SecretId: arn, Tags: e.smTags()})
-				if err != nil {
-					return fmt.Errorf("tag the master user secret of %s: %w", id, err)
-				}
-				return nil
-			})
-		}
 	}
 	return nil
 }

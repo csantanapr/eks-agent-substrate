@@ -179,7 +179,6 @@ func (f *frds) CreateDBInstance(_ context.Context, in *rds.CreateDBInstanceInput
 	f.instances[id] = &rdstypes.DBInstance{DBInstanceIdentifier: in.DBInstanceIdentifier, DBInstanceStatus: aws.String("available"),
 		TagList: in.Tags, Endpoint: &rdstypes.Endpoint{Address: aws.String(id + ".abc.us-west-2.rds.amazonaws.com"), Port: aws.Int32(5432)},
 		MasterUserSecret: &rdstypes.MasterUserSecret{SecretArn: aws.String("rds!db-" + id)}}
-	f.secrets["rds!db-"+id] = &secretsmanager.DescribeSecretOutput{}
 	(*fakeDB)(f).writes = append(f.writes, "CreateDBInstance "+id)
 	return &rds.CreateDBInstanceOutput{}, nil
 }
@@ -211,11 +210,6 @@ func (f *fsm) CreateSecret(_ context.Context, in *secretsmanager.CreateSecretInp
 	f.values[name] = aws.ToString(in.SecretString)
 	(*fakeDB)(f).writes = append(f.writes, "CreateSecret "+name)
 	return &secretsmanager.CreateSecretOutput{}, nil
-}
-func (f *fsm) TagResource(_ context.Context, in *secretsmanager.TagResourceInput, _ ...func(*secretsmanager.Options)) (*secretsmanager.TagResourceOutput, error) {
-	f.secrets[aws.ToString(in.SecretId)].Tags = in.Tags
-	(*fakeDB)(f).writes = append(f.writes, "TagResource "+aws.ToString(in.SecretId))
-	return &secretsmanager.TagResourceOutput{}, nil
 }
 
 func (f *fakeDB) clients() *rdsClients {
@@ -252,7 +246,7 @@ func TestCreateRDSFreshAccountCreatesOnce(t *testing.T) {
 	for prefix, want := range map[string]int{
 		"CreateDBSubnetGroup demo-pg": 1, "CreateSecurityGroup demo-pg": 1, "AuthorizeSecurityGroupIngress sg-demo-pg": 1,
 		"CreateDBInstance demo-pg": 1, "CreateSecret demo/ate-owner": 1, "CreateSecret demo/ate-readwrite": 1,
-		"TagResource rds!db-demo-pg": 1, "CreateTags sgr-egress-demo-pg": 1, "CreateTags ": 1,
+		"CreateTags sgr-egress-demo-pg": 1, "CreateTags ": 1,
 	} {
 		if got := count(f.writes, prefix); got != want {
 			t.Errorf("%s: got %d, want %d (writes %v)", prefix, got, want, f.writes)
@@ -270,7 +264,6 @@ func TestCreateRDSFreshAccountCreatesOnce(t *testing.T) {
 	for what, tags := range map[string]map[string]string{
 		"subnet group": f.subnetGroups["demo-pg"], "security group": sgTagMap(f.sgs["demo-pg"].Tags),
 		"instance": rdsTagMap(in.Tags), "owner secret": smTagMap(f.secrets["demo/ate-owner"].Tags),
-		"master secret": smTagMap(f.secrets["rds!db-demo-pg"].Tags),
 	} {
 		if tags[OwnerTagKey] != "demo.us-west-2" || tags["auto-delete"] != "no" {
 			t.Errorf("%s tags = %v", what, tags)
