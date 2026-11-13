@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -25,11 +26,43 @@ import (
 // PodCertificate APIs), the floor substrate-gke applies to GKE too.
 const MinMinor = 37
 
+// The tags `setup-aws create cluster` puts on a cluster it creates. The owner
+// tag is the one every setup-aws resource carries (setup-aws cmd.OwnerTagKey);
+// created-by says the installer made the cluster itself rather than being
+// pointed at it.
+const (
+	OwnerTagKey     = "agent-substrate-on-eks/deployment"
+	CreatedByTagKey = "agent-substrate-on-eks/created-by"
+	CreatedByValue  = "setup-aws"
+)
+
 // Cluster is one row of the cluster picker.
 type Cluster struct {
 	Name, Version, Status string
 	AutoMode              bool
 	Endpoint, CA          string
+	Tags                  map[string]string
+}
+
+// CreatedByInstaller reports whether this installer created the cluster in
+// region: it carries created-by=setup-aws and this deployment's owner tag,
+// <name>.<region>. Only such a cluster is ever offered for deletion, or for
+// removing a Substrate install found on it; a cluster the user brought may
+// run other people's workloads.
+func (c Cluster) CreatedByInstaller(region string) bool {
+	return c.Tags[CreatedByTagKey] == CreatedByValue && c.Tags[OwnerTagKey] == c.Name+"."+region
+}
+
+// clusterNameRE is eks-talk's rule for CLUSTER_NAME (lib/common.sh): S3, IAM,
+// RDS and ECR names derive from it, so it is stricter than EKS's own.
+var clusterNameRE = regexp.MustCompile(`^[a-z][a-z0-9-]{0,26}[a-z0-9]$`)
+
+// ValidClusterName is the rule a new cluster's name must meet.
+func ValidClusterName(name string) error {
+	if !clusterNameRE.MatchString(name) {
+		return fmt.Errorf("a cluster name is 2-28 characters of a-z, 0-9 and '-', starting with a letter and ending with a letter or digit")
+	}
+	return nil
 }
 
 // Supported reports whether the cluster can run Substrate.
@@ -125,7 +158,7 @@ func (c *Client) Describe(ctx context.Context, name string) (Cluster, error) {
 		return Cluster{}, fmt.Errorf("describe %s: %w", name, err)
 	}
 	k := d.Cluster
-	cl := Cluster{Name: name, Version: aws.ToString(k.Version), Status: string(k.Status), Endpoint: aws.ToString(k.Endpoint)}
+	cl := Cluster{Name: name, Version: aws.ToString(k.Version), Status: string(k.Status), Endpoint: aws.ToString(k.Endpoint), Tags: k.Tags}
 	if k.CertificateAuthority != nil {
 		cl.CA = aws.ToString(k.CertificateAuthority.Data)
 	}
