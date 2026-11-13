@@ -71,11 +71,6 @@ func InstallOrder(s *Setup) []Step {
 // claims are released, then the AWS resources, with `setup-aws teardown`.
 var TeardownOrder = []Step{Welcome, CheckSetup, Account, TeardownScope, RemoveControlPlane, TeardownAWS, Complete}
 
-// TeardownLeftoversOrder is the teardown when the cluster is already gone: a
-// second run, or one resumed after the cluster was deleted. There is no
-// Substrate to remove, only the AWS resources that still carry the owner tag.
-var TeardownLeftoversOrder = []Step{Welcome, CheckSetup, Account, TeardownScope, TeardownAWS, Complete}
-
 // Title is a step's label in the step rail. The rail is 30 columns and a
 // two-digit step's prefix takes seven of them, so a title is at most 23
 // columns (TestStepTitlesFitTheRail).

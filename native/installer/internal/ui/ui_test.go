@@ -2,8 +2,6 @@ package ui
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"regexp"
 	"slices"
 	"strconv"
@@ -11,8 +9,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	ekstypes "github.com/aws/aws-sdk-go-v2/service/eks/types"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/awsx"
@@ -483,46 +479,6 @@ func TestKeepClusterFlagKeepsAnOwnedCluster(t *testing.T) {
 		if !slices.Equal(r.ran(), want) || s.KeepCluster != only {
 			t.Errorf("KeepClusterOnly=%v: ran %q, KeepCluster=%v", only, r.ran(), s.KeepCluster)
 		}
-	}
-}
-
-// AC6.2: a teardown run after the cluster is gone (a second run, or one
-// resumed after the cluster was deleted) skips Remove Substrate, deletes what
-// still carries the owner tag and reaches Complete. A denied read is not
-// "gone": it stays on the scope screen and runs nothing.
-func TestTeardownOfAGoneClusterDeletesTheLeftovers(t *testing.T) {
-	notFound := func(_ context.Context, name string) (awsx.Cluster, error) {
-		return awsx.Cluster{}, fmt.Errorf("describe %s: %w", name, &ekstypes.ResourceNotFoundException{Message: aws.String("No cluster found")})
-	}
-	for _, only := range []bool{false, true} {
-		r := &recorder{}
-		d := testDeps(r)
-		d.Describe = notFound
-		s := newSetup("gone")
-		s.Teardown, s.KeepClusterOnly = true, only
-		m := toStep(t, New(d, s), state.TeardownScope)
-		m = typeIn(m, "gone")
-		m = toStep(t, m, state.Complete)
-		if want := []string{"teardown keep=" + strconv.FormatBool(only)}; !slices.Equal(r.ran(), want) {
-			t.Errorf("KeepClusterOnly=%v: ran %q, want %q", only, r.ran(), want)
-		}
-		if v := m.View(); !strings.Contains(v, "was already gone") {
-			t.Errorf("Complete does not say the cluster was gone:\n%s", v)
-		}
-	}
-
-	r := &recorder{}
-	d := testDeps(r)
-	d.Describe = func(_ context.Context, name string) (awsx.Cluster, error) {
-		return awsx.Cluster{}, fmt.Errorf("describe %s: %w", name, errors.New("AccessDeniedException: not authorized"))
-	}
-	s := newSetup("denied")
-	s.Teardown = true
-	m := toStep(t, New(d, s), state.TeardownScope)
-	m = typeIn(m, "denied")
-	m = press(m, "enter")
-	if m.m.Current() != state.TeardownScope || len(r.ran()) != 0 {
-		t.Errorf("a denied describe moved to %s and ran %q", m.m.Current().Title(), r.ran())
 	}
 }
 

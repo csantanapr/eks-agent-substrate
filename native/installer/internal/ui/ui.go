@@ -496,9 +496,7 @@ func (m Model) completeView() string {
 	var b strings.Builder
 	cmd := func(s string) { b.WriteString(theme.CommandLine.Render("  "+s) + "\n") }
 	if m.s.Teardown {
-		if m.scope.gone {
-			b.WriteString(theme.Good.Render(theme.GlyphDone+" Deleted what was left of this deployment; cluster "+m.s.ClusterName+" was already gone") + "\n\n")
-		} else if m.s.KeepCluster {
+		if m.s.KeepCluster {
 			b.WriteString(theme.Good.Render(theme.GlyphDone+" Removed Substrate and its AWS resources; cluster "+m.s.ClusterName+" is kept") + "\n\n")
 		} else {
 			b.WriteString(theme.Good.Render(theme.GlyphDone+" Deleted cluster "+m.s.ClusterName+" and every AWS resource this deployment created") + "\n\n")

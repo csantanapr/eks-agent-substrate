@@ -7,7 +7,6 @@ package awsx
 import (
 	"context"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -165,14 +164,6 @@ func (c *Client) Describe(ctx context.Context, name string) (Cluster, error) {
 	}
 	cl.AutoMode = k.ComputeConfig != nil && aws.ToBool(k.ComputeConfig.Enabled)
 	return cl, nil
-}
-
-// IsNotFound reports whether err is EKS answering that the cluster does not
-// exist. Any other error, a denied or throttled read included, is not "not
-// found" (issue #5 AC2.3).
-func IsNotFound(err error) bool {
-	var nf *ekstypes.ResourceNotFoundException
-	return errors.As(err, &nf)
 }
 
 // KubeconfigPath is the installer's own kubeconfig for a cluster, like
