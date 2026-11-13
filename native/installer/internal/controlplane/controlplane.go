@@ -46,6 +46,9 @@ type Options struct {
 	// AutoMode puts the bundled PostgreSQL volume on Auto Mode's EBS driver
 	// (deploy/eks/prereqs/storageclass-auto-ebs.yaml).
 	AutoMode bool
+	// Database is DatabaseRDS (default) or DatabaseBundled. CONTRACT (issue
+	// #5, T2): main.go sets it from --database; T2 implements the RDS path.
+	Database string
 	// TreeRoot is where the pinned tree is cached; Overlay is deploy/eks.
 	TreeRoot, Overlay string
 	// IngressIDs are the SPIFFE IDs the ingress router admits.
@@ -131,6 +134,12 @@ func AteSetupArgs(o Options, kubeContext string) []string {
 		"--rollout-timeout", "5m",
 	}, extra...)
 }
+
+// Database choices for Options.Database.
+const (
+	DatabaseRDS     = "rds"
+	DatabaseBundled = "bundled"
+)
 
 // AutoModeStorageClass is the StorageClass in deploy/eks/prereqs.
 const AutoModeStorageClass = "substrate-eks-auto-ebs"
