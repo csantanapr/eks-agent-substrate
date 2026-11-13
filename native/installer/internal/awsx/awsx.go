@@ -120,6 +120,44 @@ func New(ctx context.Context, profile, region string) (*Client, error) {
 	return &Client{EKS: eks.NewFromConfig(cfg), STS: sts.NewFromConfig(cfg)}, nil
 }
 
+// newClient is New; tests count its calls.
+var newClient = New
+
+// Fresh is the wizard's view of AWS: every call loads the config and
+// credentials again, as each setup-aws step does by starting a new process.
+// A wizard stays open longer than session credentials last (a create cluster
+// and RDS run passes an hour); a client kept from its start goes on sending
+// the expired token after the user has refreshed it on disk, so enter on the
+// failed screen could never recover.
+type Fresh struct{ Profile, Region string }
+
+// Identity is Client.Identity with a client loaded for the call.
+func (f Fresh) Identity(ctx context.Context) (string, string, error) {
+	c, err := newClient(ctx, f.Profile, f.Region)
+	if err != nil {
+		return "", "", err
+	}
+	return c.Identity(ctx)
+}
+
+// ListClusters is Client.ListClusters with a client loaded for the call.
+func (f Fresh) ListClusters(ctx context.Context) ([]Cluster, error) {
+	c, err := newClient(ctx, f.Profile, f.Region)
+	if err != nil {
+		return nil, err
+	}
+	return c.ListClusters(ctx)
+}
+
+// Describe is Client.Describe with a client loaded for the call.
+func (f Fresh) Describe(ctx context.Context, name string) (Cluster, error) {
+	c, err := newClient(ctx, f.Profile, f.Region)
+	if err != nil {
+		return Cluster{}, err
+	}
+	return c.Describe(ctx, name)
+}
+
 // Identity returns the account id and caller ARN.
 func (c *Client) Identity(ctx context.Context) (account, arn string, err error) {
 	out, err := c.STS.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
