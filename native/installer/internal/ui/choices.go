@@ -102,7 +102,7 @@ func (m *Model) scopeKey(msg tea.KeyMsg) tea.Cmd {
 	case "up":
 		sc.cursor = 0
 	case "down":
-		if m.scopeOwned() {
+		if m.scopeOwned() && !m.s.KeepClusterOnly {
 			sc.cursor = 1
 		}
 	case "esc":
@@ -121,7 +121,7 @@ func (m *Model) scopeKey(msg tea.KeyMsg) tea.Cmd {
 			return nil
 		}
 		m.s.ClusterOwned = m.scopeOwned()
-		m.s.KeepCluster = sc.cursor == 0 || !m.s.ClusterOwned
+		m.s.KeepCluster = sc.cursor == 0 || !m.s.ClusterOwned || m.s.KeepClusterOnly
 		// A teardown step already run had the earlier answer; both steps
 		// are idempotent, so they run again with this one.
 		m.tasks = map[state.Step]*task{}
@@ -161,7 +161,9 @@ func (m Model) scopeView() string {
 		{"Delete everything, including cluster " + name,
 			"ate-setup delete ate-system, then setup-aws teardown: also the node groups, the cluster, the launch template and the VPC."},
 	}
-	if !m.scopeOwned() {
+	if m.s.KeepClusterOnly {
+		options[1].detail = "Not offered: --keep-cluster was given."
+	} else if !m.scopeOwned() {
 		options[1].detail = "Not offered: this installer did not create " + name + ", and it never deletes a cluster it did not create.\n(no " + awsx.CreatedByTagKey + "=" + awsx.CreatedByValue + " tag on " + name + ")"
 	}
 	for i, o := range options {

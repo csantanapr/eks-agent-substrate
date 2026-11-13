@@ -278,6 +278,9 @@ type Setup struct {
 	// answer: remove Substrate and its AWS data but keep the cluster.
 	Teardown    bool
 	KeepCluster bool
+	// KeepClusterOnly is --keep-cluster (make teardown KEEP_CLUSTER=true):
+	// the teardown never offers to delete the cluster.
+	KeepClusterOnly bool
 
 	// SubstrateTag is the release the control plane installs, with its
 	// published images from ImageRepo.

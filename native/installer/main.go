@@ -39,6 +39,7 @@ func main() {
 		database   = flag.String("database", controlplane.DatabaseRDS, "the control plane's database: rds (Amazon RDS for PostgreSQL) or bundled (in-cluster PostgreSQL)")
 		demoMode   = flag.Bool("demo", false, "end the install with the counter demo on gVisor and microVM, and check it")
 		teardown   = flag.Bool("teardown", false, "open the wizard on the teardown of --cluster: remove Substrate, then its AWS resources")
+		keepClust  = flag.Bool("keep-cluster", false, "with --teardown: remove Substrate and its AWS data but never offer to delete the cluster")
 		setupAWS   = flag.String("setup-aws", "", "path to native/tools/setup-aws (default: found above the working directory or the executable)")
 		overlay    = flag.String("eks-overlay", "", "path to native/deploy/eks (default: found above the working directory or the executable)")
 		treeRoot   = flag.String("tree-root", controlplane.DefaultTreeRoot(), "where fetched Substrate trees are cached")
@@ -127,6 +128,7 @@ func main() {
 	s := state.NewSetup()
 	s.Profile, s.Region, s.ClusterName, s.SubstrateTag = *profile, *region, *cluster, *tag
 	s.Database, s.DemoMode, s.Teardown = *database, *demoMode, *teardown
+	s.KeepClusterOnly = *keepClust
 
 	if *logPath == "" {
 		dir, _ := os.UserCacheDir()

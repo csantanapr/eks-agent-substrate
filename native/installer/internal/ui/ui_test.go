@@ -464,6 +464,24 @@ func TestTeardownNeverDeletesAClusterItDidNotCreate(t *testing.T) {
 	}
 }
 
+// --keep-cluster (make teardown KEEP_CLUSTER=true) keeps even a cluster this
+// installer created; without it the same keys delete it (both directions).
+func TestKeepClusterFlagKeepsAnOwnedCluster(t *testing.T) {
+	for _, only := range []bool{true, false} {
+		r := &recorder{}
+		s := newSetup("own-installed")
+		s.Teardown, s.KeepClusterOnly = true, only
+		m := toStep(t, New(testDeps(r), s), state.TeardownScope)
+		m = press(m, "down")
+		m = typeIn(m, "own-installed")
+		m = toStep(t, m, state.Complete)
+		want := []string{"remove own-installed", "teardown keep=" + strconv.FormatBool(only)}
+		if !slices.Equal(r.ran(), want) || s.KeepCluster != only {
+			t.Errorf("KeepClusterOnly=%v: ran %q, KeepCluster=%v", only, r.ran(), s.KeepCluster)
+		}
+	}
+}
+
 // AC11.3: every long step that fails is retried in place with enter.
 func TestEveryLongStepRetriesOnEnter(t *testing.T) {
 	long := []string{"create cluster", "bootstrap", "create rds", "control plane", "demo", "remove fresh", "teardown keep=true"}
