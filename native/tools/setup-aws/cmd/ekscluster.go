@@ -77,6 +77,12 @@ func (r *clusterRun) ensureCluster(ctx context.Context) error {
 			return nil
 		}
 	}
+	if r.cluster.Status != ekstypes.ClusterStatusActive && r.plan() {
+		// A plan reads and reports; it never waits on someone else's
+		// create or update to finish (review F17).
+		slog.Info("plan: cluster " + name + " is " + string(r.cluster.Status) + "; a real run would wait for ACTIVE")
+		return nil
+	}
 	if r.cluster.Status != ekstypes.ClusterStatusActive {
 		if err := waitFor(ctx, "cluster "+name+" to be ACTIVE (about 10 minutes)", 30*time.Minute, func() (bool, error) {
 			out, err := r.c.EKS.DescribeCluster(ctx, &eks.DescribeClusterInput{Name: aws.String(name)})
