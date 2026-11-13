@@ -44,7 +44,8 @@ const (
 	tdStackKey = "aws:cloudformation:stack-name"
 	// eksClusterNameTag is on every volume EKS Auto Mode creates: its
 	// managed policy allows CreateVolume only with it. pvcNamespaceTag is the
-	// namespace of the claim a CSI driver made the volume for.
+	// namespace of the claim the volume was made for; Auto Mode and the
+	// aws-ebs-csi-driver add-on both set it.
 	eksClusterNameTag = "eks:eks-cluster-name"
 	pvcNamespaceTag   = "kubernetes.io/created-for/pvc/namespace"
 	// substrateNS holds the bundled PostgreSQL's claim.
