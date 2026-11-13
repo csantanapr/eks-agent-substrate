@@ -180,9 +180,15 @@ func (b builder) controlPlane(s *state.Setup) execx.Spec {
 		eksoverlay.LinePrefix + "applied code patch ate-setup-s3-assets-v1.0.0.patch",
 		controlplane.KubeconfLine + "~/.cache/substrate-eks/kubeconfig/" + s.ClusterName + "." + s.Region + ".yaml",
 	}
-	if s.Database == state.DatabaseBundled && s.AutoMode {
-		sim = append(sim, controlplane.PrereqLine+"native/deploy/eks/prereqs",
-			"storageclass.storage.k8s.io/substrate-eks-auto-ebs created")
+	// The StorageClass prerequisite, as applyStorageClass prints it: always
+	// for the bundled database, and on a cluster this installer created.
+	if s.Database == state.DatabaseBundled || s.ClusterOwned {
+		sc, prov := controlplane.StorageClassName(s.AutoMode), "ebs.csi.aws.com"
+		if s.AutoMode {
+			prov = "ebs.csi.eks.amazonaws.com"
+		}
+		sim = append(sim, controlplane.PrereqLine+"StorageClass "+sc+" ("+prov+", encrypted gp3, 3 volume tags)",
+			"storageclass.storage.k8s.io/"+sc+" created")
 	}
 	sim = append(sim,
 		"[step]: deploy_ate_system", "[step]: prepare_microvm_deps",
