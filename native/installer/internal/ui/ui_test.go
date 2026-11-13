@@ -131,11 +131,15 @@ func testDeps(r *recorder) Deps {
 		CreateCluster: spec("create cluster", "Step 1/9: Checking the account, Region and quotas..."),
 		Bootstrap:     spec("bootstrap", "Step 1/4: Checking the EKS cluster..."),
 		RDS:           spec("create rds", "Step 1/4: Creating the RDS subnet group and security group..."),
-		// An account id in a command's output, as ate-setup prints bucket names.
-		ControlPlane: spec("control plane", "Uploading assets to s3://new-assets-111122223333-us-west-2/microvm-assets/ ...", "[step]: deploy_crds"),
-		Demo:         spec("demo", "Deploying the counter demo on gvisor"),
-		Verify:       spec("verify"),
-		Inventory:    spec("inventory"),
+		// An account id in a command's output, as ate-setup prints bucket
+		// names, and in the command shown, as an argv with a bucket would.
+		ControlPlane: func(*state.Setup) execx.Spec {
+			return execx.Spec{Label: "control plane", Display: "deploy --snap-bucket new-snap-111122223333-us-west-2",
+				SimLines: []string{"Uploading assets to s3://new-assets-111122223333-us-west-2/microvm-assets/ ...", "[step]: deploy_crds"}}
+		},
+		Demo:      spec("demo", "Deploying the counter demo on gvisor"),
+		Verify:    spec("verify"),
+		Inventory: spec("inventory"),
 		RemoveControlPlane: func(s *state.Setup) execx.Spec {
 			return execx.Spec{Label: "remove " + s.ClusterName, Display: "substrate-eks --remove-control-plane --cluster " + s.ClusterName}
 		},
@@ -513,6 +517,14 @@ func TestAccountIdNeverShown(t *testing.T) {
 	s := newSetup("new")
 	s.DemoMode = true
 	m := toStep(t, New(testDeps(&recorder{}), s), state.Complete)
+	// Each output line is masked as it is stored, not only when drawn.
+	for st, tk := range m.tasks {
+		for _, l := range tk.lines {
+			if id.MatchString(l) {
+				t.Errorf("%s stored %q", st.Title(), l)
+			}
+		}
+	}
 	m = press(m, "t")
 	m = typeIn(m, "new")
 	toStep(t, m, state.Complete)
