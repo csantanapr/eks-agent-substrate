@@ -42,6 +42,13 @@ const (
 	// eksctl's stacks from create-cluster.sh. teardown never deletes such a
 	// resource: ./delete-cluster.sh does, through its stack.
 	tdStackKey = "aws:cloudformation:stack-name"
+	// eksClusterNameTag is on every volume EKS Auto Mode creates: its
+	// managed policy allows CreateVolume only with it. pvcNamespaceTag is the
+	// namespace of the claim a CSI driver made the volume for.
+	eksClusterNameTag = "eks:eks-cluster-name"
+	pvcNamespaceTag   = "kubernetes.io/created-for/pvc/namespace"
+	// substrateNS holds the bundled PostgreSQL's claim.
+	substrateNS = "ate-system"
 )
 
 // The AWS API surfaces inventory and teardown use. Their own interfaces, so
@@ -248,6 +255,35 @@ func (e *tdEnv) clusterMade(tags map[string]string) bool {
 	c := e.n.Cluster
 	return tags["aws:eks:cluster-name"] == c || tags["eks:eks-cluster-name"] == c ||
 		tags["cluster.k8s.amazonaws.com/name"] == c || tags["kubernetes.io/cluster/"+c] == "owned"
+}
+
+// clusterPVC reports a volume EKS Auto Mode made for a claim in ate-system of
+// this cluster that carries no owner tag: on a cluster whose role does not
+// let Auto Mode add custom tags, the bundled PostgreSQL's volume. A volume of
+// another namespace, another owner or a CloudFormation stack is not one.
+func (e *tdEnv) clusterPVC(tags map[string]string) bool {
+	return tags[eksClusterNameTag] == e.n.Cluster && tags[pvcNamespaceTag] == substrateNS &&
+		tags[OwnerTagKey] == "" && tags[tdStackKey] == ""
+}
+
+// volumes are this deployment's volumes matching f: the owner-tagged ones,
+// then the clusterPVC ones.
+func (e *tdEnv) volumes(ctx context.Context, f ...ec2types.Filter) ([]ec2Item, error) {
+	owned, err := e.ec2List(ctx, kVolume, append([]ec2types.Filter{e.ownerFilter()}, f...)...)
+	if err != nil {
+		return nil, err
+	}
+	made, err := e.ec2List(ctx, kVolume, append([]ec2types.Filter{
+		flt("tag:"+eksClusterNameTag, e.n.Cluster), flt("tag:"+pvcNamespaceTag, substrateNS)}, f...)...)
+	if err != nil {
+		return nil, err
+	}
+	for _, v := range made {
+		if e.clusterPVC(v.tags) {
+			owned = append(owned, v)
+		}
+	}
+	return owned, nil
 }
 
 // tdGone reports an AWS "does not exist" error, across the services
@@ -854,7 +890,7 @@ func (e *tdEnv) inventory(ctx context.Context) ([]tdRow, error) {
 	for _, lt := range lts {
 		add(tdRow{kLT, lt.name + " (" + lt.id + ")", lt.tags, true})
 	}
-	for _, kind := range []string{kVPC, kSubnet, kSG, kIGW, kNAT, kEIP, kRTB, kLT, kENI, kVolume, kInstance} {
+	for _, kind := range []string{kVPC, kSubnet, kSG, kIGW, kNAT, kEIP, kRTB, kLT, kENI, kInstance} {
 		items, err := e.ec2List(ctx, kind, e.ownerFilter())
 		if err != nil {
 			return nil, err
@@ -870,6 +906,15 @@ func (e *tdEnv) inventory(ctx context.Context) ([]tdRow, error) {
 			// The RDS security group is Substrate data; the rest is the cluster's.
 			add(tdRow{kind, id, it.tags, !(kind == kSG && it.name == e.dbID())})
 		}
+	}
+	// Volumes: the owner-tagged ones, and the ate-system claims' volumes
+	// Auto Mode made for this cluster without the tag, as teardown finds them.
+	vols, err := e.volumes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, v := range vols {
+		add(tdRow{kVolume, v.id, v.tags, true})
 	}
 
 	// Every other type that carries the owner tag (a plugin's EFS file

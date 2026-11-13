@@ -691,19 +691,23 @@ func (e *tdEnv) stepLaunchTemplates(ctx context.Context) ([]tdTarget, []string, 
 	return ts, rs, nil
 }
 
-// stepVolumes deletes detached volumes with the owner tag: PVC volumes a
-// deleted cluster could no longer release.
+// stepVolumes deletes the detached PVC volumes a deleted cluster could no
+// longer release: those with the owner tag, and the ate-system ones EKS Auto
+// Mode made for this cluster without it (clusterPVC). Any other detached
+// volume, a user's Retain volume among them, is left alone.
 func (e *tdEnv) stepVolumes(ctx context.Context) ([]tdTarget, []string, error) {
-	vs, err := e.ec2List(ctx, kVolume, e.ownerFilter(), flt("status", "available"))
+	vs, err := e.volumes(ctx, flt("status", "available"))
 	if err != nil {
 		return nil, nil, err
 	}
 	var ts []tdTarget
 	var rs []string
 	for _, v := range vs {
-		if r := e.refuse(kVolume, v.id, v.tags); r != "" {
-			rs = append(rs, r)
-			continue
+		if !e.clusterPVC(v.tags) {
+			if r := e.refuse(kVolume, v.id, v.tags); r != "" {
+				rs = append(rs, r)
+				continue
+			}
 		}
 		id := v.id
 		ts = append(ts, tdTarget{kind: kVolume, id: id, del: func(ctx context.Context) error {
