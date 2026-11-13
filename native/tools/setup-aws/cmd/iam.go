@@ -142,7 +142,9 @@ func (e *env) roleForSA(ctx context.Context, p PodIdentity) error {
 	if err != nil {
 		return fmt.Errorf("association of %s/%s: %w", p.Namespace, p.ServiceAccount, err)
 	}
-	slog.Info("pod identity ready", "sa", p.Namespace+"/"+p.ServiceAccount, "role", role)
+	if !e.cfg.Plan {
+		slog.Info("pod identity ready", "sa", p.Namespace+"/"+p.ServiceAccount, "role", role)
+	}
 	return nil
 }
 
