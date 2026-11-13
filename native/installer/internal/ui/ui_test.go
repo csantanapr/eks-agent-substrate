@@ -90,6 +90,43 @@ func TestUnsupportedClusterCannotBeSelected(t *testing.T) {
 	}
 }
 
+// failOnce fails the first Start of a step and succeeds after.
+type failOnce struct{ n *int }
+
+func (f failOnce) Start(ctx context.Context, spec execx.Spec) <-chan execx.Event {
+	*f.n++
+	if *f.n == 1 {
+		ch := make(chan execx.Event, 1)
+		ch <- execx.Event{Done: true, Err: context.DeadlineExceeded}
+		close(ch)
+		return ch
+	}
+	return execx.DryRun{Delay: 1}.Start(ctx, spec)
+}
+
+func TestFailedStepRetriesOnEnter(t *testing.T) {
+	s := state.NewSetup()
+	s.ClusterName = "new"
+	d := deps(doctor.OK, good)
+	n := 0
+	d.Runner = failOnce{&n}
+	m := New(d, s)
+	for range 4 {
+		m = drive(t, m, "enter") // to Provision, which fails
+	}
+	if m.m.Current() != state.Provision || m.prov == nil || m.prov.err == nil {
+		t.Fatalf("want a failed Provision, at %s", m.m.Current().Title())
+	}
+	m = drive(t, m, "enter") // retry
+	if n != 2 || m.prov.err != nil || !m.prov.done {
+		t.Fatalf("retry: starts=%d err=%v", n, m.prov.err)
+	}
+	m = drive(t, m, "enter")
+	if m.m.Current() != state.ControlPlane {
+		t.Fatalf("did not advance after the retry, at %s", m.m.Current().Title())
+	}
+}
+
 func TestAccountIsMaskedOnScreen(t *testing.T) {
 	m := New(deps(doctor.OK, good), state.NewSetup())
 	m = drive(t, m, "enter")

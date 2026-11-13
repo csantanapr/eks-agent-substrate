@@ -47,6 +47,10 @@ func TestAddFillsRegionDropsPodMonitoringAndIsIdempotent(t *testing.T) {
 	if !strings.Contains(ks, componentEntry) {
 		t.Error("component not listed")
 	}
+	// The prereqs (applied before ate-setup) must never ride in the render too.
+	if strings.Contains(ks, "storageclass-auto-ebs.yaml") {
+		t.Error("Auto Mode StorageClass listed in the render; it is a prerequisite")
+	}
 	if !strings.Contains(ks, "../ate-otel-config.yaml") || !strings.Contains(ks, "../atelet.yaml") {
 		t.Error("other resources lost")
 	}
@@ -65,6 +69,58 @@ func TestAddFillsRegionDropsPodMonitoringAndIsIdempotent(t *testing.T) {
 	changed, err = Add(root, overlay, "us-east-1")
 	if err != nil || !changed {
 		t.Fatalf("Add with a new region: changed=%v err=%v", changed, err)
+	}
+}
+
+// An older run's resource copies and entries go when deploy/eks drops them,
+// which is what happened to the Auto Mode StorageClass moving to prereqs.
+func TestStaleResourceEntryIsRemoved(t *testing.T) {
+	root, overlay := tree(t)
+	k := filepath.Join(root, BaseKustomization)
+	if err := os.WriteFile(k, []byte(baseKust+"  - "+resourcesEntry+"old.yaml\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, ResourcesDir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ResourcesDir, "old.yaml"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Add(root, overlay, "us-west-2"); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(k)
+	if strings.Contains(string(b), "old.yaml") {
+		t.Error("an entry deploy/eks no longer has was kept")
+	}
+	if _, err := os.Stat(filepath.Join(root, ResourcesDir)); err == nil {
+		t.Error("an older run's resource copies were kept")
+	}
+}
+
+// With resources present, they are copied and listed (gkeoverlay's mechanism).
+func TestResourcesAreCopiedAndListed(t *testing.T) {
+	root, real := tree(t)
+	overlay := t.TempDir()
+	if err := os.CopyFS(overlay, os.DirFS(real)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(overlay, resourcesSrc), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(overlay, resourcesSrc, "a.yaml"), []byte("region: ${AWS_REGION}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Add(root, overlay, "us-west-2"); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(filepath.Join(root, BaseKustomization))
+	if !strings.Contains(string(b), resourcesEntry+"a.yaml") {
+		t.Error("resource not listed")
+	}
+	c, err := os.ReadFile(filepath.Join(root, ResourcesDir, "a.yaml"))
+	if err != nil || string(c) != "region: us-west-2\n" {
+		t.Errorf("resource copy = %q, %v", c, err)
 	}
 }
 

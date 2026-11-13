@@ -41,6 +41,10 @@ const Dir = "deploy/eks"
 
 const (
 	componentSrc = "components/eks"
+	// resourcesSrc holds plain resources, kept out of the Component for the
+	// reason deploy/gke gives: ate-setup's deploy --component rejects
+	// components that add resources.
+	resourcesSrc = "resources"
 	patchesSrc   = "patches"
 )
 
@@ -51,6 +55,9 @@ const (
 	// ComponentDir is where the copy goes; upstream has nothing named
 	// substrate-eks, so it cannot collide.
 	ComponentDir = installDir + "/components/substrate-eks"
+	// ResourcesDir is where deploy/eks/resources is copied.
+	ResourcesDir   = installDir + "/substrate-eks"
+	resourcesEntry = "../substrate-eks/"
 	// gkeMonitoringEntry is the base kustomization's GKE PodMonitoring.
 	gkeMonitoringEntry = "../atenet-router-monitoring.yaml"
 	componentEntry     = "../components/substrate-eks"
@@ -115,13 +122,49 @@ func Add(root, overlay, region string) (bool, error) {
 	if err := check(overlay); err != nil {
 		return false, err
 	}
-	changed, err := syncDir(filepath.Join(overlay, componentSrc), filepath.Join(root, ComponentDir),
-		func(b []byte) []byte { return bytes.ReplaceAll(b, []byte(regionToken), []byte(region)) })
+	fill := func(b []byte) []byte { return bytes.ReplaceAll(b, []byte(regionToken), []byte(region)) }
+	changed, err := syncDir(filepath.Join(overlay, componentSrc), filepath.Join(root, ComponentDir), fill)
 	if err != nil {
 		return false, err
 	}
-	kChanged, err := editKustomization(filepath.Join(root, BaseKustomization), componentEntry, gkeMonitoringEntry)
-	return changed || kChanged, err
+	resChanged := false
+	if _, err := os.Stat(filepath.Join(overlay, resourcesSrc)); err == nil {
+		if resChanged, err = syncDir(filepath.Join(overlay, resourcesSrc), filepath.Join(root, ResourcesDir), fill); err != nil {
+			return false, err
+		}
+	} else if _, err := os.Stat(filepath.Join(root, ResourcesDir)); err == nil {
+		// deploy/eks has no resources (any more): drop an older run's copies.
+		if err := os.RemoveAll(filepath.Join(root, ResourcesDir)); err != nil {
+			return false, err
+		}
+		resChanged = true
+	}
+	resources, err := resourceFiles(overlay)
+	if err != nil {
+		return false, err
+	}
+	kChanged, err := editKustomization(filepath.Join(root, BaseKustomization), componentEntry, gkeMonitoringEntry, resources)
+	return changed || resChanged || kChanged, err
+}
+
+// resourceFiles lists deploy/eks/resources/*.yaml as base kustomization
+// entries, sorted (as gkeoverlay.resourceFiles).
+func resourceFiles(overlay string) ([]string, error) {
+	entries, err := os.ReadDir(filepath.Join(overlay, resourcesSrc))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".yaml") {
+			out = append(out, resourcesEntry+e.Name())
+		}
+	}
+	slices.Sort(out)
+	return out, nil
 }
 
 // ApplyCodePatches applies every deploy/eks/patches/*.patch that applies to
@@ -244,9 +287,11 @@ func writeIfChanged(path string, data []byte) (bool, error) {
 	return true, os.Rename(tmp.Name(), path)
 }
 
-// editKustomization adds component under `components:` and removes drop from
-// `resources:`, editing the YAML tree so comments and other entries survive.
-func editKustomization(path, component, drop string) (bool, error) {
+// editKustomization adds component under `components:` and each of
+// resources under `resources:`, removes drop, and removes entries under
+// resourcesEntry that resources no longer names (an older deploy/eks's). It
+// edits the YAML tree so comments and other entries survive.
+func editKustomization(path, component, drop string, resources []string) (bool, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return false, err
@@ -256,20 +301,30 @@ func editKustomization(path, component, drop string) (bool, error) {
 		return false, fmt.Errorf("parse %s: %w", path, err)
 	}
 	edited := false
-	res, err := node.Pipe(yaml.Lookup("resources"))
+	res, err := node.Pipe(yaml.LookupCreate(yaml.SequenceNode, "resources"))
 	if err != nil {
 		return false, fmt.Errorf("%s: resources: %w", path, err)
 	}
-	if res != nil {
-		kept := res.Content()[:0]
-		for _, el := range res.Content() {
-			if el.Value == drop {
-				edited = true
-				continue
-			}
-			kept = append(kept, el)
+	var have []string
+	kept := res.Content()[:0]
+	for _, el := range res.Content() {
+		stale := strings.HasPrefix(el.Value, resourcesEntry) && !slices.Contains(resources, el.Value)
+		if el.Value == drop || stale {
+			edited = true
+			continue
 		}
-		res.YNode().Content = kept
+		kept = append(kept, el)
+		have = append(have, el.Value)
+	}
+	res.YNode().Content = kept
+	for _, r := range resources {
+		if slices.Contains(have, r) {
+			continue
+		}
+		if err := res.PipeE(yaml.Append(yaml.NewScalarRNode(r).YNode())); err != nil {
+			return false, err
+		}
+		edited = true
 	}
 	comps, err := node.Pipe(yaml.LookupCreate(yaml.SequenceNode, "components"))
 	if err != nil {

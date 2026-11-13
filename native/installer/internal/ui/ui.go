@@ -239,6 +239,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.m.Prev()
 			}
 		case "enter":
+			// A failed long step is rerun in place: every step is idempotent.
+			if t := m.current(); t != nil && t.done && t.err != nil {
+				switch m.m.Current() {
+				case state.Provision:
+					m.prov = nil
+				case state.ControlPlane:
+					m.cp = nil
+				}
+				return m, m.enter()
+			}
 			if !m.canAdvance() {
 				return m, nil
 			}
@@ -414,7 +424,7 @@ func (m Model) taskView(t *task) string {
 		b.WriteString(theme.Fainted.Render(truncate(l, m.bodyWidth()-4)) + "\n")
 	}
 	if t.err != nil {
-		b.WriteString("\n" + theme.Bad.Render("Failed: "+t.err.Error()) + "\n")
+		b.WriteString("\n" + theme.Bad.Render("Failed: "+t.err.Error()+" · enter to retry") + "\n")
 		if m.d.LogPath != "" {
 			b.WriteString(theme.Subtle.Render("Full output: "+m.d.LogPath) + "\n")
 		}

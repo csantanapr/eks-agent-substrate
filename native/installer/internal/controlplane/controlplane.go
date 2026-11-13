@@ -27,6 +27,7 @@ const (
 	FetchLine    = "Fetching substrate "
 	CachedLine   = "Using cached substrate "
 	KubeconfLine = "Writing kubeconfig "
+	PrereqLine   = "Applying cluster prerequisites from "
 	ReadyLine    = "Substrate control plane is ready"
 )
 
@@ -42,6 +43,9 @@ type Options struct {
 	Tag, Repo, ImageRepo     string
 	SnapBucket, AssetBucket  string
 	SandboxClasses           string
+	// AutoMode puts the bundled PostgreSQL volume on Auto Mode's EBS driver
+	// (deploy/eks/prereqs/storageclass-auto-ebs.yaml).
+	AutoMode bool
 	// TreeRoot is where the pinned tree is cached; Overlay is deploy/eks.
 	TreeRoot, Overlay string
 	// IngressIDs are the SPIFFE IDs the ingress router admits.
@@ -111,7 +115,11 @@ func AteSetupArgs(o Options, kubeContext string) []string {
 	if len(ids) == 0 {
 		ids = []string{"spiffe://cluster.local/ns/ate-system/sa/atenet-client"}
 	}
-	return []string{
+	var extra []string
+	if o.AutoMode {
+		extra = append(extra, "--ateapi-postgres-storage-class", AutoModeStorageClass)
+	}
+	return append([]string{
 		"run", "./cmd/ate-setup", "deploy", "ate-system",
 		"--context", kubeContext,
 		"--image-repo", o.ImageRepo, "--image-tag", o.Tag,
@@ -121,8 +129,11 @@ func AteSetupArgs(o Options, kubeContext string) []string {
 		"--ingress-allowed-spiffe-ids", strings.Join(ids, ","),
 		"--sandbox-classes", o.SandboxClasses,
 		"--rollout-timeout", "5m",
-	}
+	}, extra...)
 }
+
+// AutoModeStorageClass is the StorageClass in deploy/eks/prereqs.
+const AutoModeStorageClass = "substrate-eks-auto-ebs"
 
 // AteSetupEnv is the environment of the ate-setup run. It holds names only,
 // never a secret.
@@ -164,10 +175,20 @@ func Deploy(ctx context.Context, w io.Writer, o Options) error {
 	if err != nil {
 		return err
 	}
+	// Read Auto Mode off the cluster itself rather than trusting a flag, so a
+	// direct --deploy-control-plane run cannot pick the wrong StorageClass.
+	o.AutoMode = cl.AutoMode
 	kc := awsx.KubeconfigPath(o.Cluster, o.Region)
 	fmt.Fprintln(w, KubeconfLine+kc)
 	if err := awsx.WriteKubeconfig(kc, cl, o.Region, o.Profile); err != nil {
 		return err
+	}
+	if o.AutoMode {
+		prereqs := filepath.Join(o.Overlay, "prereqs")
+		fmt.Fprintln(w, PrereqLine+prereqs)
+		if err := run(ctx, w, "", []string{"KUBECONFIG=" + kc}, "kubectl", "apply", "-f", prereqs); err != nil {
+			return err
+		}
 	}
 	argv := append([]string{"go"}, AteSetupArgs(o, cl.Name)...)
 	fmt.Fprintln(w, "$ "+strings.Join(argv, " "))

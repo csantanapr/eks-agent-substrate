@@ -53,9 +53,14 @@ func ControlPlane() []ChecklistItem {
 		{"Fetch the pinned Substrate release", containsAny(controlplane.FetchLine, controlplane.CachedLine)},
 		{"Add the EKS manifests (deploy/eks)", contains(eksoverlay.LinePrefix)},
 		{"Write the installer's kubeconfig", contains(controlplane.KubeconfLine)},
+		{"Apply cluster prerequisites (Auto Mode StorageClass)", contains(controlplane.PrereqLine)},
+		// ate-setup v1.0.0 stages the microVM assets first, before any
+		// manifest is applied (deploy_ate_system -> prepare_microvm_deps ->
+		// deploy_crds), so this row comes before CRDs: a later row that
+		// matched first would tick the rows between as done.
+		{"Stage microVM assets in S3", containsAny("prepare_microvm_deps", "Uploading assets to s3://")},
 		{"Apply namespace, CRDs, and RBAC", contains("deploy_crds")},
 		{"Generate CAs, JWT pools, and API server config", contains("ensure_apiserver_prerequisites")},
-		{"Stage microVM assets in S3", containsAny("Uploading assets to s3://", "already in s3://")},
 		{"Wait for components: postgres, api-server, controller, atenet, atelet", contains("Waiting for ATE system components")},
 	}
 }

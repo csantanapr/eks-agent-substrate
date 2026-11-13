@@ -5,6 +5,7 @@ package doctor
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -40,8 +41,18 @@ func tool(name, fix string, args ...string) Check {
 		if err != nil {
 			return Result{Fail, "not found on PATH", fix}
 		}
-		out, _ := exec.CommandContext(ctx, path, args...).CombinedOutput()
+		c := exec.CommandContext(ctx, path, args...)
+		// The install runs go with GOTOOLCHAIN=local, so probe it that way: an
+		// automatic toolchain download is not what the install will get.
+		c.Env = append(os.Environ(), "GOTOOLCHAIN=local")
+		out, err := c.CombinedOutput()
 		line, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
+		if err != nil {
+			return Result{Fail, line, fix}
+		}
+		if strings.Contains(line, "downloading") {
+			return Result{Warn, line, "a toolchain download was attempted; " + fix}
+		}
 		return Result{OK, line, ""}
 	}}
 }
@@ -64,13 +75,23 @@ func Checks(profile, region string) []Check {
 			if err != nil {
 				return Result{Fail, err.Error(), "refresh credentials for profile " + profile}
 			}
-			return Result{OK, arn, ""}
+			return Result{OK, MaskArn(arn), ""}
 		}},
 		tool("go", "install Go 1.27 or later: https://go.dev/doc/install", "version"),
 		tool("git", "install git", "--version"),
 		tool("kubectl", "install kubectl: https://kubernetes.io/docs/tasks/tools/", "version", "--client=true"),
 		tool("aws", "install AWS CLI v2 (kubectl's token plugin and microVM staging use it): https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html", "--version"),
 	}
+}
+
+// MaskArn hides all but the last four digits of the account in an ARN, so a
+// screenshot of the doctor or the wizard never carries an account id.
+func MaskArn(arn string) string {
+	parts := strings.Split(arn, ":")
+	if len(parts) > 4 && len(parts[4]) > 4 {
+		parts[4] = strings.Repeat("•", len(parts[4])-4) + parts[4][len(parts[4])-4:]
+	}
+	return strings.Join(parts, ":")
 }
 
 // RunCLI prints every check for --doctor and returns how many failed.

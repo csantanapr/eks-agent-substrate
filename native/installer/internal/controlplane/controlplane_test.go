@@ -36,6 +36,17 @@ func TestAteSetupArgsMatchInstallScript(t *testing.T) {
 	if !slices.Equal(a[:4], []string{"run", "./cmd/ate-setup", "deploy", "ate-system"}) {
 		t.Errorf("not an ate-setup deploy: %v", a[:4])
 	}
+	if slices.Contains(a, "--ateapi-postgres-storage-class") {
+		t.Error("a standard cluster got the Auto Mode StorageClass")
+	}
+}
+
+func TestAutoModePinsPostgresStorageClass(t *testing.T) {
+	o := opts()
+	o.AutoMode = true
+	if got := flag(AteSetupArgs(o, "demo"), "--ateapi-postgres-storage-class"); got != AutoModeStorageClass {
+		t.Errorf("--ateapi-postgres-storage-class = %q", got)
+	}
 }
 
 // Secrets never ride in argv or env: the POC has none, and no postgres
