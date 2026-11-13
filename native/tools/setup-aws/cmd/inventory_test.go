@@ -11,6 +11,63 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
+// Live, a --keep-cluster teardown failed its final check: the tagging API
+// still listed the RDS instance's automated snapshot, which RDS had deleted
+// with the instance. Inventory now asks RDS. A gone automated snapshot is
+// not listed; a manual snapshot that exists is (it is data); a denied read
+// stops the inventory instead of passing as gone.
+func TestInventoryReadsRDSSnapshotsFromRDS(t *testing.T) {
+	tag := func(arn string) rgttypes.ResourceTagMapping {
+		return rgttypes.ResourceTagMapping{ResourceARN: aws.String(arn),
+			Tags: []rgttypes.Tag{{Key: aws.String(OwnerTagKey), Value: aws.String(tdOwner)}}}
+	}
+	const auto = "arn:aws:rds:us-west-2:111122223333:snapshot:rds:demo-pg-2026-11-13-23-14"
+	const manual = "arn:aws:rds:us-west-2:111122223333:snapshot:demo-pg-before-upgrade"
+
+	f := newTDFake()
+	f.tagged = append(f.tagged, tag(auto), tag(manual))
+	f.put(&tdObj{kind: "rds snapshot", id: "demo-pg-before-upgrade", state: "available"})
+	e, _, _ := tdTestEnv(t, f, false, false)
+	rows, err := e.inventory(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, r := range rows {
+		got[r.Kind+" "+r.ID] = true
+	}
+	if got["rds snapshot rds:demo-pg-2026-11-13-23-14"] {
+		t.Error("a gone automated snapshot was listed (stale tagging entry)")
+	}
+	if !got["rds snapshot demo-pg-before-upgrade"] {
+		t.Error("an existing manual snapshot was not listed")
+	}
+
+	// The automated snapshot still exists (deleting does not count).
+	f.put(&tdObj{kind: "rds snapshot", id: "rds:demo-pg-2026-11-13-23-14", state: "available"})
+	if rows, _ = e.inventory(context.Background()); !hasRow(rows, "rds snapshot rds:demo-pg-2026-11-13-23-14") {
+		t.Error("an existing automated snapshot was not listed")
+	}
+	f.get("rds snapshot", "rds:demo-pg-2026-11-13-23-14").state = "deleting"
+	if rows, _ = e.inventory(context.Background()); hasRow(rows, "rds snapshot rds:demo-pg-2026-11-13-23-14") {
+		t.Error("a deleting automated snapshot was listed")
+	}
+
+	f.deny["DescribeDBSnapshots"] = true
+	if _, err := e.inventory(context.Background()); err == nil || !strings.Contains(err.Error(), "AccessDenied") {
+		t.Errorf("a denied snapshot read did not stop the inventory: %v", err)
+	}
+}
+
+func hasRow(rows []tdRow, kindID string) bool {
+	for _, r := range rows {
+		if r.Kind+" "+r.ID == kindID {
+			return true
+		}
+	}
+	return false
+}
+
 func TestInventoryListsTheDeployment(t *testing.T) {
 	f := fullDeployment()
 	// A plugin script's file system: a type setup-aws does not manage.

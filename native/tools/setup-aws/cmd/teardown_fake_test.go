@@ -482,6 +482,24 @@ func (t *tfRDS) DeleteDBInstance(_ context.Context, in *rds.DeleteDBInstanceInpu
 	o.deleting, o.pending = true, 1
 	return &rds.DeleteDBInstanceOutput{}, nil
 }
+
+// DescribeDBSnapshots finds an "rds snapshot" object, as RDS does: an
+// automated one ("rds:..." id) only when asked for SnapshotType automated.
+func (t *tfRDS) DescribeDBSnapshots(_ context.Context, in *rds.DescribeDBSnapshotsInput, _ ...func(*rds.Options)) (*rds.DescribeDBSnapshotsOutput, error) {
+	f := t.f()
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.deny["DescribeDBSnapshots"] {
+		return nil, apiErr("AccessDenied")
+	}
+	id := aws.ToString(in.DBSnapshotIdentifier)
+	o := f.get("rds snapshot", id)
+	if o == nil || strings.HasPrefix(id, "rds:") != (aws.ToString(in.SnapshotType) == "automated") {
+		return nil, &rdstypes.DBSnapshotNotFoundFault{Message: aws.String("DBSnapshot " + id + " not found.")}
+	}
+	return &rds.DescribeDBSnapshotsOutput{DBSnapshots: []rdstypes.DBSnapshot{{DBSnapshotIdentifier: aws.String(id), Status: aws.String(o.state)}}}, nil
+}
+
 func (t *tfRDS) DescribeDBSubnetGroups(_ context.Context, in *rds.DescribeDBSubnetGroupsInput, _ ...func(*rds.Options)) (*rds.DescribeDBSubnetGroupsOutput, error) {
 	t.f().mu.Lock()
 	defer t.f().mu.Unlock()

@@ -109,6 +109,7 @@ type (
 		DescribeDBSubnetGroups(context.Context, *rds.DescribeDBSubnetGroupsInput, ...func(*rds.Options)) (*rds.DescribeDBSubnetGroupsOutput, error)
 		DeleteDBSubnetGroup(context.Context, *rds.DeleteDBSubnetGroupInput, ...func(*rds.Options)) (*rds.DeleteDBSubnetGroupOutput, error)
 		ListTagsForResource(context.Context, *rds.ListTagsForResourceInput, ...func(*rds.Options)) (*rds.ListTagsForResourceOutput, error)
+		DescribeDBSnapshots(context.Context, *rds.DescribeDBSnapshotsInput, ...func(*rds.Options)) (*rds.DescribeDBSnapshotsOutput, error)
 	}
 	tdSecretsAPI interface {
 		DescribeSecret(context.Context, *secretsmanager.DescribeSecretInput, ...func(*secretsmanager.Options)) (*secretsmanager.DescribeSecretOutput, error)
@@ -753,6 +754,35 @@ func (e *tdEnv) secret(ctx context.Context, name string) (*secretsmanager.Descri
 	return out, nil
 }
 
+// dbSnapshotExists asks RDS whether snapshot id exists and is not being
+// deleted. RDS names an automated snapshot "rds:<instance>-<date>" and finds
+// it only when asked for SnapshotType automated, so the type follows the
+// name. Gone is false; any other error is returned (AC2.3).
+func (e *tdEnv) dbSnapshotExists(ctx context.Context, id string) (bool, error) {
+	in := &rds.DescribeDBSnapshotsInput{DBSnapshotIdentifier: aws.String(id)}
+	if strings.HasPrefix(id, "rds:") {
+		in.SnapshotType = aws.String("automated")
+	}
+	out, err := e.c.RDS.DescribeDBSnapshots(ctx, in)
+	if tdGone(err) || isDBSnapshotNotFound(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("describe RDS snapshot %s: %w", id, err)
+	}
+	for _, s := range out.DBSnapshots {
+		if aws.ToString(s.Status) != "deleting" {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func isDBSnapshotNotFound(err error) bool {
+	var ae smithy.APIError
+	return errors.As(err, &ae) && (ae.ErrorCode() == "DBSnapshotNotFound" || ae.ErrorCode() == "DBSnapshotNotFoundFault")
+}
+
 // ---- inventory -----------------------------------------------------------
 
 // tdRow is one inventory line. Cluster marks what --keep-cluster keeps.
@@ -942,6 +972,22 @@ func (e *tdEnv) inventory(ctx context.Context) ([]tdRow, error) {
 				}
 				if s != nil && s.DeletedDate == nil {
 					add(tdRow{"secret", aws.ToString(s.Name), kvMap(s.Tags, smKV), false})
+				}
+				continue
+			}
+			// RDS snapshots: the tagging API keeps listing the instance's
+			// automated snapshot for minutes after RDS deleted it with the
+			// instance (DeleteAutomatedBackups), which failed the final check
+			// of a --keep-cluster teardown on a live run. Ask RDS: list one
+			// that still exists (a manual snapshot someone took is data, and
+			// teardown must not pretend it is gone); skip one that is gone.
+			if svc == "rds" && rtype == "snapshot" {
+				ok, err := e.dbSnapshotExists(ctx, id)
+				if err != nil {
+					return nil, err
+				}
+				if ok {
+					add(tdRow{svc + " " + rtype, id, kvMap(m.Tags, rgtKV), false})
 				}
 				continue
 			}
