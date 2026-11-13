@@ -29,6 +29,7 @@ const (
 	CachedLine   = "Using cached substrate "
 	KubeconfLine = "Writing kubeconfig "
 	PrereqLine   = "Applying cluster prerequisites from "
+	BundledLine  = "Using the bundled PostgreSQL; nothing to prepare on a standard cluster"
 	ReadyLine    = "Substrate control plane is ready"
 )
 
@@ -261,12 +262,15 @@ func install(ctx context.Context, w io.Writer, o Options, kubeContext, kc, tree 
 		}
 		env = append(env, dsnEnv...)
 	case DatabaseBundled:
-		if o.AutoMode {
-			prereqs := filepath.Join(o.Overlay, "prereqs")
-			fmt.Fprintln(w, PrereqLine+prereqs)
-			if err := run(ctx, w, "", []string{"KUBECONFIG=" + kc}, "kubectl", "apply", "-f", prereqs); err != nil {
-				return err
-			}
+		if !o.AutoMode {
+			// Printed so the checklist's database row lights on what ran.
+			fmt.Fprintln(w, BundledLine)
+			break
+		}
+		prereqs := filepath.Join(o.Overlay, "prereqs")
+		fmt.Fprintln(w, PrereqLine+prereqs)
+		if err := run(ctx, w, "", []string{"KUBECONFIG=" + kc}, "kubectl", "apply", "-f", prereqs); err != nil {
+			return err
 		}
 	}
 	argv := append([]string{"go"}, AteSetupArgs(o, kubeContext)...)

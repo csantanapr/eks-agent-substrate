@@ -67,6 +67,23 @@ func TestControlPlaneChecklistFollowsRealMarkerOrder(t *testing.T) {
 	}
 }
 
+// The database row lights for each database path, in place, and for the
+// RDS path it lights on the RDS line rather than staying dark until a later
+// row ticks it as if it had run.
+func TestDatabaseRowLightsForEveryPath(t *testing.T) {
+	for _, line := range []string{
+		controlplane.DatabaseLine + "sub-nt1-pg (sub-nt1-pg.x.us-west-2.rds.amazonaws.com:5432)",
+		controlplane.PrereqLine + "/x/native/deploy/eks/prereqs",
+		controlplane.BundledLine,
+	} {
+		items := ControlPlane()
+		got := Progress(items, 2, line)
+		if got != 3 || items[got].Label != "Prepare the database" {
+			t.Errorf("%q lit row %d", line, got)
+		}
+	}
+}
+
 func TestChecklistRejectsUnrelatedLines(t *testing.T) {
 	for _, items := range [][]ChecklistItem{Bootstrap(), ControlPlane()} {
 		if got := Progress(items, -1, "some unrelated output"); got != -1 {

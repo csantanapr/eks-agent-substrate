@@ -91,7 +91,9 @@ func ControlPlane() []ChecklistItem {
 		{"Fetch the pinned Substrate release", containsAny(controlplane.FetchLine, controlplane.CachedLine)},
 		{"Add the EKS manifests (deploy/eks)", contains(eksoverlay.LinePrefix)},
 		{"Write the installer's kubeconfig", contains(controlplane.KubeconfLine)},
-		{"Apply cluster prerequisites (Auto Mode StorageClass)", contains(controlplane.PrereqLine)},
+		// One row for whichever database path runs: the RDS bootstrap, the
+		// Auto Mode StorageClass for the bundled PostgreSQL, or nothing.
+		{"Prepare the database", containsAny(controlplane.DatabaseLine, controlplane.PrereqLine, controlplane.BundledLine)},
 		// ate-setup v1.0.0 stages the microVM assets first, before any
 		// manifest is applied (deploy_ate_system -> prepare_microvm_deps ->
 		// deploy_crds), so this row comes before CRDs: a later row that
