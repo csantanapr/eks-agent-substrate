@@ -79,10 +79,10 @@ func newReal(o Options) *env {
 // ensureKubeconfig returns the installer's kubeconfig for the cluster, which
 // the control plane step writes, writing it first if it is gone.
 func ensureKubeconfig(ctx context.Context, o Options) (string, error) {
+	// Always rewritten, as Deploy and Delete do: a kubeconfig left by an
+	// earlier run carries that run's --profile, and reusing it would run
+	// kubectl-ate as one identity and the S3 check as another (review F8).
 	kc := awsx.KubeconfigPath(o.Cluster, o.Region)
-	if _, err := os.Stat(kc); err == nil {
-		return kc, nil
-	}
 	c, err := awsx.New(ctx, o.Profile, o.Region)
 	if err != nil {
 		return "", err

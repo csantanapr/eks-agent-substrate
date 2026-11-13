@@ -31,6 +31,21 @@ func TestWriteKubeconfigIsPrivateAndCarriesTheProfile(t *testing.T) {
 	}
 }
 
+// Review F16: a kubeconfig an older build left at 0644 comes out 0600.
+func TestWriteKubeconfigTightensAnExistingFile(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "c.yaml")
+	if err := os.WriteFile(p, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cl := Cluster{Name: "demo", Endpoint: "https://example.eks.amazonaws.com", CA: "Zm9v"}
+	if err := WriteKubeconfig(p, cl, "us-west-2", ""); err != nil {
+		t.Fatal(err)
+	}
+	if st, _ := os.Stat(p); st.Mode().Perm() != 0o600 {
+		t.Errorf("mode %v, want 0600", st.Mode().Perm())
+	}
+}
+
 func TestWriteKubeconfigRefusesMissingCA(t *testing.T) {
 	if err := WriteKubeconfig(filepath.Join(t.TempDir(), "c"), Cluster{Name: "d", Endpoint: "https://x"}, "r", ""); err == nil {
 		t.Fatal("wrote a kubeconfig without a CA")

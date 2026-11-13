@@ -211,5 +211,10 @@ func WriteKubeconfig(path string, cl Cluster, region, profile string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	return os.WriteFile(path, []byte(b.String()), 0o600)
+	if err := os.WriteFile(path, []byte(b.String()), 0o600); err != nil {
+		return err
+	}
+	// WriteFile sets the mode only when it creates the file; tighten one an
+	// older build left wider (review F16).
+	return os.Chmod(path, 0o600)
 }
