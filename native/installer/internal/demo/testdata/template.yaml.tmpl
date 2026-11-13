@@ -1,0 +1,24 @@
+# ActorTemplate for the counter demo (shape of upstream's
+# demos/counter/counter-template.yaml.tmpl at v1.0.0).
+# `ko resolve` replaces the ko:// image reference.
+metadata:
+  atespace: ATESPACE
+  name: TEMPLATE
+workerSelector:
+  matchLabels:
+    workload: counter
+containers:
+- name: counter
+  image: ko://go.ate.dev/substrate/demos/counter
+  command:
+  - /ko-app/counter
+  - --extra-port=9090
+${VALIDATE_EXISTING_FILE_PATH_ARG}
+  volumeMounts:
+  - name: data
+    mountPath: /home/counter
+${EXTERNAL_VOLUME_MOUNTS}
+volumes:
+- name: data
+  durableDir: {}
+${EXTERNAL_VOLUMES}

@@ -5,6 +5,7 @@ go 1.26.0
 require (
 	github.com/aws/aws-sdk-go-v2 v1.48.0
 	github.com/aws/aws-sdk-go-v2/config v1.33.18
+	github.com/aws/aws-sdk-go-v2/service/ecr v1.67.6
 	github.com/aws/aws-sdk-go-v2/service/eks v1.105.6
 	github.com/aws/aws-sdk-go-v2/service/rds v1.133.0
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.10
@@ -12,6 +13,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sts v1.52.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
+	github.com/google/go-containerregistry v0.21.7
 	sigs.k8s.io/kustomize/kyaml v0.21.1
 )
 
@@ -19,8 +21,16 @@ require (
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.27 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.11.13 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.20.12 // indirect
+	github.com/docker/cli v29.5.3+incompatible // indirect
+	github.com/docker/docker-credential-helpers v0.9.3 // indirect
+	github.com/klauspost/compress v1.18.6 // indirect
 	github.com/monochromegane/go-gitignore v0.0.0-20200626010858-205db1a8cc00 // indirect
+	github.com/opencontainers/go-digest v1.0.0 // indirect
+	github.com/opencontainers/image-spec v1.1.1 // indirect
+	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/xlab/treeprint v1.2.0 // indirect
+	golang.org/x/sync v0.21.0 // indirect
+	gotest.tools/v3 v3.5.2 // indirect
 )
 
 require (
@@ -63,8 +73,8 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
-	go.yaml.in/yaml/v3 v3.0.3 // indirect
-	golang.org/x/sys v0.38.0 // indirect
+	go.yaml.in/yaml/v3 v3.0.4 // indirect
+	golang.org/x/sys v0.46.0 // indirect
 	golang.org/x/text v0.17.0 // indirect
 	google.golang.org/protobuf v1.36.5 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
