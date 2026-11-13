@@ -17,7 +17,7 @@ nothing that already exists, and a run that stopped part way is completed.
 | Provision | `setup-aws bootstrap` | S3 buckets for snapshots and microVM assets. EKS Pod Identity roles for ate-api-server and atelet. Private ECR repositories. |
 | Database | `setup-aws create rds` | A private RDS for PostgreSQL instance in the private subnets. Port 5432 is open only to the cluster security group. RDS manages the admin password, and the owner and read-write logins are in Secrets Manager. The schema is created from inside the cluster. With `--database=bundled`, Substrate's bundled PostgreSQL runs in the cluster instead. |
 | Control plane | `ate-setup deploy ate-system` | The pinned Substrate release with its published images, the gVisor and microVM sandbox classes, the microVM assets staged in S3, and the EKS changes in `deploy/eks`. |
-| Demo (`--demo`) | `ate-setup deploy demo counter`, `counter-microvm` | The counter demo on gVisor and on microVM, each pinned to its node group. |
+| Demo (`--demo`) | the counter image build, `kubectl apply`, `kubectl ate create` | The counter image, built from the release source and pushed to the private ECR repository `<cluster>/counter`. The counter demo on gVisor and on microVM, each pinned to its node group. |
 
 Every AWS resource carries the owner tag
 `agent-substrate-on-eks/deployment=<cluster>.<region>` and `TAGS` (default
@@ -77,10 +77,17 @@ actor, reads them again, and finds the snapshot under
 actor left CRASHED by an earlier reinstall is reverted to its last snapshot
 first.
 
+Releases publish the worker images but not the counter's, so the installer
+builds it as eks-talk's `demos/counter/deploy.sh` does, without docker: the
+counter binary from the release source, on the base image upstream's
+`.ko.yaml` names, for the node groups' architecture, pushed to
+`<cluster>/counter` with a short-lived ECR token that is never written to
+disk. It then renders upstream's demo templates with that image and the
+release worker images, each pinned by digest, and applies them.
+
 Upstream's demo worker pools do not choose a node. On EKS, atelet runs only on
 the `gvisor` and `microvm` node groups, so the installer pins each demo pool to
-its group (`nodeSelector: ate.dev/pool: <class>`) before `ate-setup` applies
-it.
+its group (`nodeSelector: ate.dev/pool: <class>`) before it applies it.
 
 ## Teardown
 
@@ -170,6 +177,9 @@ These would let this installer drop its overlay and patches:
    is deployed.
 4. A node selector for the demo worker pools in `ate-setup deploy demo`, so
    the installer need not edit the demo templates.
+5. The counter demo image published with each release, so `ate-setup deploy
+   demo --image-repo` can install the demo and the installer need not build
+   it.
 
 ## Contributing
 

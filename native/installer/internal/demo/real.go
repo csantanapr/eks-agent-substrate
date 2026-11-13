@@ -71,6 +71,14 @@ func newReal(o Options) *env {
 		},
 		kubeconfig: func(ctx context.Context) (string, error) { return ensureKubeconfig(ctx, o) },
 		freePort:   freePort,
+		pushCounter: func(ctx context.Context, binary, base, arch, repo, tag string) (string, error) {
+			c, err := awsConfig(ctx)
+			if err != nil {
+				return "", err
+			}
+			return pushCounter(ctx, c, binary, base, arch, repo, tag)
+		},
+		pin:        remoteDigest,
 		kubectlAte: kubectlAtePath(o.Tag),
 		interval:   2 * time.Second,
 	}
