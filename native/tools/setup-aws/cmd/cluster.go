@@ -36,8 +36,8 @@ var clusterCmd = &cobra.Command{
 // checkCluster reads the cluster and fails unless it is ACTIVE, recent
 // enough, and runs the EKS Pod Identity Agent. It changes nothing.
 //
-// Cluster creation is not part of this POC: the installer connects to an
-// existing cluster, the way substrate-gke's wizard can.
+// bootstrap runs it on any cluster, whether `create cluster` made it or the
+// user connected an existing one, the way substrate-gke's wizard can.
 func (e *env) checkCluster(ctx context.Context) (ClusterInfo, error) {
 	out, err := e.c.EKS.DescribeCluster(ctx, &eks.DescribeClusterInput{Name: aws.String(e.names.Cluster)})
 	if err != nil {

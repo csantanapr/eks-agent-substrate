@@ -109,8 +109,8 @@ func simStart(s *state.Setup, what string) string {
 // createCluster runs `setup-aws create cluster` with config.env's knobs.
 func (b builder) createCluster(s *state.Setup) execx.Spec {
 	return b.setupAWSSpec(s, "setup-aws create cluster", s.NewClusterConfig.Env(),
-		simPhases(phases.Cluster, simStart(s, "Creating the EKS cluster and its network..."),
-			`level=INFO msg="Cluster is ACTIVE and every node is Ready." creates=27`),
+		simPhases(phases.Cluster, simStart(s, "Creating the cluster..."),
+			`level=INFO msg="Cluster ready." cluster=`+s.ClusterName+` created=27 changed=0 took=19m40s`),
 		"create", "cluster")
 }
 
@@ -124,7 +124,7 @@ func (b builder) bootstrap(s *state.Setup) execx.Spec {
 // rds runs `setup-aws create rds`.
 func (b builder) rds(s *state.Setup) execx.Spec {
 	return b.setupAWSSpec(s, "setup-aws create rds", nil,
-		simPhases(phases.RDS, simStart(s, "Creating the RDS PostgreSQL database..."), `level=INFO msg="RDS instance is available."`),
+		simPhases(phases.RDS, simStart(s, "Starting RDS setup..."), `level=INFO msg="RDS setup completed successfully."`),
 		"create", "rds")
 }
 
@@ -135,7 +135,8 @@ func (b builder) teardown(s *state.Setup) execx.Spec {
 		args = append(args, "--keep-cluster")
 	}
 	return b.setupAWSSpec(s, "setup-aws "+strings.Join(args, " "), nil,
-		simPhases(phases.Teardown, simStart(s, "Tearing down this deployment..."), `level=INFO msg="Teardown completed." deletes=19`),
+		simPhases(phases.Teardown, `level=INFO msg="Starting teardown of `+s.ClusterName+"."+s.Region+`..."`,
+			`level=INFO msg="Teardown complete: nothing left for `+s.ClusterName+"."+s.Region+`"`),
 		args...)
 }
 

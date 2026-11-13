@@ -10,9 +10,11 @@ import (
 var rootCmd = &cobra.Command{
 	Use:   "setup-aws",
 	Short: "Provision the AWS resources Agent Substrate uses on Amazon EKS",
-	Long: `setup-aws provisions the AWS resources Agent Substrate needs on an EKS
-cluster: the snapshot and microVM asset buckets, the EKS Pod Identity roles of
-ate-api-server and atelet, and private ECR repositories. Every step is
+	Long: `setup-aws provisions the AWS resources Agent Substrate needs on Amazon EKS:
+the cluster and its network (create cluster); the snapshot and microVM asset
+buckets, the EKS Pod Identity roles of ate-api-server and atelet, and private
+ECR repositories (bootstrap); the private RDS database and its logins (create
+rds). teardown removes them and inventory lists what is left. Every step is
 idempotent, and --plan reports what a step would do without changing anything.`,
 	SilenceUsage: true,
 }
