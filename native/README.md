@@ -37,7 +37,7 @@ yet; see [Gaps](#gaps).
 | `internal/gcp` | `internal/awsx` | read-only cloud view (identity, clusters), via the AWS SDK |
 | `internal/gkeoverlay` + `deploy/gke` | `internal/eksoverlay` + `deploy/eks` | adds the cloud's kustomize Component to the fetched Substrate tree |
 | `internal/snapshot` (deploy step) | `internal/controlplane` | fetch the pinned tree, write the installer's own kubeconfig, run `ate-setup deploy ate-system` |
-| `tools/setup-gcp` (cobra + cloud SDK) | `tools/setup-aws` (cobra + AWS SDK for Go v2) | idempotent `check cluster`, `create bucket\|iam\|ecr`, `bootstrap`, `--plan` |
+| `tools/setup-gcp` (cobra + cloud SDK) | `tools/setup-aws` (cobra + AWS SDK for Go v2) | idempotent `check cluster`, `create cluster\|bucket\|iam\|ecr`, `bootstrap`, `--plan` |
 
 ## Picking up substrate-gke's improvements
 
@@ -72,10 +72,12 @@ Go diff, as eks-talk's `patches/substrate-v1.0.0-eks.patch`.
 
 ## Gaps
 
-- **Cluster creation.** `create-cluster.sh` (eksctl) still makes the cluster.
-  The native equivalent is a `setup-aws create cluster` step: VPC, cluster
-  and node roles, the Auto Mode cluster, the nested-virtualization launch
-  template, and node groups.
+- **Cluster creation.** `setup-aws create cluster` makes what
+  `create-cluster.sh` (eksctl) made: the VPC (one NAT gateway), the cluster
+  and node roles, the Auto Mode cluster, the add-ons, a launch template per
+  node group (IMDSv2, hop limit 1, encrypted gp3; nested virtualization on
+  microvm) and the three node groups. The wizard does not call it yet, and
+  the default StorageClass and Auto Mode node tags are still the scripts'.
 - **Database.** The POC uses Substrate's bundled PostgreSQL. eks-talk's RDS +
   Secrets Manager path belongs in `setup-aws create rds`, the counterpart of
   `setup-gcp create cloudsql`.
