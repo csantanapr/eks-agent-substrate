@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -31,12 +32,29 @@ func testOptions(root string) Options {
 		TreeRoot: root, ImageRepo: "ghcr.io/agent-substrate/substrate", SandboxClasses: "gvisor,microvm"}
 }
 
-// testTree makes a cached tree with both demo pool templates.
+// testBase is the counter's base image in the test tree's .ko.yaml.
+const testBase = "gcr.io/distroless/static-debian13:latest@sha256:15f8"
+
+// testKoYAML is the shape of upstream's .ko.yaml: a default base and the
+// counter's root-user override.
+const testKoYAML = `defaultBaseImage: gcr.io/distroless/static-debian13:nonroot@sha256:18f4
+baseImageOverrides:
+  # The actor images stay on the root base.
+  go.ate.dev/substrate/demos/counter: ` + testBase + `
+  go.ate.dev/substrate/demos/egress: gcr.io/distroless/static-debian13:latest@sha256:15f8
+`
+
+// testTree makes a cached tree with both demo pool and template files and
+// upstream's .ko.yaml.
 func testTree(t *testing.T) (root, tree string) {
 	t.Helper()
 	root = t.TempDir()
 	tree = controlplane.TreeDir(root, "v1.0.0")
-	fixture, err := os.ReadFile("testdata/pool.yaml.tmpl")
+	pool, err := os.ReadFile("testdata/pool.yaml.tmpl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpl, err := os.ReadFile("testdata/template.yaml.tmpl")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,9 +63,16 @@ func testTree(t *testing.T) (root, tree string) {
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(p, fixture, 0o644); err != nil {
+		if err := os.WriteFile(p, bytes.ReplaceAll(pool, []byte("ateworker-gvisor"), []byte("ateworker-"+c.name)), 0o644); err != nil {
 			t.Fatal(err)
 		}
+		tt := strings.NewReplacer("ATESPACE", c.atespace, "TEMPLATE", c.template).Replace(string(tmpl))
+		if err := os.WriteFile(filepath.Join(tree, c.tmplFile), []byte(tt), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(tree, ".ko.yaml"), []byte(testKoYAML), 0o644); err != nil {
+		t.Fatal(err)
 	}
 	return root, tree
 }
@@ -67,6 +92,8 @@ type fakeActor struct {
 	lose string
 	// noSnapshot makes a suspend record no new snapshot.
 	noSnapshot bool
+	// slowReads is how many reads leave a pending upload pending.
+	slowReads int
 }
 
 // fake is a cluster, an S3 bucket and a localhost proxy, answering the argv
@@ -81,21 +108,59 @@ type fake struct {
 	listed  []string // bucket|prefix of every S3 list
 	objects int
 	lose    map[string]string // actor -> counter its resume loses
+
+	// The deploy's side: the node architectures kubectl reports, what was
+	// pushed and pinned, every manifest applied (by file name, read when
+	// applied), and the cluster's atespaces and templates (atespace/name ->
+	// image) with each created template's manifest.
+	archs     string
+	pushed    []string
+	pinned    []string
+	applied   map[string]string
+	atespaces map[string]bool
+	templates map[string]string
+	created   map[string]string
 }
 
+// testCounter is the reference the fake pushCounter returns.
+const testCounter = testAccount + ".dkr.ecr.us-west-2.amazonaws.com/c1/counter:v1.0.0@sha256:c0ffee"
+
 func newFake(t *testing.T) *fake {
-	return &fake{t: t, actors: map[string]*fakeActor{}, proxies: map[int]string{}, port: 40000, objects: 7, lose: map[string]string{}}
+	return &fake{t: t, actors: map[string]*fakeActor{}, proxies: map[int]string{}, port: 40000, objects: 7, lose: map[string]string{},
+		archs: "amd64 amd64 amd64 amd64", applied: map[string]string{}, atespaces: map[string]bool{},
+		templates: map[string]string{}, created: map[string]string{}}
 }
 
 func (f *fake) env() *env {
 	return &env{
 		run: func(_ context.Context, w io.Writer, dir string, extra []string, argv ...string) error {
 			f.calls = append(f.calls, call{dir, extra, argv})
+			if i := slices.Index(argv, "apply"); i >= 0 && argv[0] == "kubectl" && argv[i+1] == "-f" {
+				b, err := os.ReadFile(argv[i+2])
+				if err != nil {
+					f.t.Fatal(err)
+				}
+				f.applied[filepath.Base(argv[i+2])] = string(b)
+			}
 			return nil
 		},
 		output: func(_ context.Context, extra []string, argv ...string) ([]byte, error) {
 			f.calls = append(f.calls, call{"", extra, argv})
+			if argv[0] == "kubectl" {
+				if !slices.Equal(argv[1:5], []string{"--kubeconfig", testKube, "--context", "c1"}) {
+					f.t.Fatalf("kubectl argv %q does not name the installer's kubeconfig and context", argv)
+				}
+				return []byte(f.archs), nil
+			}
 			return f.ate(argv)
+		},
+		pushCounter: func(_ context.Context, binary, base, arch, repo, tag string) (string, error) {
+			f.pushed = append(f.pushed, strings.Join([]string{filepath.Base(binary), base, arch, repo, tag}, "|"))
+			return testCounter, nil
+		},
+		pin: func(_ context.Context, tagged string) (string, error) {
+			f.pinned = append(f.pinned, tagged)
+			return tagged + "@sha256:pinned", nil
 		},
 		start: func(_ context.Context, _ io.Writer, extra []string, argv ...string) (func(), error) {
 			f.calls = append(f.calls, call{"", extra, argv})
@@ -133,6 +198,16 @@ func (f *fake) ate(argv []string) ([]byte, error) {
 		f.t.Fatalf("kubectl-ate argv %q does not name the installer's binary, kubeconfig and context", argv)
 	}
 	args := ateArgs(argv)
+	switch args[1] {
+	case "atespace":
+		if f.atespaces[args[2]] {
+			return nil, fmt.Errorf("atespace %q already exists", args[2])
+		}
+		f.atespaces[args[2]] = true
+		return nil, nil
+	case "actor-template":
+		return f.template(args)
+	}
 	verb, name, ns := args[0], args[2], args[4]
 	a := f.actors[name]
 	if verb != "create" && a == nil {
@@ -140,11 +215,16 @@ func (f *fake) ate(argv []string) ([]byte, error) {
 	}
 	switch verb {
 	case "get":
-		// A pending upload completes on the next read, as it would in the background.
+		// A pending upload completes on the next read, as it would in the
+		// background, or after slowReads more reads.
 		var out actor
 		out.Metadata.UID = a.uid
 		out.Status.State = a.state
 		out.Status.Snapshots = slices.Clone(a.snaps)
+		if a.slowReads > 0 {
+			a.slowReads--
+			return json.Marshal(out)
+		}
 		for i := range a.snaps {
 			a.snaps[i].DurableSnapshot.State = storageCompleted
 		}
@@ -209,45 +289,174 @@ func (f *fake) verbs() []string {
 	return out
 }
 
-func TestDeployRunsAteSetupPerClassWithPinnedPools(t *testing.T) {
+// templateRe reads what the fake needs from a rendered ActorTemplate.
+var templateRe = regexp.MustCompile(`(?m)^  atespace: (\S+)\n  name: (\S+)\n[\s\S]*?^  image: (\S+)`)
+
+// template answers `kubectl ate get|create actor-template`.
+func (f *fake) template(args []string) ([]byte, error) {
+	switch args[0] {
+	case "get":
+		img, ok := f.templates[args[4]+"/"+args[2]]
+		if !ok {
+			return nil, fmt.Errorf("actor-template %q not found", args[2])
+		}
+		return json.Marshal(map[string]any{
+			"spec":   map[string]any{"containers": []any{map[string]any{"image": img}}},
+			"status": map[string]any{"goldenSnapshotStatus": map[string]any{"goldenTag": map[string]any{"name": "golden-1"}}},
+		})
+	case "create":
+		b, err := os.ReadFile(args[3])
+		if err != nil {
+			f.t.Fatal(err)
+		}
+		m := templateRe.FindStringSubmatch(string(b))
+		if m == nil {
+			f.t.Fatalf("created template does not parse:\n%s", b)
+		}
+		f.templates[m[1]+"/"+m[2]], f.created[m[1]+"/"+m[2]] = m[3], string(b)
+		return nil, nil
+	}
+	f.t.Fatalf("unexpected kubectl-ate %q", args)
+	return nil, nil
+}
+
+// AC7.1: releases publish no counter image, so the deploy builds it for the
+// nodes' architecture on upstream's base, pushes it to <cluster>/counter, and
+// installs both classes from rendered templates: every image pinned by
+// digest, each pool on its node group, no ko:// or placeholder left.
+func TestDeployBuildsTheCounterAndAppliesPinnedTemplates(t *testing.T) {
 	root, tree := testTree(t)
 	f := newFake(t)
+	f.archs = "arm64 arm64"
 	var out bytes.Buffer
 	if err := f.env().deploy(context.Background(), &out, testOptions(root)); err != nil {
-		t.Fatal(err)
+		t.Fatalf("%v\n%s", err, out.String())
 	}
-	want := [][]string{
-		{"go", "run", "./cmd/ate-setup", "deploy", "demo", "counter", "--context", "c1",
-			"--image-repo", "ghcr.io/agent-substrate/substrate", "--image-tag", "v1.0.0"},
-		{"go", "run", "./cmd/ate-setup", "deploy", "demo", "counter-microvm", "--context", "c1",
-			"--image-repo", "ghcr.io/agent-substrate/substrate", "--image-tag", "v1.0.0"},
-	}
-	if len(f.calls) != len(want) {
-		t.Fatalf("calls = %v", f.calls)
-	}
+	var build *call
 	for i, c := range f.calls {
-		if !slices.Equal(c.argv, want[i]) {
-			t.Errorf("argv %d = %q, want %q", i, c.argv, want[i])
+		if slices.Contains(c.argv, "./demos/counter") {
+			build = &f.calls[i]
 		}
-		if c.dir != tree {
-			t.Errorf("ran in %s, want the cached tree %s", c.dir, tree)
-		}
-		for _, e := range []string{"KUBECONFIG=" + testKube, "KUBECTL_CONTEXT=", "GOFLAGS=-mod=vendor", "GOTOOLCHAIN=local"} {
-			if !slices.Contains(c.env, e) {
-				t.Errorf("env %q lacks %s", c.env, e)
-			}
-		}
+	}
+	if build == nil || build.dir != tree || !slices.Contains(build.env, "GOARCH=arm64") || !slices.Contains(build.env, "GOFLAGS=-mod=vendor") {
+		t.Fatalf("counter build = %+v, want go build ./demos/counter in the tree for arm64", build)
+	}
+	if want := []string{"counter|" + testBase + "|arm64|c1/counter|v1.0.0"}; !slices.Equal(f.pushed, want) {
+		t.Errorf("pushed %q, want %q", f.pushed, want)
+	}
+	if want := []string{"ghcr.io/agent-substrate/substrate/ateworker-gvisor:v1.0.0", "ghcr.io/agent-substrate/substrate/ateworker-microvm:v1.0.0"}; !slices.Equal(f.pinned, want) {
+		t.Errorf("pinned %q, want %q", f.pinned, want)
 	}
 	for _, c := range classes {
-		sel := poolSelector(t, filepath.Join(tree, c.pool))
-		if sel != c.name {
-			t.Errorf("%s pool pinned to %q, want %q", c.name, sel, c.name)
+		pool := f.applied[c.demo+"-pool.yaml"]
+		worker := "workerImage: ghcr.io/agent-substrate/substrate/ateworker-" + c.name + ":v1.0.0@sha256:pinned"
+		if !strings.Contains(pool, worker) || !strings.Contains(pool, PoolLabel+": "+c.name) || strings.Contains(pool, "ko://go") {
+			t.Errorf("%s: applied pool lacks %q or its nodeSelector, or keeps a ko:// reference:\n%s", c.name, worker, pool)
+		}
+		key := c.atespace + "/" + c.template
+		if f.templates[key] != testCounter {
+			t.Errorf("%s runs %q, want %q", key, f.templates[key], testCounter)
+		}
+		if tmpl := f.created[key]; strings.Contains(tmpl, "${") || strings.Contains(tmpl, "ko://go") {
+			t.Errorf("%s: created template keeps a placeholder or ko:// reference:\n%s", key, tmpl)
+		}
+		if !f.atespaces[c.atespace] {
+			t.Errorf("atespace %s not created", c.atespace)
 		}
 	}
-	for _, l := range []string{DeployLine + "gvisor\n", DeployLine + "microvm\n"} {
+	for _, l := range []string{DeployLine + "gvisor\n", DeployLine + "microvm\n", "Golden snapshot ready for ate-demo-counter/counter\n"} {
 		if !strings.Contains(out.String(), l) {
 			t.Errorf("output lacks %q:\n%s", l, out.String())
 		}
+	}
+	for _, c := range f.calls {
+		if c.argv[0] == "bash" || c.argv[0] == "sh" || c.argv[0] == "docker" || slices.Contains(c.argv, "-c") {
+			t.Errorf("ran %q", c.argv)
+		}
+	}
+}
+
+// A rerun keeps a template that runs this counter image, and refuses one
+// that runs another (templates are immutable) without creating anything.
+func TestDeployKeepsItsTemplateAndRefusesAnother(t *testing.T) {
+	root, _ := testTree(t)
+	f := newFake(t)
+	f.atespaces["ate-demo-counter"] = true
+	f.templates["ate-demo-counter/counter"] = testCounter
+	o := testOptions(root)
+	o.SandboxClasses = "gvisor"
+	if err := f.env().deploy(context.Background(), io.Discard, o); err != nil {
+		t.Fatalf("rerun: %v", err)
+	}
+	if len(f.created) != 0 {
+		t.Errorf("rerun created %v", f.created)
+	}
+
+	f = newFake(t)
+	f.templates["ate-demo-counter/counter"] = "example.com/other/counter@sha256:beef"
+	err := f.env().deploy(context.Background(), io.Discard, o)
+	if err == nil || !strings.Contains(err.Error(), "runs example.com/other/counter@sha256:beef, not "+testCounter) {
+		t.Fatalf("err = %v", err)
+	}
+	if len(f.created) != 0 {
+		t.Errorf("created %v over another image", f.created)
+	}
+}
+
+// The counter image is built for one architecture, so node groups of two
+// are refused before anything is built or pushed.
+func TestDeployRefusesMixedNodeArchitectures(t *testing.T) {
+	root, _ := testTree(t)
+	f := newFake(t)
+	f.archs = "amd64 arm64 amd64"
+	err := f.env().deploy(context.Background(), io.Discard, testOptions(root))
+	if err == nil || !strings.Contains(err.Error(), "amd64 and arm64") || len(f.pushed) != 0 {
+		t.Fatalf("err = %v, pushed %q", err, f.pushed)
+	}
+}
+
+func TestRenderReplacesWholeReferencesAndDropsPlaceholders(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "t.yaml")
+	src := "# the ko:// image reference\nimage: ko://go.ate.dev/substrate/demos/counter\n${EXTERNAL_VOLUMES}\n  - --flag\n"
+	os.WriteFile(p, []byte(src), 0o644)
+	got, err := render(p, map[string]string{counterPkg: "r/counter@sha256:1"})
+	if want := "# the ko:// image reference\nimage: r/counter@sha256:1\n  - --flag\n"; err != nil || string(got) != want {
+		t.Errorf("render = %q, %v; want %q", got, err, want)
+	}
+	// A longer package is not the counter, and an unmapped reference fails.
+	os.WriteFile(p, []byte("image: ko://go.ate.dev/substrate/demos/counter-x\n"), 0o644)
+	if _, err := render(p, map[string]string{counterPkg: "r/counter@sha256:1"}); err == nil || !strings.Contains(err.Error(), "counter-x") {
+		t.Errorf("unmapped reference: err = %v", err)
+	}
+}
+
+func TestCounterBaseIsUpstreamsPinnedOverride(t *testing.T) {
+	_, tree := testTree(t)
+	if b, err := counterBase(tree); err != nil || b != testBase {
+		t.Errorf("counterBase = %q, %v; want %q", b, err, testBase)
+	}
+	os.WriteFile(filepath.Join(tree, ".ko.yaml"), []byte("defaultBaseImage: cgr.dev/static@sha256:aa\n"), 0o644)
+	if b, err := counterBase(tree); err != nil || b != "cgr.dev/static@sha256:aa" {
+		t.Errorf("default base = %q, %v", b, err)
+	}
+	os.WriteFile(filepath.Join(tree, ".ko.yaml"), []byte("defaultBaseImage: cgr.dev/static:latest\n"), 0o644)
+	if _, err := counterBase(tree); err == nil {
+		t.Error("an unpinned base was accepted")
+	}
+}
+
+func TestAppLayerIsReproducible(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "counter")
+	os.WriteFile(bin, []byte("\x7fELF fake"), 0o755)
+	a, err := appLayer(bin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := appLayer(bin)
+	da, _ := a.Digest()
+	db, _ := b.Digest()
+	if da != db {
+		t.Errorf("same binary, two digests: %s %s", da, db)
 	}
 }
 
@@ -398,6 +607,20 @@ func TestVerifyPassesOnBothClasses(t *testing.T) {
 		if c.argv[0] == "bash" || c.argv[0] == "sh" || slices.Contains(c.argv, "-c") {
 			t.Errorf("a shell ran: %q", c.argv)
 		}
+	}
+}
+
+// The S3 copy of a snapshot took 4.5 to 6 minutes on sub-nt6, at the edge
+// of a 120-read wait; the check waits as long as verify.sh (10 minutes, 300
+// reads at the 2s interval), so an upload done after 200 reads passes.
+func TestVerifyWaitsForASlowSnapshotUpload(t *testing.T) {
+	root, _ := testTree(t)
+	f := newFake(t)
+	f.actors["demo-gvisor"] = &fakeActor{ns: "ate-demo-counter", uid: "uid-demo-gvisor", state: stateRunning, slowReads: 200}
+	o := testOptions(root)
+	o.SandboxClasses = "gvisor"
+	if err := f.env().verify(context.Background(), io.Discard, o); err != nil {
+		t.Fatal(err)
 	}
 }
 

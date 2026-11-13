@@ -1,10 +1,16 @@
 package awsx
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/eks"
+	ekstypes "github.com/aws/aws-sdk-go-v2/service/eks/types"
 )
 
 func TestWriteKubeconfigIsPrivateAndCarriesTheProfile(t *testing.T) {
@@ -28,6 +34,21 @@ func TestWriteKubeconfigIsPrivateAndCarriesTheProfile(t *testing.T) {
 	}
 	if strings.Contains(string(b), "token:") {
 		t.Error("kubeconfig stores a token")
+	}
+}
+
+// Review F16: a kubeconfig an older build left at 0644 comes out 0600.
+func TestWriteKubeconfigTightensAnExistingFile(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "c.yaml")
+	if err := os.WriteFile(p, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cl := Cluster{Name: "demo", Endpoint: "https://example.eks.amazonaws.com", CA: "Zm9v"}
+	if err := WriteKubeconfig(p, cl, "us-west-2", ""); err != nil {
+		t.Fatal(err)
+	}
+	if st, _ := os.Stat(p); st.Mode().Perm() != 0o600 {
+		t.Errorf("mode %v, want 0600", st.Mode().Perm())
 	}
 }
 
@@ -88,5 +109,46 @@ func TestValidClusterName(t *testing.T) {
 		if err := ValidClusterName(name); (err == nil) != ok {
 			t.Errorf("ValidClusterName(%q) = %v, want ok=%v", name, err, ok)
 		}
+	}
+}
+
+// fakeEKS answers DescribeCluster with err, or an ACTIVE cluster.
+type fakeEKS struct {
+	EKSAPI
+	err error
+}
+
+func (f fakeEKS) DescribeCluster(context.Context, *eks.DescribeClusterInput, ...func(*eks.Options)) (*eks.DescribeClusterOutput, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return &eks.DescribeClusterOutput{Cluster: &ekstypes.Cluster{Version: aws.String("1.37"), Status: ekstypes.ClusterStatusActive}}, nil
+}
+
+// Live on sub-nt6: the wizard's client, loaded when it opened, sent an
+// expired token after the credentials were refreshed on disk, so enter on
+// the failed teardown screen never recovered. Each Fresh call loads a client
+// (the credentials) again: the first sees the expired token, the retry the
+// refreshed one.
+func TestFreshLoadsCredentialsForEveryCall(t *testing.T) {
+	expired := errors.New("api error ExpiredTokenException: The security token included in the request is expired")
+	loads := 0
+	newClient = func(context.Context, string, string) (*Client, error) {
+		loads++
+		if loads == 1 {
+			return &Client{EKS: fakeEKS{err: expired}}, nil
+		}
+		return &Client{EKS: fakeEKS{}}, nil
+	}
+	defer func() { newClient = New }()
+	f := Fresh{Profile: "p", Region: "us-west-2"}
+	if _, err := f.Describe(context.Background(), "c"); !errors.Is(err, expired) {
+		t.Fatalf("first describe: err = %v, want the expired token", err)
+	}
+	if c, err := f.Describe(context.Background(), "c"); err != nil || c.Status != "ACTIVE" {
+		t.Errorf("retry after the refresh: %+v, %v", c, err)
+	}
+	if loads != 2 {
+		t.Errorf("loaded %d clients for 2 calls", loads)
 	}
 }

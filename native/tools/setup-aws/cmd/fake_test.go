@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -30,14 +31,18 @@ type fakeAWS struct {
 	policies map[string]string            // role -> inline policy
 	assocs   map[string]string            // ns/sa -> role ARN
 	repos    map[string]bool
+	repoTags map[string]map[string]string // repository -> tags
 	writes   []string
 	denyHead bool // HeadBucket returns AccessDenied
+	// failTagging makes the next N PutBucketTagging calls fail (throttled).
+	failTagging int
 }
 
 func newFake() *fakeAWS {
 	return &fakeAWS{version: "1.37", autoMode: true,
 		buckets: map[string]map[string]string{}, roles: map[string]map[string]string{},
-		policies: map[string]string{}, assocs: map[string]string{}, repos: map[string]bool{}}
+		policies: map[string]string{}, assocs: map[string]string{}, repos: map[string]bool{},
+		repoTags: map[string]map[string]string{}}
 }
 
 func apiErr(code string) error { return &smithy.GenericAPIError{Code: code, Message: code} }
@@ -100,7 +105,13 @@ func (f *fs3) CreateBucket(_ context.Context, in *s3.CreateBucketInput, _ ...fun
 	if in.ObjectOwnership != s3types.ObjectOwnershipBucketOwnerEnforced {
 		return nil, fmt.Errorf("bucket %s created without BucketOwnerEnforced", aws.ToString(in.Bucket))
 	}
-	f.buckets[aws.ToString(in.Bucket)] = map[string]string{}
+	tags := map[string]string{}
+	if in.CreateBucketConfiguration != nil {
+		for _, t := range in.CreateBucketConfiguration.Tags {
+			tags[aws.ToString(t.Key)] = aws.ToString(t.Value)
+		}
+	}
+	f.buckets[aws.ToString(in.Bucket)] = tags
 	(*fakeAWS)(f).write("CreateBucket " + aws.ToString(in.Bucket))
 	return &s3.CreateBucketOutput{}, nil
 }
@@ -116,6 +127,10 @@ func (f *fs3) GetBucketTagging(_ context.Context, in *s3.GetBucketTaggingInput, 
 	return out, nil
 }
 func (f *fs3) PutBucketTagging(_ context.Context, in *s3.PutBucketTaggingInput, _ ...func(*s3.Options)) (*s3.PutBucketTaggingOutput, error) {
+	if f.failTagging > 0 {
+		f.failTagging--
+		return nil, apiErr("SlowDown")
+	}
 	m := map[string]string{}
 	for _, t := range in.Tagging.TagSet {
 		m[aws.ToString(t.Key)] = aws.ToString(t.Value)
@@ -182,16 +197,30 @@ func (f *fiam) PutRolePolicy(_ context.Context, in *iam.PutRolePolicyInput, _ ..
 type fecr fakeAWS
 
 func (f *fecr) DescribeRepositories(_ context.Context, in *ecr.DescribeRepositoriesInput, _ ...func(*ecr.Options)) (*ecr.DescribeRepositoriesOutput, error) {
-	if !f.repos[in.RepositoryNames[0]] {
+	name := in.RepositoryNames[0]
+	if !f.repos[name] {
 		return nil, apiErr("RepositoryNotFoundException")
 	}
-	return &ecr.DescribeRepositoriesOutput{}, nil
+	return &ecr.DescribeRepositoriesOutput{Repositories: []ecrtypes.Repository{{RepositoryName: aws.String(name), RepositoryArn: aws.String("arn:aws:ecr:us-west-2:111122223333:repository/" + name)}}}, nil
+}
+func (f *fecr) ListTagsForResource(_ context.Context, in *ecr.ListTagsForResourceInput, _ ...func(*ecr.Options)) (*ecr.ListTagsForResourceOutput, error) {
+	name := strings.TrimPrefix(aws.ToString(in.ResourceArn), "arn:aws:ecr:us-west-2:111122223333:repository/")
+	out := &ecr.ListTagsForResourceOutput{}
+	for k, v := range f.repoTags[name] {
+		out.Tags = append(out.Tags, ecrtypes.Tag{Key: aws.String(k), Value: aws.String(v)})
+	}
+	return out, nil
 }
 func (f *fecr) CreateRepository(_ context.Context, in *ecr.CreateRepositoryInput, _ ...func(*ecr.Options)) (*ecr.CreateRepositoryOutput, error) {
 	if !in.ImageScanningConfiguration.ScanOnPush || in.EncryptionConfiguration.EncryptionType != ecrtypes.EncryptionTypeAes256 {
 		return nil, fmt.Errorf("repository without scan on push or encryption")
 	}
-	f.repos[aws.ToString(in.RepositoryName)] = true
-	(*fakeAWS)(f).write("CreateRepository " + aws.ToString(in.RepositoryName))
+	name := aws.ToString(in.RepositoryName)
+	f.repos[name] = true
+	f.repoTags[name] = map[string]string{}
+	for _, t := range in.Tags {
+		f.repoTags[name][aws.ToString(t.Key)] = aws.ToString(t.Value)
+	}
+	(*fakeAWS)(f).write("CreateRepository " + name)
 	return &ecr.CreateRepositoryOutput{}, nil
 }

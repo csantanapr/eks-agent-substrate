@@ -134,6 +134,11 @@ func main() {
 		dir, _ := os.UserCacheDir()
 		*logPath = filepath.Join(dir, "substrate-eks", "logs", "installer-"+time.Now().Format("20060102-150405")+".log")
 	}
+	// The log holds full command lines and output, which name the account
+	// (bucket names); it holds no secret. execx is a verbatim substrate-gke
+	// copy that opens the file 0644, so create it 0600 first: OpenFile keeps
+	// an existing file's mode (review F7).
+	exitOn(createPrivate(*logPath))
 	logger, err := execx.NewLogger(*logPath)
 	exitOn(err)
 	defer logger.Close()
@@ -171,36 +176,8 @@ func main() {
 		defer real.Drain()
 		d.Runner = real
 		d.Checks = doctor.Checks(s.Profile, s.Region)
-		var client *awsx.Client
-		getClient := func(ctx context.Context) (*awsx.Client, error) {
-			if client != nil {
-				return client, nil
-			}
-			c, err := awsx.New(ctx, s.Profile, s.Region)
-			client = c
-			return c, err
-		}
-		d.Identity = func(ctx context.Context) (string, string, error) {
-			c, err := getClient(ctx)
-			if err != nil {
-				return "", "", err
-			}
-			return c.Identity(ctx)
-		}
-		d.Clusters = func(ctx context.Context) ([]awsx.Cluster, error) {
-			c, err := getClient(ctx)
-			if err != nil {
-				return nil, err
-			}
-			return c.ListClusters(ctx)
-		}
-		d.Describe = func(ctx context.Context, name string) (awsx.Cluster, error) {
-			c, err := getClient(ctx)
-			if err != nil {
-				return awsx.Cluster{}, err
-			}
-			return c.Describe(ctx, name)
-		}
+		reads := awsx.Fresh{Profile: s.Profile, Region: s.Region}
+		d.Identity, d.Clusters, d.Describe = reads.Identity, reads.ListClusters, reads.Describe
 	}
 	final, err := tea.NewProgram(ui.New(d, s), tea.WithAltScreen()).Run()
 	exitOn(err)
@@ -252,6 +229,22 @@ func absPath(p string) string {
 	a, err := filepath.Abs(p)
 	exitOn(err)
 	return a
+}
+
+// createPrivate makes path a 0600 file in a 0700 directory, keeping what an
+// existing file holds but narrowing its mode.
+func createPrivate(path string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Chmod(path, 0o600)
 }
 
 func exitOn(err error) {

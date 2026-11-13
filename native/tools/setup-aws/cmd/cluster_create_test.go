@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
@@ -292,6 +293,25 @@ func TestCreateClusterPlanWritesNothing(t *testing.T) {
 	}
 	if len(done.writes) != 0 || len(p.creates) != 0 {
 		t.Errorf("plan on a complete deployment: writes %v, would create %v", done.writes, p.creates)
+	}
+}
+
+// Review F17: --plan against a cluster that is UPDATING (another run's
+// change) reports it and returns; it never waits up to 30 minutes for it.
+func TestCreateClusterPlanDoesNotWaitOnABusyCluster(t *testing.T) {
+	f := newClusterFake()
+	if err := clusterTestRun(t, f, false).run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	f.cluster.Status = ekstypes.ClusterStatusUpdating
+	f.writes = nil
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := clusterTestRun(t, f, true).run(ctx); err != nil {
+		t.Fatalf("plan on an UPDATING cluster: %v", err)
+	}
+	if len(f.writes) != 0 {
+		t.Errorf("plan wrote %v", f.writes)
 	}
 }
 

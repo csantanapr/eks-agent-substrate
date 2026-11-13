@@ -89,6 +89,35 @@ func TestPlanWritesNothing(t *testing.T) {
 	}
 }
 
+// Review F5: a run whose tagging call fails right after the create leaves
+// a bucket that is still ours (tagged by the create itself), so the rerun
+// reconciles it instead of refusing it as foreign.
+func TestBucketIsOwnedEvenIfTaggingFailsAfterCreate(t *testing.T) {
+	f := newFake()
+	f.failTagging = 1
+	if err := testEnv(t, f, false).bootstrap(context.Background()); err == nil || !strings.Contains(err.Error(), "SlowDown") {
+		t.Fatalf("want the throttled tagging error, got %v", err)
+	}
+	if got := f.buckets["demo-snap-111122223333-us-west-2"][OwnerTagKey]; got != "demo.us-west-2" {
+		t.Fatalf("bucket created without the owner tag (%q)", got)
+	}
+	if err := testEnv(t, f, false).bootstrap(context.Background()); err != nil {
+		t.Fatalf("rerun after a failed tagging call: %v", err)
+	}
+}
+
+// Review F6: an existing ECR repository is reused only when it carries this
+// deployment's owner tag; one someone else made stops the run and is named.
+func TestForeignECRRepositoryIsRefused(t *testing.T) {
+	f := newFake()
+	f.repos["demo/counter"] = true
+	f.repoTags["demo/counter"] = map[string]string{OwnerTagKey: "someone-else"}
+	err := testEnv(t, f, false).bootstrap(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "demo/counter") || !strings.Contains(err.Error(), "not owned by") {
+		t.Fatalf("want a not-owned error naming demo/counter, got %v", err)
+	}
+}
+
 func TestForeignBucketIsRefused(t *testing.T) {
 	f := newFake()
 	f.buckets["demo-snap-111122223333-us-west-2"] = map[string]string{OwnerTagKey: "someone-else"}

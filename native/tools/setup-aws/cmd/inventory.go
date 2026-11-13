@@ -37,7 +37,7 @@ import (
 const (
 	// tdCreatedByKey marks a resource setup-aws created itself (the bash
 	// scripts do not set it). Shown by inventory; ownership is OwnerTagKey.
-	tdCreatedByKey = "agent-substrate-on-eks/created-by"
+	tdCreatedByKey = CreatedByTagKey
 	// tdStackKey is set by CloudFormation on what a stack creates, here
 	// eksctl's stacks from create-cluster.sh. teardown never deletes such a
 	// resource: ./delete-cluster.sh does, through its stack.
@@ -932,9 +932,9 @@ func (e *tdEnv) inventory(ctx context.Context) ([]tdRow, error) {
 			if svc == "eks" || svc == "iam" || svc == "s3" || tdKnown[svc+":"+rtype] {
 				continue
 			}
-			// Secrets beyond the two logins (create rds tags the master user
-			// secret RDS makes): read each, and skip one gone or scheduled
-			// for deletion.
+			// Secrets beyond the two logins (the master user secret RDS
+			// makes carries the instance's tags, copied by RDS): read each,
+			// and skip one gone or scheduled for deletion.
 			if svc == "secretsmanager" && rtype == "secret" {
 				s, err := e.secret(ctx, aws.ToString(m.ResourceARN))
 				if err != nil {
