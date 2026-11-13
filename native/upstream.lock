@@ -28,4 +28,5 @@ adapted   tools/setup-gcp/cmd/iam.go                            tools/setup-aws/
 adapted   tools/setup-gcp/cmd/cluster.go                        tools/setup-aws/cmd/cluster.go
 adapted   tools/setup-gcp/cmd/common.go                         tools/setup-aws/cmd/common.go
 adapted   tools/setup-gcp/cmd/repository.go                     tools/setup-aws/cmd/ecr.go
+adapted   tools/setup-gcp/cmd/cloudsql.go                       tools/setup-aws/cmd/rds.go
 adapted   deploy/gke/components/gke/kustomization.yaml          deploy/eks/components/eks/kustomization.yaml

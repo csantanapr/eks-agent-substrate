@@ -9,6 +9,7 @@
 package controlplane
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -43,16 +44,29 @@ type Options struct {
 	Tag, Repo, ImageRepo     string
 	SnapBucket, AssetBucket  string
 	SandboxClasses           string
-	// AutoMode puts the bundled PostgreSQL volume on Auto Mode's EBS driver
+	// AutoMode, read off the cluster by Deploy, pins the control plane to
+	// the system node group (--cordon-system-infra-components) with RDS, and
+	// puts the bundled PostgreSQL volume on Auto Mode's EBS driver
 	// (deploy/eks/prereqs/storageclass-auto-ebs.yaml).
 	AutoMode bool
-	// Database is DatabaseRDS (default) or DatabaseBundled. CONTRACT (issue
-	// #5, T2): main.go sets it from --database; T2 implements the RDS path.
+	// Database is DatabaseRDS (the default, also when empty) or
+	// DatabaseBundled; main.go sets it from --database.
 	Database string
 	// TreeRoot is where the pinned tree is cached; Overlay is deploy/eks.
 	TreeRoot, Overlay string
 	// IngressIDs are the SPIFFE IDs the ingress router admits.
 	IngressIDs []string
+
+	// caFile is the RDS CA bundle Deploy downloaded, for ate-setup.
+	caFile string
+}
+
+// db is Database with the default applied.
+func (o Options) db() string {
+	if o.Database == "" {
+		return DatabaseRDS
+	}
+	return o.Database
 }
 
 // TreeDir is the cached tree for a tag.
@@ -67,14 +81,37 @@ func DefaultTreeRoot() string {
 	return filepath.Join(dir, "substrate-eks", "trees")
 }
 
-func run(ctx context.Context, w io.Writer, dir string, env []string, argv ...string) error {
-	c := exec.CommandContext(ctx, argv[0], argv[1:]...)
-	c.Dir, c.Stdout, c.Stderr = dir, w, w
-	c.Env = append(os.Environ(), env...)
-	if err := c.Run(); err != nil {
-		return fmt.Errorf("%s: %w", strings.Join(argv[:min(len(argv), 3)], " "), err)
+// command is one child process: an argv, never shell text. A secret reaches
+// a child only through Env or Stdin.
+type command struct {
+	Dir   string
+	Env   []string
+	Stdin []byte
+	// Stdout, when set, takes stdout instead of the deploy's writer.
+	Stdout io.Writer
+	Argv   []string
+}
+
+// runCommand starts every child process the deploy makes. Tests replace it
+// to see each argv, environment and stdin.
+var runCommand = func(ctx context.Context, w io.Writer, c command) error {
+	cmd := exec.CommandContext(ctx, c.Argv[0], c.Argv[1:]...)
+	cmd.Dir, cmd.Stdout, cmd.Stderr = c.Dir, w, w
+	if c.Stdout != nil {
+		cmd.Stdout = c.Stdout
+	}
+	if c.Stdin != nil {
+		cmd.Stdin = bytes.NewReader(c.Stdin)
+	}
+	cmd.Env = append(os.Environ(), c.Env...)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("%s: %w", strings.Join(c.Argv[:min(len(c.Argv), 3)], " "), err)
 	}
 	return nil
+}
+
+func run(ctx context.Context, w io.Writer, dir string, env []string, argv ...string) error {
+	return runCommand(ctx, w, command{Dir: dir, Env: env, Argv: argv})
 }
 
 // FetchTree clones repo at tag into dir unless a finished fetch is there. It
@@ -112,14 +149,26 @@ func FetchTree(ctx context.Context, w io.Writer, dir, repo, tag string) error {
 }
 
 // AteSetupArgs are the `ate-setup deploy ate-system` flags for EKS, the same
-// ones eks-talk's substrate/install.sh passes for a bundled-PostgreSQL install.
+// ones eks-talk's substrate/install.sh passes. The connection strings are not
+// among them: they carry passwords, so they go in the environment.
 func AteSetupArgs(o Options, kubeContext string) []string {
 	ids := o.IngressIDs
 	if len(ids) == 0 {
 		ids = []string{"spiffe://cluster.local/ns/ate-system/sa/atenet-client"}
 	}
 	var extra []string
-	if o.AutoMode {
+	switch {
+	case o.db() == DatabaseRDS:
+		extra = append(extra, "--ateapi-postgres-server-ca-file", o.caFile)
+		// The Auto Mode system node group is tainted, so other pods go to
+		// Auto Mode nodes; this pins every control plane Deployment there,
+		// with the matching toleration (install.sh, AUTO_MODE=on). Not with
+		// the bundled PostgreSQL: ate-setup then also needs a dedicated
+		// ate.dev/workloadType=ate-postgres pool, which no cluster here has.
+		if o.AutoMode {
+			extra = append(extra, "--cordon-system-infra-components")
+		}
+	case o.AutoMode:
 		extra = append(extra, "--ateapi-postgres-storage-class", AutoModeStorageClass)
 	}
 	return append([]string{
@@ -145,7 +194,7 @@ const (
 const AutoModeStorageClass = "substrate-eks-auto-ebs"
 
 // AteSetupEnv is the environment of the ate-setup run. It holds names only,
-// never a secret.
+// never a secret; with RDS, Deploy adds the connection strings to it.
 func AteSetupEnv(o Options, kubeconfig string) []string {
 	return []string{
 		"KUBECONFIG=" + kubeconfig,
@@ -164,10 +213,14 @@ func AteSetupEnv(o Options, kubeconfig string) []string {
 }
 
 // Deploy fetches the tree, adds deploy/eks, writes the installer's own
-// kubeconfig and runs ate-setup.
+// kubeconfig and runs ate-setup, on RDS (bootstrapped first) or the bundled
+// PostgreSQL.
 func Deploy(ctx context.Context, w io.Writer, o Options) error {
 	if o.Cluster == "" || o.Region == "" || o.SnapBucket == "" || o.Overlay == "" {
 		return errors.New("cluster, region, snapshot bucket and overlay are required")
+	}
+	if db := o.db(); db != DatabaseRDS && db != DatabaseBundled {
+		return fmt.Errorf("database %q is not %s or %s", db, DatabaseRDS, DatabaseBundled)
 	}
 	tree := TreeDir(o.TreeRoot, o.Tag)
 	if err := FetchTree(ctx, w, tree, o.Repo, o.Tag); err != nil {
@@ -185,23 +238,40 @@ func Deploy(ctx context.Context, w io.Writer, o Options) error {
 		return err
 	}
 	// Read Auto Mode off the cluster itself rather than trusting a flag, so a
-	// direct --deploy-control-plane run cannot pick the wrong StorageClass.
+	// direct --deploy-control-plane run cannot pick the wrong StorageClass or
+	// cordon setting.
 	o.AutoMode = cl.AutoMode
 	kc := awsx.KubeconfigPath(o.Cluster, o.Region)
 	fmt.Fprintln(w, KubeconfLine+kc)
 	if err := awsx.WriteKubeconfig(kc, cl, o.Region, o.Profile); err != nil {
 		return err
 	}
-	if o.AutoMode {
-		prereqs := filepath.Join(o.Overlay, "prereqs")
-		fmt.Fprintln(w, PrereqLine+prereqs)
-		if err := run(ctx, w, "", []string{"KUBECONFIG=" + kc}, "kubectl", "apply", "-f", prereqs); err != nil {
+	return install(ctx, w, o, cl.Name, kc, tree)
+}
+
+// install is the deploy after the kubeconfig: the database, then ate-setup.
+func install(ctx context.Context, w io.Writer, o Options, kubeContext, kc, tree string) error {
+	env := AteSetupEnv(o, kc)
+	switch o.db() {
+	case DatabaseRDS:
+		dsnEnv, cleanup, err := prepareRDS(ctx, w, &o, kc, tree)
+		defer cleanup()
+		if err != nil {
 			return err
 		}
+		env = append(env, dsnEnv...)
+	case DatabaseBundled:
+		if o.AutoMode {
+			prereqs := filepath.Join(o.Overlay, "prereqs")
+			fmt.Fprintln(w, PrereqLine+prereqs)
+			if err := run(ctx, w, "", []string{"KUBECONFIG=" + kc}, "kubectl", "apply", "-f", prereqs); err != nil {
+				return err
+			}
+		}
 	}
-	argv := append([]string{"go"}, AteSetupArgs(o, cl.Name)...)
+	argv := append([]string{"go"}, AteSetupArgs(o, kubeContext)...)
 	fmt.Fprintln(w, "$ "+strings.Join(argv, " "))
-	if err := run(ctx, w, tree, AteSetupEnv(o, kc), argv...); err != nil {
+	if err := run(ctx, w, tree, env, argv...); err != nil {
 		return err
 	}
 	fmt.Fprintln(w, ReadyLine)
