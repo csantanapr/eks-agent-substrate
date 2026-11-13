@@ -71,6 +71,7 @@ type fakeRole struct {
 	arn, trust string
 	tags       map[string]string
 	attached   []string
+	inline     map[string]string
 }
 
 func nestedVirtType(name string, nested bool) ec2types.InstanceTypeInfo {
@@ -947,7 +948,32 @@ func (e *fcIAM) UpdateAssumeRolePolicy(_ context.Context, in *iam.UpdateAssumeRo
 }
 
 func (e *fcIAM) PutRolePolicy(_ context.Context, in *iam.PutRolePolicyInput, _ ...func(*iam.Options)) (*iam.PutRolePolicyOutput, error) {
-	return nil, fmt.Errorf("create cluster puts no inline policies")
+	f := e.f()
+	r := f.roles[aws.ToString(in.RoleName)]
+	if r == nil {
+		return nil, apiErr("NoSuchEntity")
+	}
+	w := "PutRolePolicy " + aws.ToString(in.RoleName) + " " + aws.ToString(in.PolicyName)
+	if err := f.begin(w); err != nil {
+		return nil, err
+	}
+	if r.inline == nil {
+		r.inline = map[string]string{}
+	}
+	r.inline[aws.ToString(in.PolicyName)] = aws.ToString(in.PolicyDocument)
+	return &iam.PutRolePolicyOutput{}, f.end(w)
+}
+
+// GetRolePolicy returns the document URL-encoded, as IAM does.
+func (e *fcIAM) GetRolePolicy(_ context.Context, in *iam.GetRolePolicyInput, _ ...func(*iam.Options)) (*iam.GetRolePolicyOutput, error) {
+	if err := e.f().read("GetRolePolicy"); err != nil {
+		return nil, err
+	}
+	r := e.roles[aws.ToString(in.RoleName)]
+	if r == nil || r.inline[aws.ToString(in.PolicyName)] == "" {
+		return nil, apiErr("NoSuchEntity")
+	}
+	return &iam.GetRolePolicyOutput{PolicyDocument: aws.String(url.QueryEscape(r.inline[aws.ToString(in.PolicyName)]))}, nil
 }
 
 func (e *fcIAM) ListAttachedRolePolicies(_ context.Context, in *iam.ListAttachedRolePoliciesInput, _ ...func(*iam.Options)) (*iam.ListAttachedRolePoliciesOutput, error) {
