@@ -41,13 +41,22 @@ func (e *env) ensureBucket(ctx context.Context, b string) error {
 		return err
 	}
 	owner := aws.String(e.names.Account)
+	tagSet := make([]s3types.Tag, 0, len(e.tags))
+	for _, k := range sortedKeys(e.tags) {
+		tagSet = append(tagSet, s3types.Tag{Key: aws.String(k), Value: aws.String(e.tags[k])})
+	}
 	if !exists {
 		if err := e.act("create bucket "+b, func() error {
-			in := &s3.CreateBucketInput{Bucket: aws.String(b), ObjectOwnership: s3types.ObjectOwnershipBucketOwnerEnforced}
+			// Tagged in the create call itself (s3:TagResource): a bucket
+			// created untagged by a run that then failed would be refused
+			// as foreign by every later bootstrap and teardown (review F5).
 			// us-east-1 takes no location constraint; every other Region needs one.
+			conf := &s3types.CreateBucketConfiguration{Tags: tagSet}
 			if e.names.Region != "us-east-1" {
-				in.CreateBucketConfiguration = &s3types.CreateBucketConfiguration{LocationConstraint: s3types.BucketLocationConstraint(e.names.Region)}
+				conf.LocationConstraint = s3types.BucketLocationConstraint(e.names.Region)
 			}
+			in := &s3.CreateBucketInput{Bucket: aws.String(b), ObjectOwnership: s3types.ObjectOwnershipBucketOwnerEnforced,
+				CreateBucketConfiguration: conf}
 			if _, err := e.c.S3.CreateBucket(ctx, in); err != nil {
 				return fmt.Errorf("create bucket %s: %w", b, err)
 			}
@@ -56,15 +65,11 @@ func (e *env) ensureBucket(ctx context.Context, b string) error {
 			return err
 		}
 	}
-	tagSet := make([]s3types.Tag, 0, len(e.tags))
-	for _, k := range sortedKeys(e.tags) {
-		tagSet = append(tagSet, s3types.Tag{Key: aws.String(k), Value: aws.String(e.tags[k])})
-	}
 	policy := fmt.Sprintf(`{"Version":"2012-10-17","Statement":[{"Sid":"DenyInsecureTransport","Effect":"Deny","Principal":"*",`+
 		`"Action":"s3:*","Resource":["arn:%[1]s:s3:::%[2]s","arn:%[1]s:s3:::%[2]s/*"],`+
 		`"Condition":{"Bool":{"aws:SecureTransport":"false"}}}]}`, e.names.Partition, b)
 	return e.act("reconcile "+b+" (tags, public access block, SSE-S3, TLS-only policy, lifecycle)", func() error {
-		// Tag first: ownedBucket reuses only a bucket that carries the owner tag.
+		// Reconcile the tags too: TAGS may have changed since the create.
 		if _, err := e.c.S3.PutBucketTagging(ctx, &s3.PutBucketTaggingInput{Bucket: aws.String(b), ExpectedBucketOwner: owner, Tagging: &s3types.Tagging{TagSet: tagSet}}); err != nil {
 			return fmt.Errorf("tag %s: %w", b, err)
 		}
