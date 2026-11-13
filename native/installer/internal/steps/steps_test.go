@@ -1,54 +1,39 @@
 package steps
 
 import (
-	"go/ast"
-	"go/parser"
-	"go/token"
-	"strconv"
 	"testing"
+
+	"github.com/csantanapr/eks-agent-substrate/native/tools/setup-aws/phases"
 )
 
-// setupAWSPhases reads setup-aws's Phases straight from its source (a separate
-// Go module), so the checklist cannot drift from the lines bootstrap prints.
-func setupAWSPhases(t *testing.T) []string {
-	t.Helper()
-	f, err := parser.ParseFile(token.NewFileSet(), "../../../tools/setup-aws/cmd/bootstrap.go", nil, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var phases []string
-	ast.Inspect(f, func(n ast.Node) bool {
-		vs, ok := n.(*ast.ValueSpec)
-		if !ok || len(vs.Names) != 1 || vs.Names[0].Name != "Phases" {
-			return true
-		}
-		for _, el := range vs.Values[0].(*ast.CompositeLit).Elts {
-			s, err := strconv.Unquote(el.(*ast.BasicLit).Value)
-			if err != nil {
-				t.Fatal(err)
+// Every setup-aws command's checklist lights each row, in order, on the exact
+// line setup-aws logs for that phase (slog's text handler quotes msg).
+func TestEveryPhaseListLightsEachRowInOrder(t *testing.T) {
+	for name, list := range map[string][]string{
+		"bootstrap": phases.Bootstrap, "cluster": phases.Cluster,
+		"rds": phases.RDS, "teardown": phases.Teardown,
+	} {
+		items, active := FromPhases(list), -1
+		for i := range list {
+			line := `time=x level=INFO msg="` + phases.Line(list, i) + `"`
+			active = Progress(items, active, line)
+			if active != i {
+				t.Errorf("%s: phase %d lit row %d", name, i, active)
 			}
-			phases = append(phases, s)
 		}
-		return false
-	})
-	if len(phases) == 0 {
-		t.Fatal("found no Phases in setup-aws bootstrap.go")
 	}
-	return phases
 }
 
-func TestBootstrapChecklistMatchesEverySetupAWSPhaseInOrder(t *testing.T) {
-	phases := setupAWSPhases(t)
-	items := Bootstrap()
-	if len(items) != len(phases) {
-		t.Fatalf("%d checklist rows for %d setup-aws phases", len(items), len(phases))
-	}
-	active := -1
-	for i, p := range phases {
-		line := `level=INFO msg="Step ` + strconv.Itoa(i+1) + `/` + strconv.Itoa(len(phases)) + `: ` + p + `"`
-		active = Progress(items, active, line)
-		if active != i {
-			t.Errorf("phase %q lit row %d, want %d (%s)", p, active, i, items[i].Label)
+// "Step 1/9: ..." must not light a row of a 4-phase list, and a phase title
+// inside an unrelated line ("would create ...") must not light its row.
+func TestPhaseRowsMatchOnlyTheirOwnStepLine(t *testing.T) {
+	items := FromPhases(phases.Bootstrap)
+	for _, line := range []string{
+		"Step 1/9: " + phases.Bootstrap[0],
+		"plan: " + phases.Bootstrap[1],
+	} {
+		if got := Progress(items, -1, line); got != -1 {
+			t.Errorf("%q lit row %d", line, got)
 		}
 	}
 }

@@ -7,16 +7,9 @@ import (
 	"log/slog"
 
 	"github.com/spf13/cobra"
-)
 
-// Phases are the bootstrap steps in order. Each logs "Step i/N: <title>",
-// the line the installer's progress checklist matches (as setup-gcp does).
-var Phases = []string{
-	"Checking the EKS cluster...",
-	"Creating S3 buckets for snapshots and microVM assets...",
-	"Creating EKS Pod Identity roles for ate-api-server and atelet...",
-	"Creating ECR repositories...",
-}
+	"github.com/csantanapr/eks-agent-substrate/native/tools/setup-aws/phases"
+)
 
 var bootstrapCmd = &cobra.Command{
 	Use:   "bootstrap",
@@ -42,8 +35,11 @@ func (e *env) bootstrap(ctx context.Context) error {
 		e.createIAM,
 		e.createECR,
 	}
+	if len(steps) != len(phases.Bootstrap) {
+		return fmt.Errorf("internal: %d bootstrap steps for %d phases", len(steps), len(phases.Bootstrap))
+	}
 	for i, run := range steps {
-		slog.Info(fmt.Sprintf("Step %d/%d: %s", i+1, len(steps), Phases[i]))
+		slog.Info(phases.Line(phases.Bootstrap, i))
 		if err := run(ctx); err != nil {
 			return err
 		}

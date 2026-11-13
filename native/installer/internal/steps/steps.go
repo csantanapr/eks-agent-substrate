@@ -8,6 +8,8 @@ package steps
 import (
 	"strings"
 
+	"github.com/csantanapr/eks-agent-substrate/native/tools/setup-aws/phases"
+
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/controlplane"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/eksoverlay"
 )
@@ -34,16 +36,19 @@ func containsAny(subs ...string) func(string) bool {
 	}
 }
 
-// Bootstrap tracks `setup-aws bootstrap`, keyed off its "Step i/N:" lines
-// (setup-aws cmd.Phases).
-func Bootstrap() []ChecklistItem {
-	return []ChecklistItem{
-		{"Check the EKS cluster", contains("Checking the EKS cluster")},
-		{"Create the S3 snapshot and asset buckets", contains("Creating S3 buckets")},
-		{"Create EKS Pod Identity roles", contains("Creating EKS Pod Identity roles")},
-		{"Create ECR repositories", contains("Creating ECR repositories")},
+// FromPhases is the checklist of a setup-aws command: one row per phase in
+// the shared contract (setup-aws/phases), lit by that phase's exact
+// "Step i/N: <title>" line. The row label is the title without its "...".
+func FromPhases(list []string) []ChecklistItem {
+	items := make([]ChecklistItem, len(list))
+	for i, title := range list {
+		items[i] = ChecklistItem{strings.TrimSuffix(title, "..."), contains(phases.Line(list, i))}
 	}
+	return items
 }
+
+// Bootstrap tracks `setup-aws bootstrap`.
+func Bootstrap() []ChecklistItem { return FromPhases(phases.Bootstrap) }
 
 // ControlPlane tracks the in-process deploy and `ate-setup deploy
 // ate-system`'s `[step]:` markers, the same markers substrate-gke's Deploy
