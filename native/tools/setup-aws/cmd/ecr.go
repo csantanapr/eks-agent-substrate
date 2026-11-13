@@ -31,11 +31,29 @@ func (e *env) createECR(ctx context.Context) error {
 	}
 	for _, r := range strings.Fields(e.cfg.ECRRepositories) {
 		repo := e.names.ECRPrefix + "/" + r
-		_, err := e.c.ECR.DescribeRepositories(ctx, &ecr.DescribeRepositoriesInput{RepositoryNames: []string{repo}})
+		out, err := e.c.ECR.DescribeRepositories(ctx, &ecr.DescribeRepositoriesInput{RepositoryNames: []string{repo}})
 		switch {
-		case err == nil:
+		case err == nil && len(out.Repositories) > 0:
+			// Reused only when it is this deployment's, as buckets and roles
+			// are (AC2.2, review F6): teardown refuses a foreign repository,
+			// so reusing one here would block the whole teardown later.
+			t, err := e.c.ECR.ListTagsForResource(ctx, &ecr.ListTagsForResourceInput{ResourceArn: out.Repositories[0].RepositoryArn})
+			if err != nil {
+				return fmt.Errorf("read tags of repository %s: %w", repo, err)
+			}
+			got := ""
+			for _, tag := range t.Tags {
+				if aws.ToString(tag.Key) == OwnerTagKey {
+					got = aws.ToString(tag.Value)
+				}
+			}
+			if got != e.names.OwnerValue {
+				return fmt.Errorf("ECR repository %s exists but is not owned by %s (%s=%q)", repo, e.names.OwnerValue, OwnerTagKey, got)
+			}
 			slog.Info("repository exists", "repository", repo)
 			continue
+		case err == nil:
+			return fmt.Errorf("describe repository %s: no repository returned", repo)
 		case !isNotFound(err):
 			return fmt.Errorf("describe repository %s: %w", repo, err)
 		}

@@ -7,6 +7,7 @@ package awsx
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -152,6 +153,13 @@ func (c *Client) ListClusters(ctx context.Context) ([]Cluster, error) {
 }
 
 // Describe reads one cluster.
+// IsClusterGone reports whether err is EKS saying the cluster does not exist
+// (a teardown that already deleted it). A denied or throttled read is not.
+func IsClusterGone(err error) bool {
+	var nf *ekstypes.ResourceNotFoundException
+	return errors.As(err, &nf)
+}
+
 func (c *Client) Describe(ctx context.Context, name string) (Cluster, error) {
 	d, err := c.EKS.DescribeCluster(ctx, &eks.DescribeClusterInput{Name: aws.String(name)})
 	if err != nil {
@@ -203,5 +211,10 @@ func WriteKubeconfig(path string, cl Cluster, region, profile string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	return os.WriteFile(path, []byte(b.String()), 0o600)
+	if err := os.WriteFile(path, []byte(b.String()), 0o600); err != nil {
+		return err
+	}
+	// WriteFile sets the mode only when it creates the file; tighten one an
+	// older build left wider (review F16).
+	return os.Chmod(path, 0o600)
 }

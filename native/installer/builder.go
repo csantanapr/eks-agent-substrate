@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/csantanapr/eks-agent-substrate/native/tools/setup-aws/phases"
@@ -59,8 +60,15 @@ func (b builder) rel(p string) string {
 	return r
 }
 
+// env is what every setup-aws child gets on top of the inherited
+// environment. setup-aws reads its flag defaults from the environment, so
+// the wizard pins each knob that would change what a step does: an exported
+// PLAN=true would otherwise turn every step into a plan that reports success
+// and creates nothing, and KEEP_CLUSTER would override the teardown choice
+// (review F4). teardown sets KEEP_CLUSTER from s.KeepCluster itself.
 func (b builder) env(s *state.Setup) []string {
-	return []string{"CLUSTER_NAME=" + s.ClusterName, "AWS_REGION=" + s.Region, "AWS_PROFILE=" + s.Profile, "TAGS=" + s.Tags}
+	return []string{"CLUSTER_NAME=" + s.ClusterName, "AWS_REGION=" + s.Region, "AWS_PROFILE=" + s.Profile, "TAGS=" + s.Tags,
+		"PLAN=false", "KEEP_CLUSTER=" + strconv.FormatBool(s.KeepCluster)}
 }
 
 // setupAWS is `go -C <setup-aws> run . <args>`, as substrate-gke runs
@@ -70,7 +78,7 @@ func (b builder) setupAWSSpec(s *state.Setup, label string, env []string, sim []
 	argv := append([]string{"go", "-C", dir, "run", "."}, args...)
 	var shown []string
 	for _, e := range b.env(s) {
-		if k, v, _ := strings.Cut(e, "="); v != "" && k != "TAGS" {
+		if k, v, _ := strings.Cut(e, "="); v != "" && k != "TAGS" && k != "PLAN" && k != "KEEP_CLUSTER" {
 			shown = append(shown, k+"="+shellQuote(v))
 		}
 	}
@@ -101,8 +109,8 @@ func simStart(s *state.Setup, what string) string {
 // createCluster runs `setup-aws create cluster` with config.env's knobs.
 func (b builder) createCluster(s *state.Setup) execx.Spec {
 	return b.setupAWSSpec(s, "setup-aws create cluster", s.NewClusterConfig.Env(),
-		simPhases(phases.Cluster, simStart(s, "Creating the EKS cluster and its network..."),
-			`level=INFO msg="Cluster is ACTIVE and every node is Ready." creates=27`),
+		simPhases(phases.Cluster, simStart(s, "Creating the cluster..."),
+			`level=INFO msg="Cluster ready." cluster=`+s.ClusterName+` created=27 changed=0 took=19m40s`),
 		"create", "cluster")
 }
 
@@ -116,7 +124,7 @@ func (b builder) bootstrap(s *state.Setup) execx.Spec {
 // rds runs `setup-aws create rds`.
 func (b builder) rds(s *state.Setup) execx.Spec {
 	return b.setupAWSSpec(s, "setup-aws create rds", nil,
-		simPhases(phases.RDS, simStart(s, "Creating the RDS PostgreSQL database..."), `level=INFO msg="RDS instance is available."`),
+		simPhases(phases.RDS, simStart(s, "Starting RDS setup..."), `level=INFO msg="RDS setup completed successfully."`),
 		"create", "rds")
 }
 
@@ -127,7 +135,8 @@ func (b builder) teardown(s *state.Setup) execx.Spec {
 		args = append(args, "--keep-cluster")
 	}
 	return b.setupAWSSpec(s, "setup-aws "+strings.Join(args, " "), nil,
-		simPhases(phases.Teardown, simStart(s, "Tearing down this deployment..."), `level=INFO msg="Teardown completed." deletes=19`),
+		simPhases(phases.Teardown, `level=INFO msg="Starting teardown of `+s.ClusterName+"."+s.Region+`..."`,
+			`level=INFO msg="Teardown complete: nothing left for `+s.ClusterName+"."+s.Region+`"`),
 		args...)
 }
 
@@ -141,10 +150,10 @@ func (b builder) inventory(s *state.Setup) execx.Spec {
 // --tree-root and --eks-overlay are passed only when they are not the
 // default, so the command shown is the one run and short enough to paste.
 func (b builder) selfSpec(s *state.Setup, cluster, label string, sim []string, flags ...string) execx.Spec {
-	args := append(append([]string{}, flags...), "--cluster", cluster, "--region", s.Region)
-	if s.Profile != "" {
-		args = append(args, "--profile", s.Profile)
-	}
+	// --profile always, even empty: the child's flag defaults to an exported
+	// AWS_PROFILE, so leaving it out would run it as another identity than
+	// the setup-aws steps beside it (review F9).
+	args := append(append([]string{}, flags...), "--cluster", cluster, "--region", s.Region, "--profile", s.Profile)
 	if b.treeRoot != controlplane.DefaultTreeRoot() {
 		args = append(args, "--tree-root", b.treeRoot)
 	}
@@ -210,7 +219,9 @@ func (b builder) demoStep(s *state.Setup) execx.Spec {
 // verify is `substrate-eks --verify`, the user-facing check (AC7.2), shown
 // on the Complete screen of a demo run.
 func (b builder) verify(s *state.Setup) execx.Spec {
-	return b.selfSpec(s, s.ClusterName, "verify", nil, "--verify")
+	// --tag, as demoStep and removeControlPlane pass it: verify reads the
+	// tree of the release that was installed (review F11).
+	return b.selfSpec(s, s.ClusterName, "verify", nil, "--verify", "--tag", s.SubstrateTag)
 }
 
 // removeControlPlane re-executes the installer with --remove-control-plane

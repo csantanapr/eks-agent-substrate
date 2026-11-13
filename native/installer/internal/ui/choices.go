@@ -63,8 +63,12 @@ func (m Model) databaseView() string {
 // too, which is offered only for a cluster this installer created. Either is
 // confirmed by typing the cluster's name.
 type scopeScreen struct {
-	cluster      *awsx.Cluster
-	err          error
+	cluster *awsx.Cluster
+	err     error
+	// gone: EKS says the cluster does not exist, as after a teardown that
+	// deleted it and then stopped (or a second teardown). The only choice is
+	// to delete what is left; every remaining resource is owner-checked.
+	gone         bool
 	cursor       int // 0 keep the cluster, 1 delete everything
 	confirm      string
 	fromComplete bool
@@ -76,7 +80,7 @@ type describeMsg struct {
 }
 
 func (m *Model) enterScope() tea.Cmd {
-	m.scope.cluster, m.scope.err, m.scope.cursor, m.scope.confirm = nil, nil, 0, ""
+	m.scope.cluster, m.scope.err, m.scope.cursor, m.scope.confirm, m.scope.gone = nil, nil, 0, "", false
 	name, describe := m.s.ClusterName, m.d.Describe
 	return func() tea.Msg {
 		c, err := describe(context.Background(), name)
@@ -85,6 +89,10 @@ func (m *Model) enterScope() tea.Cmd {
 }
 
 func (m *Model) scopeDescribed(msg describeMsg) {
+	if awsx.IsClusterGone(msg.err) {
+		m.scope.gone = true
+		return
+	}
 	m.scope.err = msg.err
 	if msg.err == nil {
 		c := msg.c
@@ -102,7 +110,7 @@ func (m *Model) scopeKey(msg tea.KeyMsg) tea.Cmd {
 	case "up":
 		sc.cursor = 0
 	case "down":
-		if m.scopeOwned() && !m.s.KeepClusterOnly {
+		if m.scopeOwned() && !m.s.KeepClusterOnly && !sc.gone {
 			sc.cursor = 1
 		}
 	case "esc":
@@ -117,11 +125,20 @@ func (m *Model) scopeKey(msg tea.KeyMsg) tea.Cmd {
 		if sc.err != nil {
 			return m.enterScope()
 		}
-		if sc.cluster == nil || strings.TrimSpace(sc.confirm) != m.s.ClusterName {
+		if (sc.cluster == nil && !sc.gone) || strings.TrimSpace(sc.confirm) != m.s.ClusterName {
 			return nil
 		}
-		m.s.ClusterOwned = m.scopeOwned()
-		m.s.KeepCluster = sc.cursor == 0 || !m.s.ClusterOwned || m.s.KeepClusterOnly
+		if sc.gone {
+			// The cluster phases find nothing to delete, and removing the
+			// control plane from a gone cluster is a no-op (controlplane.Delete),
+			// so run the full teardown for what is left. --keep-cluster still
+			// keeps the network a later cluster of the same name could use.
+			m.s.ClusterOwned = false
+			m.s.KeepCluster = m.s.KeepClusterOnly
+		} else {
+			m.s.ClusterOwned = m.scopeOwned()
+			m.s.KeepCluster = sc.cursor == 0 || !m.s.ClusterOwned || m.s.KeepClusterOnly
+		}
 		// A teardown step already run had the earlier answer; both steps
 		// are idempotent, so they run again with this one.
 		m.tasks = map[state.Step]*task{}
@@ -149,6 +166,17 @@ func (m Model) scopeView() string {
 	switch {
 	case sc.err != nil:
 		b.WriteString(theme.Bad.Render(sc.err.Error()) + "\n")
+		return b.String()
+	case sc.gone:
+		b.WriteString("Cluster " + name + " no longer exists.\n\n")
+		b.WriteString(theme.Selected.Render("› Delete what is left of this deployment") + "\n")
+		detail := "setup-aws teardown: the buckets, Pod Identity roles, ECR repositories, the RDS database, and the launch template and VPC if they are left. Only resources that carry this deployment's owner tag are deleted."
+		if m.s.KeepClusterOnly {
+			detail = "setup-aws teardown --keep-cluster: the buckets, Pod Identity roles, ECR repositories and the RDS database. The launch template and VPC stay."
+		}
+		b.WriteString(theme.Subtle.Render(indent(lipgloss.NewStyle().Width(m.bodyWidth()-8).Render(detail), "    ")) + "\n\n")
+		b.WriteString("Type " + theme.Key.Render(name) + " to confirm:\n")
+		b.WriteString(theme.Selected.Render("› "+sc.confirm+"▏") + "\n")
 		return b.String()
 	case sc.cluster == nil:
 		b.WriteString(m.spinner() + " eks:DescribeCluster " + name + "…\n")
