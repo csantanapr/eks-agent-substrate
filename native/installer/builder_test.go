@@ -2,6 +2,7 @@ package main
 
 import (
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -26,6 +27,53 @@ func allSpecs(b builder, s *state.Setup) map[string]execx.Spec {
 		"control plane": b.controlPlane(s), "demo": b.demoStep(s), "verify": b.verify(s),
 		"remove": b.removeControlPlane(s), "teardown": b.teardown(s), "inventory": b.inventory(s),
 		"probe": b.probe("other", s),
+	}
+}
+
+// Review F4: an exported PLAN or KEEP_CLUSTER must not change what a wizard
+// step does. Every setup-aws child gets both pinned (the Spec's Env is laid
+// over the inherited environment, so these win), and KEEP_CLUSTER follows
+// the teardown choice in both directions.
+func TestSetupAWSStepsPinPlanAndKeepCluster(t *testing.T) {
+	for _, keep := range []bool{false, true} {
+		b, s := testBuilder()
+		s.KeepCluster = keep
+		for name, spec := range allSpecs(b, s) {
+			if spec.Argv[0] != "go" {
+				continue
+			}
+			want := []string{"PLAN=false", "KEEP_CLUSTER=" + strconv.FormatBool(keep)}
+			for _, w := range want {
+				if !slices.Contains(spec.Env, w) {
+					t.Errorf("keep=%v %s: env lacks %s: %v", keep, name, w, spec.Env)
+				}
+			}
+			if strings.Contains(spec.Display, "PLAN=") || strings.Contains(spec.Display, "KEEP_CLUSTER=") {
+				t.Errorf("%s: the shown command carries the pinned knobs: %s", name, spec.Display)
+			}
+		}
+	}
+}
+
+// Review F9 and F11: every re-executed child gets --profile, even an empty
+// one (so an exported AWS_PROFILE cannot swap the identity), and the
+// release-reading ones get --tag.
+func TestSelfSpecsCarryProfileAndTag(t *testing.T) {
+	b, s := testBuilder()
+	s.Profile, s.SubstrateTag = "", "v1.0.1"
+	for name, spec := range allSpecs(b, s) {
+		if spec.Argv[0] != b.self {
+			continue
+		}
+		i := slices.Index(spec.Argv, "--profile")
+		if i < 0 || i+1 >= len(spec.Argv) || spec.Argv[i+1] != "" {
+			t.Errorf("%s: no empty --profile: %v", name, spec.Argv)
+		}
+		if name == "verify" || name == "demo" || name == "remove" {
+			if j := slices.Index(spec.Argv, "--tag"); j < 0 || spec.Argv[j+1] != "v1.0.1" {
+				t.Errorf("%s: no --tag v1.0.1: %v", name, spec.Argv)
+			}
+		}
 	}
 }
 
@@ -115,9 +163,11 @@ func TestDisplayIsThePasteableCommand(t *testing.T) {
 	if got, want := b.teardown(s).Display, "CLUSTER_NAME=demo AWS_REGION=us-west-2 AWS_PROFILE=eks-sandbox go -C tools/setup-aws run . teardown --keep-cluster"; got != want {
 		t.Errorf("teardown display\n got %s\nwant %s", got, want)
 	}
+	// An empty profile is passed, and so shown, as --profile '': the pasted
+	// command must not pick up an exported AWS_PROFILE the run did not use.
 	s.Profile = ""
-	if d := b.verify(s).Display; strings.Contains(d, "--profile") || strings.Contains(d, "AWS_PROFILE") {
-		t.Errorf("empty profile shown: %s", d)
+	if d := b.verify(s).Display; !strings.HasSuffix(d, "--profile ''") || strings.Contains(d, "AWS_PROFILE") {
+		t.Errorf("empty profile display: %s", d)
 	}
 	if got := shellQuote("project=a auto-delete=no"); got != "'project=a auto-delete=no'" {
 		t.Errorf("shellQuote = %s", got)
