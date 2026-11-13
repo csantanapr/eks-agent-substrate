@@ -255,7 +255,7 @@ func (e *env) rdsNetwork(ctx context.Context, rc *rdsClients, net *rdsNet) error
 			return fmt.Errorf("create security group %s: %w", id, err)
 		}
 	} else {
-		if err := e.owned("security group "+id+" ("+aws.ToString(group.GroupId)+")", ec2TagMap(group.Tags)); err != nil {
+		if err := e.owned("security group "+id+" ("+aws.ToString(group.GroupId)+")", sgTagMap(group.Tags)); err != nil {
 			return err
 		}
 		net.dbSG = aws.ToString(group.GroupId)
@@ -598,7 +598,7 @@ func smTagMap(tags []smtypes.Tag) map[string]string {
 	return m
 }
 
-func ec2TagMap(tags []ec2types.Tag) map[string]string {
+func sgTagMap(tags []ec2types.Tag) map[string]string {
 	m := map[string]string{}
 	for _, t := range tags {
 		m[aws.ToString(t.Key)] = aws.ToString(t.Value)

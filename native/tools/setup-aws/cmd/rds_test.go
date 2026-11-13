@@ -111,7 +111,7 @@ func (f *fec2) AuthorizeSecurityGroupIngress(_ context.Context, in *ec2.Authoriz
 			g.IpPermissions = append(g.IpPermissions, in.IpPermissions...)
 		}
 	}
-	if len(in.TagSpecifications) == 0 || ec2TagMap(in.TagSpecifications[0].Tags)["auto-delete"] != "no" {
+	if len(in.TagSpecifications) == 0 || sgTagMap(in.TagSpecifications[0].Tags)["auto-delete"] != "no" {
 		return nil, fmt.Errorf("ingress rule without tags")
 	}
 	(*fakeDB)(f).writes = append(f.writes, "AuthorizeSecurityGroupIngress "+aws.ToString(in.GroupId))
@@ -244,7 +244,7 @@ func TestCreateRDSFreshAccountCreatesOnce(t *testing.T) {
 	}
 	// Owned and tagged at create time (AC2.1).
 	for what, tags := range map[string]map[string]string{
-		"subnet group": f.subnetGroups["demo-pg"], "security group": ec2TagMap(f.sgs["demo-pg"].Tags),
+		"subnet group": f.subnetGroups["demo-pg"], "security group": sgTagMap(f.sgs["demo-pg"].Tags),
 		"instance": rdsTagMap(in.Tags), "owner secret": smTagMap(f.secrets["demo/ate-owner"].Tags),
 		"master secret": smTagMap(f.secrets["rds!db-demo-pg"].Tags),
 	} {
