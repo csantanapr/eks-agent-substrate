@@ -92,6 +92,8 @@ type fakeActor struct {
 	lose string
 	// noSnapshot makes a suspend record no new snapshot.
 	noSnapshot bool
+	// slowReads is how many reads leave a pending upload pending.
+	slowReads int
 }
 
 // fake is a cluster, an S3 bucket and a localhost proxy, answering the argv
@@ -213,11 +215,16 @@ func (f *fake) ate(argv []string) ([]byte, error) {
 	}
 	switch verb {
 	case "get":
-		// A pending upload completes on the next read, as it would in the background.
+		// A pending upload completes on the next read, as it would in the
+		// background, or after slowReads more reads.
 		var out actor
 		out.Metadata.UID = a.uid
 		out.Status.State = a.state
 		out.Status.Snapshots = slices.Clone(a.snaps)
+		if a.slowReads > 0 {
+			a.slowReads--
+			return json.Marshal(out)
+		}
 		for i := range a.snaps {
 			a.snaps[i].DurableSnapshot.State = storageCompleted
 		}
@@ -600,6 +607,20 @@ func TestVerifyPassesOnBothClasses(t *testing.T) {
 		if c.argv[0] == "bash" || c.argv[0] == "sh" || slices.Contains(c.argv, "-c") {
 			t.Errorf("a shell ran: %q", c.argv)
 		}
+	}
+}
+
+// The S3 copy of a snapshot took 4.5 to 6 minutes on sub-nt6, at the edge
+// of a 120-read wait; the check waits as long as verify.sh (10 minutes, 300
+// reads at the 2s interval), so an upload done after 200 reads passes.
+func TestVerifyWaitsForASlowSnapshotUpload(t *testing.T) {
+	root, _ := testTree(t)
+	f := newFake(t)
+	f.actors["demo-gvisor"] = &fakeActor{ns: "ate-demo-counter", uid: "uid-demo-gvisor", state: stateRunning, slowReads: 200}
+	o := testOptions(root)
+	o.SandboxClasses = "gvisor"
+	if err := f.env().verify(context.Background(), io.Discard, o); err != nil {
+		t.Fatal(err)
 	}
 }
 

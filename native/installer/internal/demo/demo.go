@@ -344,9 +344,13 @@ func templateImage(out []byte) (string, error) {
 	return cs[0].Image, nil
 }
 
-// goldenTries paces waitGolden: 15 minutes at the 2s interval, deploy.sh's
-// wait for the golden snapshot.
-const goldenTries = 450
+// Poll bounds at the 2s interval: waitGolden waits 15 minutes, deploy.sh's
+// wait for the golden snapshot, and the snapshot's S3 copy is waited for 10
+// minutes, verify.sh's wait.
+const (
+	goldenTries = 450
+	s3Tries     = 300
+)
 
 // waitGolden waits for the ActorTemplate's golden snapshot, which new actors
 // restore from; ate-setup deploy demo waits for it too.
@@ -601,9 +605,10 @@ func (e *env) roundtrip(ctx context.Context, w io.Writer, k ate, c class, bucket
 	}
 
 	// The resume can use the node's copy while the S3 upload of the same
-	// snapshot finishes in the background, sometimes minutes later.
+	// snapshot finishes in the background, minutes later: 4.5 to 6 minutes
+	// on sub-nt6. Wait at least verify.sh's 10 minutes.
 	var snap snapshot
-	if !e.poll(ctx, 120, func() bool {
+	if !e.poll(ctx, s3Tries, func() bool {
 		a, err = k.get(ctx, c)
 		var ok bool
 		snap, ok = a.latest()
