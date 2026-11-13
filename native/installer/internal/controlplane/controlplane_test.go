@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -61,20 +63,29 @@ func TestAteSetupArgsMatchInstallScript(t *testing.T) {
 }
 
 // AC4.3 and AC3.3: Auto Mode cordons the control plane with RDS; the bundled
-// PostgreSQL keeps the POC's StorageClass and is never cordoned (ate-setup
-// would then want an ate-postgres pool).
-func TestAutoModeFlagsPerDatabase(t *testing.T) {
-	o := opts()
-	o.AutoMode = true
-	a := AteSetupArgs(o, "demo")
-	if !slices.Contains(a, "--cordon-system-infra-components") || slices.Contains(a, "--ateapi-postgres-storage-class") {
-		t.Errorf("Auto Mode + RDS: %v", a)
-	}
-	o.Database = DatabaseBundled
-	a = AteSetupArgs(o, "demo")
-	if flag(a, "--ateapi-postgres-storage-class") != AutoModeStorageClass || slices.Contains(a, "--cordon-system-infra-components") ||
-		slices.Contains(a, "--ateapi-postgres-server-ca-file") {
-		t.Errorf("Auto Mode + bundled: %v", a)
+// PostgreSQL is never cordoned (ate-setup would then want an ate-postgres
+// pool) and names the mode's StorageClass on both modes (review F2: a
+// standard cluster has no default class).
+func TestStorageClassFlagPerModeAndDatabase(t *testing.T) {
+	for _, tc := range []struct {
+		auto           bool
+		db, class      string
+		cordon, caFile bool
+	}{
+		{auto: true, db: DatabaseRDS, cordon: true, caFile: true},
+		{auto: false, db: DatabaseRDS, caFile: true},
+		{auto: true, db: DatabaseBundled, class: "substrate-eks-auto-ebs"},
+		{auto: false, db: DatabaseBundled, class: "substrate-eks-ebs"},
+	} {
+		o := opts()
+		o.AutoMode, o.Database, o.caFile = tc.auto, tc.db, "/tmp/x/rds-ca.pem"
+		a := AteSetupArgs(o, "demo")
+		if got := flag(a, "--ateapi-postgres-storage-class"); got != tc.class || (tc.class == "") == slices.Contains(a, "--ateapi-postgres-storage-class") {
+			t.Errorf("auto=%v %s: storage class %q, want %q: %v", tc.auto, tc.db, got, tc.class, a)
+		}
+		if slices.Contains(a, "--cordon-system-infra-components") != tc.cordon || slices.Contains(a, "--ateapi-postgres-server-ca-file") != tc.caFile {
+			t.Errorf("auto=%v %s: %v", tc.auto, tc.db, a)
+		}
 	}
 }
 
@@ -132,6 +143,7 @@ type fakeKube struct {
 	cmds          []command
 	fail, noNodes string
 	caMode        os.FileMode // of the CA file, when ate-setup ran
+	class         string      // what kubectl get storageclass prints
 }
 
 func (k *fakeKube) run(_ context.Context, w io.Writer, c command) error {
@@ -142,6 +154,9 @@ func (k *fakeKube) run(_ context.Context, w io.Writer, c command) error {
 	}
 	if slices.Contains(c.Argv, "nodes") && !slices.Contains(c.Argv, k.noNodes) {
 		fmt.Fprintln(c.Stdout, "node/ip-10-0-0-1")
+	}
+	if slices.Contains(c.Argv, "get") && slices.Contains(c.Argv, "storageclass") {
+		fmt.Fprint(c.Stdout, k.class)
 	}
 	if ca := flag(c.Argv, "--ateapi-postgres-server-ca-file"); ca != "" {
 		if fi, err := os.Stat(ca); err == nil {
@@ -324,25 +339,184 @@ func TestMissingNodePoolStopsBeforeTheDatabase(t *testing.T) {
 	}
 }
 
-// AC3.3: bundled keeps the POC path: the Auto Mode StorageClass prerequisite,
-// no database reads, no connection strings.
-func TestBundledKeepsThePOCPath(t *testing.T) {
-	k := &fakeKube{}
+// appliedClass is the StorageClass a command sent kubectl on stdin, and its
+// index in k.cmds (-1 when none was).
+func (k *fakeKube) appliedClass(t *testing.T) (storageClass, int) {
+	t.Helper()
+	for i, c := range k.cmds {
+		if bytes.Contains(c.Stdin, []byte(`"kind":"StorageClass"`)) {
+			var sc storageClass
+			if err := json.Unmarshal(c.Stdin, &sc); err != nil {
+				t.Fatal(err)
+			}
+			return sc, i
+		}
+	}
+	return storageClass{}, -1
+}
+
+var testTags = map[string]string{ownerTagKey: "demo.us-west-2", "project": "agent-substrate", "auto-delete": "no"}
+
+// AC3.3, review F2 and F3: bundled applies the mode's StorageClass before
+// ate-setup on both modes, with the owner tag and TAGS where the provisioner
+// can add them, and takes no RDS step.
+func TestBundledAppliesTheStorageClassFirst(t *testing.T) {
+	for _, tc := range []struct {
+		name               string
+		auto, owned        bool
+		class, provisioner string
+		tagged             bool
+	}{
+		{"standard, made by the installer", false, true, "substrate-eks-ebs", "ebs.csi.aws.com", true},
+		// The add-on's policy allows any tag, whoever made the cluster.
+		{"standard, brought by the user", false, false, "substrate-eks-ebs", "ebs.csi.aws.com", true},
+		{"Auto Mode, made by the installer", true, true, "substrate-eks-auto-ebs", "ebs.csi.eks.amazonaws.com", true},
+		// Its role may lack the tag statement: no custom tags, and it says so.
+		{"Auto Mode, brought by the user", true, false, "substrate-eks-auto-ebs", "ebs.csi.eks.amazonaws.com", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			k := &fakeKube{}
+			o, tree := rdsFixture(t, k, "demo.us-west-2")
+			o.Database, o.AutoMode, o.clusterOwned, o.volumeTags = DatabaseBundled, tc.auto, tc.owned, testTags
+			newDBClients = func(context.Context, string, string) (RDSAPI, SecretsAPI, error) {
+				t.Fatal("bundled read RDS")
+				return nil, nil, nil
+			}
+			var log bytes.Buffer
+			if err := install(context.Background(), &log, o, "demo", "/k", tree); err != nil {
+				t.Fatal(err)
+			}
+			sc, at := k.appliedClass(t)
+			ate := slices.IndexFunc(k.cmds, func(c command) bool { return slices.Contains(c.Argv, "./cmd/ate-setup") })
+			if at < 0 || ate < at || !slices.Equal(k.cmds[at].Argv, []string{"kubectl", "apply", "-f", "-"}) {
+				t.Fatalf("StorageClass not applied before ate-setup (class %d, ate-setup %d): %v", at, ate, k.cmds)
+			}
+			if sc.Metadata.Name != tc.class || sc.Provisioner != tc.provisioner || flag(k.cmds[ate].Argv, "--ateapi-postgres-storage-class") != tc.class {
+				t.Errorf("class %s on %s, ate-setup names %q", sc.Metadata.Name, sc.Provisioner, flag(k.cmds[ate].Argv, "--ateapi-postgres-storage-class"))
+			}
+			n := 0
+			for p, v := range sc.Parameters {
+				if key, val, _ := strings.Cut(v, "="); strings.HasPrefix(p, "tagSpecification_") && testTags[key] == val {
+					n++
+				}
+			}
+			if tc.tagged != (n == len(testTags)) || (!tc.tagged && n != 0) {
+				t.Errorf("tagged=%v but %d of %d tags are in %v", tc.tagged, n, len(testTags), sc.Parameters)
+			}
+			if strings.Contains(log.String(), NoVolumeTagsLine) == tc.tagged {
+				t.Errorf("tagged=%v, and the no-tags line printed=%v", tc.tagged, !tc.tagged)
+			}
+			if (sc.Metadata.Annotations["storageclass.kubernetes.io/is-default-class"] == "true") != tc.owned {
+				t.Errorf("owned=%v, default class annotations %v", tc.owned, sc.Metadata.Annotations)
+			}
+			if got := k.find("get csidriver ebs.csi.aws.com") != nil; got == tc.auto {
+				t.Errorf("auto=%v, checked the EBS CSI driver=%v", tc.auto, got)
+			}
+			if !strings.Contains(log.String(), PrereqLine+"StorageClass "+tc.class) {
+				t.Errorf("no %q line:\n%s", PrereqLine, log.String())
+			}
+			if a := k.cmds[ate]; strings.Contains(strings.Join(a.Env, " "), "CONNECTION_STRING") || k.find("ate-db-bootstrap") != nil {
+				t.Errorf("bundled took the RDS path: %v", k.cmds)
+			}
+		})
+	}
+}
+
+// With RDS, the class is the default class of a cluster this installer made
+// (R1), applied before the bootstrap; on a cluster the user brought, RDS
+// leaves its storage alone.
+func TestRDSAppliesTheClassOnlyOnAnOwnedCluster(t *testing.T) {
+	for _, owned := range []bool{true, false} {
+		k := &fakeKube{}
+		o, tree := rdsFixture(t, k, "demo.us-west-2")
+		o.clusterOwned, o.volumeTags = owned, testTags
+		if err := install(context.Background(), io.Discard, o, "demo", "/k", tree); err != nil {
+			t.Fatal(err)
+		}
+		_, at := k.appliedClass(t)
+		boot := slices.IndexFunc(k.cmds, func(c command) bool { return strings.Contains(strings.Join(c.Argv, " "), "ate-db-bootstrap") })
+		if owned != (at >= 0) || (owned && at > boot) {
+			t.Errorf("owned=%v: class applied at %d, bootstrap at %d", owned, at, boot)
+		}
+		if ate := k.find("./cmd/ate-setup"); ate == nil || slices.Contains(ate.Argv, "--ateapi-postgres-storage-class") {
+			t.Errorf("owned=%v: ate-setup %v", owned, ate)
+		}
+	}
+}
+
+// StorageClass parameters cannot be updated: a class from an older install
+// (the untagged Auto Mode one) is replaced, and one already right is applied.
+func TestStorageClassIsReplacedOnlyWhenItDiffers(t *testing.T) {
+	cur := renderStorageClass(true, true, testTags)
+	same, _ := json.Marshal(cur)
+	old := renderStorageClass(true, false, nil)
+	differ, _ := json.Marshal(old)
+	for _, tc := range []struct {
+		name, class string
+		verb        []string
+	}{
+		{"absent", "", []string{"apply", "-f", "-"}},
+		{"same settings", string(same), []string{"apply", "-f", "-"}},
+		{"untagged from an older install", string(differ), []string{"replace", "--force", "-f", "-"}},
+	} {
+		k := &fakeKube{class: tc.class}
+		o, tree := rdsFixture(t, k, "demo.us-west-2")
+		o.Database, o.clusterOwned, o.volumeTags = DatabaseBundled, true, testTags
+		if err := install(context.Background(), io.Discard, o, "demo", "/k", tree); err != nil {
+			t.Fatal(err)
+		}
+		if _, at := k.appliedClass(t); at < 0 || !slices.Equal(k.cmds[at].Argv[1:], tc.verb) {
+			t.Errorf("%s: want kubectl %v, got %v", tc.name, tc.verb, k.cmds)
+		}
+	}
+}
+
+// A standard cluster without the EBS CSI driver stops before ate-setup,
+// naming the add-on, instead of a PostgreSQL rollout that times out.
+func TestBundledOnStandardNeedsTheEBSDriver(t *testing.T) {
+	k := &fakeKube{fail: "get csidriver"}
 	o, tree := rdsFixture(t, k, "demo.us-west-2")
-	o.Database = DatabaseBundled
-	newDBClients = func(context.Context, string, string) (RDSAPI, SecretsAPI, error) {
-		t.Fatal("bundled read RDS")
-		return nil, nil, nil
+	o.Database, o.AutoMode, o.volumeTags = DatabaseBundled, false, testTags
+	err := install(context.Background(), io.Discard, o, "demo", "/k", tree)
+	if err == nil || !strings.Contains(err.Error(), "aws-ebs-csi-driver") {
+		t.Fatalf("want an error naming the add-on, got %v", err)
 	}
-	var log bytes.Buffer
-	if err := install(context.Background(), &log, o, "demo", "/k", tree); err != nil {
-		t.Fatal(err)
+	if k.find("./cmd/ate-setup") != nil || k.find("apply") != nil {
+		t.Errorf("went on without the driver: %v", k.cmds)
 	}
-	if k.find("apply -f "+filepath.Join(o.Overlay, "prereqs")) == nil || !strings.Contains(log.String(), PrereqLine) {
-		t.Error("bundled on Auto Mode skipped the StorageClass prerequisite")
+}
+
+func TestRenderedStorageClassOnBothModes(t *testing.T) {
+	for _, auto := range []bool{true, false} {
+		sc := renderStorageClass(auto, false, testTags)
+		p := sc.Parameters
+		if p["type"] != "gp3" || p["encrypted"] != "true" || sc.VolumeBindingMode != "WaitForFirstConsumer" || sc.ReclaimPolicy != "Delete" {
+			t.Errorf("auto=%v: %+v", auto, sc)
+		}
+		// One tagSpecification_N per tag, numbered from 1 in key order.
+		want := map[string]string{"tagSpecification_1": ownerTagKey + "=demo.us-west-2",
+			"tagSpecification_2": "auto-delete=no", "tagSpecification_3": "project=agent-substrate"}
+		for k, v := range want {
+			if p[k] != v {
+				t.Errorf("auto=%v: %s=%q, want %q", auto, k, p[k], v)
+			}
+		}
+		if len(p) != 2+len(want) {
+			t.Errorf("auto=%v: parameters %v", auto, p)
+		}
+		topo := len(sc.AllowedTopologies) == 1 && sc.AllowedTopologies[0].MatchLabelExpressions[0].Key == "eks.amazonaws.com/compute-type"
+		if topo != auto {
+			t.Errorf("auto=%v: allowedTopologies %+v", auto, sc.AllowedTopologies)
+		}
 	}
-	ate := k.find("./cmd/ate-setup")
-	if ate == nil || strings.Contains(strings.Join(ate.Env, " "), "CONNECTION_STRING") || k.find("ate-db-bootstrap") != nil {
-		t.Errorf("bundled took the RDS path: %v", k.cmds)
+}
+
+func TestVolumeTagsAreTheOwnerTagAndTAGS(t *testing.T) {
+	got, err := volumeTags("demo", "us-west-2", DefaultTags)
+	if err != nil || !maps.Equal(got, testTags) {
+		t.Errorf("tags %v (%v), want %v", got, err, testTags)
+	}
+	if _, err := volumeTags("demo", "us-west-2", "project"); err == nil {
+		t.Error("accepted a tag without a value")
 	}
 }

@@ -50,7 +50,7 @@ func TestControlPlaneChecklistFollowsRealMarkerOrder(t *testing.T) {
 		"Fetching substrate v1.0.0 from https://github.com/agent-substrate/substrate.git",
 		"substrate-eks EKS overlay: added deploy/eks to manifests/ate-install/base/kustomization.yaml",
 		"Writing kubeconfig /home/u/.cache/substrate-eks/kubeconfig/sub-native.us-west-2.yaml",
-		"Applying cluster prerequisites from /x/native/deploy/eks/prereqs",
+		"Applying cluster prerequisites: StorageClass substrate-eks-auto-ebs (ebs.csi.eks.amazonaws.com, encrypted gp3, 3 volume tags)",
 		"[step]: prepare_microvm_deps",
 		"Uploading assets to s3://sub-native-assets-111122223333-us-west-2/microvm-assets/ ...",
 		"[step]: deploy_crds",
@@ -73,8 +73,7 @@ func TestControlPlaneChecklistFollowsRealMarkerOrder(t *testing.T) {
 func TestDatabaseRowLightsForEveryPath(t *testing.T) {
 	for _, line := range []string{
 		controlplane.DatabaseLine + "sub-nt1-pg (sub-nt1-pg.x.us-west-2.rds.amazonaws.com:5432)",
-		controlplane.PrereqLine + "/x/native/deploy/eks/prereqs",
-		controlplane.BundledLine,
+		controlplane.PrereqLine + "StorageClass substrate-eks-ebs (ebs.csi.aws.com, encrypted gp3, 3 volume tags)",
 	} {
 		items := ControlPlane()
 		got := Progress(items, 2, line)

@@ -28,8 +28,7 @@ const (
 	FetchLine    = "Fetching substrate "
 	CachedLine   = "Using cached substrate "
 	KubeconfLine = "Writing kubeconfig "
-	PrereqLine   = "Applying cluster prerequisites from "
-	BundledLine  = "Using the bundled PostgreSQL; nothing to prepare on a standard cluster"
+	PrereqLine   = "Applying cluster prerequisites: "
 	ReadyLine    = "Substrate control plane is ready"
 )
 
@@ -47,8 +46,7 @@ type Options struct {
 	SandboxClasses           string
 	// AutoMode, read off the cluster by Deploy, pins the control plane to
 	// the system node group (--cordon-system-infra-components) with RDS, and
-	// puts the bundled PostgreSQL volume on Auto Mode's EBS driver
-	// (deploy/eks/prereqs/storageclass-auto-ebs.yaml).
+	// picks the StorageClass's EBS driver (storageclass.go).
 	AutoMode bool
 	// Database is DatabaseRDS (the default, also when empty) or
 	// DatabaseBundled; main.go sets it from --database.
@@ -60,6 +58,10 @@ type Options struct {
 
 	// caFile is the RDS CA bundle Deploy downloaded, for ate-setup.
 	caFile string
+	// clusterOwned is a cluster this installer created, read by Deploy;
+	// volumeTags are the owner tag and TAGS, for the StorageClass.
+	clusterOwned bool
+	volumeTags   map[string]string
 }
 
 // db is Database with the default applied.
@@ -169,8 +171,10 @@ func AteSetupArgs(o Options, kubeContext string) []string {
 		if o.AutoMode {
 			extra = append(extra, "--cordon-system-infra-components")
 		}
-	case o.AutoMode:
-		extra = append(extra, "--ateapi-postgres-storage-class", AutoModeStorageClass)
+	case o.db() == DatabaseBundled:
+		// EKS has no default class (its gp2 one is not the default), and on
+		// a cluster this installer did not create the default may be any.
+		extra = append(extra, "--ateapi-postgres-storage-class", StorageClassName(o.AutoMode))
 	}
 	return append([]string{
 		"run", "./cmd/ate-setup", "deploy", "ate-system",
@@ -190,9 +194,6 @@ const (
 	DatabaseRDS     = "rds"
 	DatabaseBundled = "bundled"
 )
-
-// AutoModeStorageClass is the StorageClass in deploy/eks/prereqs.
-const AutoModeStorageClass = "substrate-eks-auto-ebs"
 
 // AteSetupEnv is the environment of the ate-setup run. It holds names only,
 // never a secret; with RDS, Deploy adds the connection strings to it.
@@ -238,10 +239,17 @@ func Deploy(ctx context.Context, w io.Writer, o Options) error {
 	if err != nil {
 		return err
 	}
-	// Read Auto Mode off the cluster itself rather than trusting a flag, so a
-	// direct --deploy-control-plane run cannot pick the wrong StorageClass or
-	// cordon setting.
-	o.AutoMode = cl.AutoMode
+	// Read Auto Mode and ownership off the cluster itself rather than
+	// trusting a flag, so a direct --deploy-control-plane run cannot pick the
+	// wrong StorageClass, volume tags or cordon setting.
+	o.AutoMode, o.clusterOwned = cl.AutoMode, cl.CreatedByInstaller(o.Region)
+	tags, ok := os.LookupEnv("TAGS")
+	if !ok {
+		tags = DefaultTags
+	}
+	if o.volumeTags, err = volumeTags(o.Cluster, o.Region, tags); err != nil {
+		return err
+	}
 	kc := awsx.KubeconfigPath(o.Cluster, o.Region)
 	fmt.Fprintln(w, KubeconfLine+kc)
 	if err := awsx.WriteKubeconfig(kc, cl, o.Region, o.Profile); err != nil {
@@ -250,28 +258,23 @@ func Deploy(ctx context.Context, w io.Writer, o Options) error {
 	return install(ctx, w, o, cl.Name, kc, tree)
 }
 
-// install is the deploy after the kubeconfig: the database, then ate-setup.
+// install is the deploy after the kubeconfig: the StorageClass, the
+// database, then ate-setup. The bundled PostgreSQL needs the class; a cluster
+// this installer created gets it as its default class with RDS too (R1).
 func install(ctx context.Context, w io.Writer, o Options, kubeContext, kc, tree string) error {
 	env := AteSetupEnv(o, kc)
-	switch o.db() {
-	case DatabaseRDS:
+	if o.db() == DatabaseBundled || o.clusterOwned {
+		if err := applyStorageClass(ctx, w, o, kc); err != nil {
+			return err
+		}
+	}
+	if o.db() == DatabaseRDS {
 		dsnEnv, cleanup, err := prepareRDS(ctx, w, &o, kc, tree)
 		defer cleanup()
 		if err != nil {
 			return err
 		}
 		env = append(env, dsnEnv...)
-	case DatabaseBundled:
-		if !o.AutoMode {
-			// Printed so the checklist's database row lights on what ran.
-			fmt.Fprintln(w, BundledLine)
-			break
-		}
-		prereqs := filepath.Join(o.Overlay, "prereqs")
-		fmt.Fprintln(w, PrereqLine+prereqs)
-		if err := run(ctx, w, "", []string{"KUBECONFIG=" + kc}, "kubectl", "apply", "-f", prereqs); err != nil {
-			return err
-		}
 	}
 	argv := append([]string{"go"}, AteSetupArgs(o, kubeContext)...)
 	fmt.Fprintln(w, "$ "+strings.Join(argv, " "))
