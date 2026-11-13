@@ -11,6 +11,7 @@ import (
 	"github.com/csantanapr/eks-agent-substrate/native/tools/setup-aws/phases"
 
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/controlplane"
+	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/demo"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/eksoverlay"
 )
 
@@ -49,6 +50,38 @@ func FromPhases(list []string) []ChecklistItem {
 
 // Bootstrap tracks `setup-aws bootstrap`.
 func Bootstrap() []ChecklistItem { return FromPhases(phases.Bootstrap) }
+
+// Cluster tracks `setup-aws create cluster`.
+func Cluster() []ChecklistItem { return FromPhases(phases.Cluster) }
+
+// RDS tracks `setup-aws create rds`.
+func RDS() []ChecklistItem { return FromPhases(phases.RDS) }
+
+// Teardown tracks `setup-aws teardown`.
+func Teardown() []ChecklistItem { return FromPhases(phases.Teardown) }
+
+// RemoveControlPlane tracks --remove-control-plane (controlplane.Delete). Its
+// only marker is the last line, so the first row lights on any output: the
+// step is under way, and the spinner says so.
+func RemoveControlPlane() []ChecklistItem {
+	return []ChecklistItem{
+		{"Delete ate-system with ate-setup", func(string) bool { return true }},
+		{"Wait for the ate-system namespace to be gone", contains(controlplane.RemovedLine)},
+	}
+}
+
+// Demo tracks --deploy-demo --verify: the counter demo deployed on each
+// class, then suspend and resume checked on each (demo.Deploy, demo.Verify).
+func Demo(classes []string) []ChecklistItem {
+	var items []ChecklistItem
+	for _, c := range classes {
+		items = append(items, ChecklistItem{"Deploy the counter demo on " + c, contains(demo.DeployLine + c)})
+	}
+	for _, c := range classes {
+		items = append(items, ChecklistItem{"Check suspend and resume on " + c, contains(demo.VerifyLine + c)})
+	}
+	return items
+}
 
 // ControlPlane tracks the in-process deploy and `ate-setup deploy
 // ate-system`'s `[step]:` markers, the same markers substrate-gke's Deploy

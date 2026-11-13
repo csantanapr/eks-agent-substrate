@@ -4,6 +4,9 @@ import (
 	"testing"
 
 	"github.com/csantanapr/eks-agent-substrate/native/tools/setup-aws/phases"
+
+	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/controlplane"
+	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/demo"
 )
 
 // Every setup-aws command's checklist lights each row, in order, on the exact
@@ -76,5 +79,32 @@ func TestProgressNeverMovesBack(t *testing.T) {
 	items := Bootstrap()
 	if got := Progress(items, 2, "Step 1/4: Checking the EKS cluster..."); got != 2 {
 		t.Errorf("cursor moved back to %d", got)
+	}
+}
+
+// --deploy-demo --verify deploys on every class, then checks every class; each
+// line lights its own row.
+func TestDemoChecklistFollowsDeployThenVerify(t *testing.T) {
+	lines := []string{
+		demo.DeployLine + "gvisor", demo.DeployLine + "microvm",
+		demo.VerifyLine + "gvisor", demo.VerifyPassLine + "gvisor", demo.VerifyLine + "microvm",
+	}
+	want := []int{0, 1, 2, 2, 3}
+	items, active := Demo([]string{"gvisor", "microvm"}), -1
+	for i, line := range lines {
+		active = Progress(items, active, line)
+		if active != want[i] {
+			t.Fatalf("line %q lit row %d, want %d", line, active, want[i])
+		}
+	}
+}
+
+func TestRemoveControlPlaneChecklist(t *testing.T) {
+	items := RemoveControlPlane()
+	if got := Progress(items, -1, "Using cached substrate v1.0.0"); got != 0 {
+		t.Errorf("first line lit row %d, want 0", got)
+	}
+	if got := Progress(items, 0, controlplane.RemovedLine); got != 1 {
+		t.Errorf("RemovedLine lit row %d, want 1", got)
 	}
 }
