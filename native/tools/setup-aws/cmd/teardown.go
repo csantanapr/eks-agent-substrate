@@ -930,6 +930,12 @@ func (e *tdEnv) stepRouteTables(ctx context.Context) ([]tdTarget, []string, erro
 	return ts, rs, nil
 }
 
+// stepVPCs deletes the owned VPCs, with their main route table, default
+// security group and default network ACL.
+//
+// shortcut: a VPC that still holds a kind teardown does not delete (a VPC
+// endpoint, a non-default network ACL, a peering) fails only once tdTimeout
+// has passed; add that kind as a step if create cluster starts making one.
 func (e *tdEnv) stepVPCs(ctx context.Context) ([]tdTarget, []string, error) {
 	vpcs, err := e.ownedVPCs(ctx)
 	if err != nil {

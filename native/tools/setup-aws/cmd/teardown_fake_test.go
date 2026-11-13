@@ -101,6 +101,13 @@ func (f *tdFake) remove(o *tdObj) {
 				delete(f.objs, x.kind+"|"+x.id)
 			}
 		}
+	case "db":
+		// RDS deletes the master user secret it manages with the instance.
+		for _, x := range f.objs {
+			if x.kind == "secret" && strings.HasSuffix(x.tags["aws:rds:primaryDBInstanceArn"], ":db:"+o.id) {
+				delete(f.objs, x.kind+"|"+x.id)
+			}
+		}
 	case kVPC:
 		for _, x := range f.objs {
 			if x.vpc == o.id && (x.main || x.isDefault) {
@@ -520,7 +527,13 @@ func (t *tfSM) f() *tdFake { return (*tdFake)(t) }
 func (t *tfSM) DescribeSecret(_ context.Context, in *secretsmanager.DescribeSecretInput, _ ...func(*secretsmanager.Options)) (*secretsmanager.DescribeSecretOutput, error) {
 	t.f().mu.Lock()
 	defer t.f().mu.Unlock()
-	o := t.f().get("secret", aws.ToString(in.SecretId))
+	id := aws.ToString(in.SecretId)
+	if strings.HasPrefix(id, "arn:") {
+		// An ARN ends in the name and a six-character suffix ("-AbCdEf").
+		_, _, name := arnType(id)
+		id = name[:len(name)-7]
+	}
+	o := t.f().get("secret", id)
 	if o == nil {
 		return nil, apiErr("ResourceNotFoundException")
 	}

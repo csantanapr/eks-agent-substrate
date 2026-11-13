@@ -737,7 +737,7 @@ var tdKnown = map[string]bool{
 	// create cluster tags the VPC's default network ACL, which goes with the
 	// VPC (listed itself).
 	"ec2:network-acl": true,
-	"rds:db":          true, "rds:subgrp": true, "secretsmanager:secret": true, "ecr:repository": true,
+	"rds:db":          true, "rds:subgrp": true, "ecr:repository": true,
 }
 
 // arnType splits an ARN into its service, resource type and id.
@@ -884,6 +884,19 @@ func (e *tdEnv) inventory(ctx context.Context) ([]tdRow, error) {
 		for _, m := range page.ResourceTagMappingList {
 			svc, rtype, id := arnType(aws.ToString(m.ResourceARN))
 			if svc == "eks" || svc == "iam" || svc == "s3" || tdKnown[svc+":"+rtype] {
+				continue
+			}
+			// Secrets beyond the two logins (create rds tags the master user
+			// secret RDS makes): read each, and skip one gone or scheduled
+			// for deletion.
+			if svc == "secretsmanager" && rtype == "secret" {
+				s, err := e.secret(ctx, aws.ToString(m.ResourceARN))
+				if err != nil {
+					return nil, err
+				}
+				if s != nil && s.DeletedDate == nil {
+					add(tdRow{"secret", aws.ToString(s.Name), kvMap(s.Tags, smKV), false})
+				}
 				continue
 			}
 			// eksctl's own stacks go with the cluster (./delete-cluster.sh).

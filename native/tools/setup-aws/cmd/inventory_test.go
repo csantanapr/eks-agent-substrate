@@ -32,7 +32,7 @@ func TestInventoryListsTheDeployment(t *testing.T) {
 		"IAM role demo-us-west-2-ate-api-server", "IAM role demo-us-west-2-atelet", "IAM role demo-us-west-2-eks-cluster",
 		"IAM role demo-us-west-2-eks-auto-node", "IAM role demo-us-west-2-eks-node", "IAM role demo-us-west-2-ebs-csi-driver",
 		"RDS instance demo-pg", "RDS subnet group demo-pg", "security group demo-pg (sg-pg)",
-		"secret demo/ate-owner", "secret demo/ate-readwrite",
+		"secret demo/ate-owner", "secret demo/ate-readwrite", "secret rds!db-0001",
 		"S3 bucket demo-snap-111122223333-us-west-2", "S3 bucket demo-assets-111122223333-us-west-2", "ECR repository demo/counter",
 		"launch template demo-microvm-nested-virt (lt-1)", "launch template demo-gvisor-nodes (lt-3)", "VPC vpc-1", "subnet subnet-pub-a", "subnet subnet-priv-b",
 		"internet gateway igw-1", "NAT gateway nat-1", "Elastic IP eipalloc-1", "route table rtb-pub",

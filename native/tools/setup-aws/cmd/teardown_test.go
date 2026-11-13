@@ -57,6 +57,8 @@ func fullDeployment() *tdFake {
 	f.put(&tdObj{kind: "subgrp", id: "demo-pg", tags: own()})
 	f.put(&tdObj{kind: "secret", id: "demo/ate-owner", tags: own()})
 	f.put(&tdObj{kind: "secret", id: "demo/ate-readwrite", tags: own()})
+	// The master user secret RDS manages, which create rds tags.
+	f.put(&tdObj{kind: "secret", id: "rds!db-0001", tags: own("aws:rds:primaryDBInstanceArn", "arn:aws:rds:us-west-2:111122223333:db:demo-pg")})
 	f.put(&tdObj{kind: "bucket", id: "demo-snap-111122223333-us-west-2", objects: 5, tags: own()})
 	f.put(&tdObj{kind: "bucket", id: "demo-assets-111122223333-us-west-2", objects: 3, tags: own()})
 	f.put(&tdObj{kind: "repo", id: "demo/counter", tags: own()})
@@ -92,7 +94,8 @@ func fullDeployment() *tdFake {
 		"arn:aws:rds:us-west-2:111122223333:db:demo-pg", "arn:aws:s3:::demo-snap-111122223333-us-west-2",
 		"arn:aws:secretsmanager:us-west-2:111122223333:secret:demo/ate-owner-AbCdEf",
 		"arn:aws:ecr:us-west-2:111122223333:repository/demo/counter", "arn:aws:ec2:us-west-2:111122223333:natgateway/nat-1",
-		"arn:aws:ec2:us-west-2:111122223333:network-acl/acl-default", "arn:aws:eks:us-west-2:111122223333:addon/demo/vpc-cni/x"} {
+		"arn:aws:ec2:us-west-2:111122223333:network-acl/acl-default", "arn:aws:eks:us-west-2:111122223333:addon/demo/vpc-cni/x",
+		"arn:aws:secretsmanager:us-west-2:111122223333:secret:rds!db-0001-QwErTy"} {
 		f.tagged = append(f.tagged, rgttypes.ResourceTagMapping{ResourceARN: aws.String(arn),
 			Tags: []rgttypes.Tag{{Key: aws.String(OwnerTagKey), Value: aws.String(tdOwner)}}})
 	}
