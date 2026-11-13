@@ -2,6 +2,8 @@ package ui
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"regexp"
 	"slices"
 	"strconv"
@@ -9,6 +11,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	ekstypes "github.com/aws/aws-sdk-go-v2/service/eks/types"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/awsx"
@@ -112,6 +116,12 @@ func testDeps(r *recorder) Deps {
 		},
 		Clusters: func(context.Context) ([]awsx.Cluster, error) { return clusters, nil },
 		Describe: func(_ context.Context, name string) (awsx.Cluster, error) {
+			switch name {
+			case "gone":
+				return awsx.Cluster{}, fmt.Errorf("describe gone: %w", &ekstypes.ResourceNotFoundException{Message: aws.String("No cluster found for name: gone.")})
+			case "denied":
+				return awsx.Cluster{}, errors.New("describe denied: AccessDeniedException")
+			}
 			for _, c := range clusters {
 				if c.Name == name {
 					return c, nil
@@ -479,6 +489,38 @@ func TestKeepClusterFlagKeepsAnOwnedCluster(t *testing.T) {
 		if !slices.Equal(r.ran(), want) || s.KeepCluster != only {
 			t.Errorf("KeepClusterOnly=%v: ran %q, KeepCluster=%v", only, r.ran(), s.KeepCluster)
 		}
+	}
+}
+
+// AC6.2 through the wizard: a teardown of a cluster that is already gone
+// (a second `make teardown`, or a first one that stopped after deleting the
+// cluster) deletes what is left instead of looping on retry. A denied read
+// is not "gone": it stays an error to retry (both directions).
+func TestTeardownOfAGoneClusterDeletesWhatIsLeft(t *testing.T) {
+	for _, keepOnly := range []bool{false, true} {
+		r := &recorder{}
+		s := newSetup("gone")
+		s.Teardown, s.KeepClusterOnly = true, keepOnly
+		m := toStep(t, New(testDeps(r), s), state.TeardownScope)
+		if !strings.Contains(m.View(), "no longer exists") {
+			t.Fatalf("gone cluster not shown as gone:\n%s", m.View())
+		}
+		m = typeIn(m, "gone")
+		m = toStep(t, m, state.Complete)
+		want := []string{"remove gone", "teardown keep=" + strconv.FormatBool(keepOnly)}
+		if !slices.Equal(r.ran(), want) {
+			t.Errorf("keepOnly=%v: ran %q, want %q", keepOnly, r.ran(), want)
+		}
+	}
+
+	r := &recorder{}
+	s := newSetup("denied")
+	s.Teardown = true
+	m := toStep(t, New(testDeps(r), s), state.TeardownScope)
+	m = typeIn(m, "denied")
+	m = press(m, "enter")
+	if m.m.Current() != state.TeardownScope || len(r.ran()) != 0 || !strings.Contains(m.View(), "AccessDenied") {
+		t.Errorf("a denied describe was treated as gone: at %s, ran %q", m.m.Current().Title(), r.ran())
 	}
 }
 

@@ -7,6 +7,7 @@ package awsx
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -152,6 +153,13 @@ func (c *Client) ListClusters(ctx context.Context) ([]Cluster, error) {
 }
 
 // Describe reads one cluster.
+// IsClusterGone reports whether err is EKS saying the cluster does not exist
+// (a teardown that already deleted it). A denied or throttled read is not.
+func IsClusterGone(err error) bool {
+	var nf *ekstypes.ResourceNotFoundException
+	return errors.As(err, &nf)
+}
+
 func (c *Client) Describe(ctx context.Context, name string) (Cluster, error) {
 	d, err := c.EKS.DescribeCluster(ctx, &eks.DescribeClusterInput{Name: aws.String(name)})
 	if err != nil {
