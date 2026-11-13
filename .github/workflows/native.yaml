@@ -1,0 +1,60 @@
+# The native installer (native/) on every pull request and every push to
+# main: gofmt, go vet and go test for both Go modules, the install.sh
+# launcher check, and the render-parity test of deploy/eks against
+# patches/substrate-v1.0.0-eks.patch.
+name: native
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: native-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  GOTOOLCHAIN: local
+jobs:
+  test:
+    name: test (${{ matrix.module }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [installer, tools/setup-aws]
+    defaults:
+      run:
+        working-directory: native/${{ matrix.module }}
+    steps:
+    - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+      with:
+        persist-credentials: false
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: native/${{ matrix.module }}/go.mod
+        cache-dependency-path: native/${{ matrix.module }}/go.sum
+    - name: gofmt
+      run: |
+        test -z "$(gofmt -l .)" || { gofmt -l .; echo "gofmt: files above need formatting"; exit 1; }
+    - name: go vet
+      run: go vet ./...
+    - name: go test
+      run: go test ./...
+    - name: install.sh is a launcher only
+      if: matrix.module == 'installer'
+      run: go test -count=1 -run '^TestLauncher' -v .
+  parity:
+    name: render parity
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+    - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+      with:
+        persist-credentials: false
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: native/installer/go.mod
+        cache-dependency-path: native/installer/go.sum
+    - name: make parity
+      run: make -C native parity
