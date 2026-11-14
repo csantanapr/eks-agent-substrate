@@ -197,8 +197,11 @@ go -C installer run . --plugin-action remove --plugins db-rotation --cluster my-
 
 `deploy` makes each plugin and the ones it requires, in order: its AWS
 resources, its Kubernetes objects, then its check. `remove` deletes the
-plugin's Kubernetes objects, then its AWS resources. With no `--plugins`, it
-removes every plugin the cluster records.
+plugin's Kubernetes objects, then its AWS resources. Before it removes
+anything, it checks every plugin's AWS resources with `setup-aws plugin <id>
+--delete --plan`, and stops with nothing removed if AWS holds a resource of
+that name with another owner. With no `--plugins`, it removes every plugin
+the cluster records.
 
 ### Per-actor volumes on Amazon EFS and Amazon S3 Files
 

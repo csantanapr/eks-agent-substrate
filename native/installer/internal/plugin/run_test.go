@@ -19,6 +19,9 @@ import (
 type fakeCluster struct {
 	record string // the data value; "" is no ConfigMap
 	log    []string
+	// refuse makes `setup-aws plugin <id> --delete`, with or without
+	// --plan, fail as a refusal does.
+	refuse bool
 }
 
 var recordValue = regexp.MustCompile(`(?m)^  plugins: "([^"]*)"$`)
@@ -48,6 +51,9 @@ func (f *fakeCluster) exec(_ context.Context, _ io.Writer, c Cmd) error {
 			return fmt.Errorf("setup-aws env %v", c.Env)
 		}
 		f.log = append(f.log, "setup-aws "+strings.TrimPrefix(argv, "go -C /setup-aws run . plugin "))
+		if f.refuse && strings.Contains(argv, " --delete") {
+			return errors.New("exit status 1: teardown stopped before deleting anything it does not own")
+		}
 	default:
 		return fmt.Errorf("unexpected child: %s", argv)
 	}
@@ -137,9 +143,42 @@ func TestRunRemoveAll(t *testing.T) {
 	if err := Run(context.Background(), io.Discard, ActionRemove, nil, o); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"remove solo", "record=base,top", "remove top", "record=base", "remove base", "setup-aws base --delete", "record deleted"}
+	want := []string{"setup-aws base --delete --plan", "remove solo", "record=base,top", "remove top", "record=base", "remove base", "setup-aws base --delete", "record deleted"}
 	if !slices.Equal(f.log, want) {
 		t.Errorf("log = %q\nwant  %q", f.log, want)
+	}
+}
+
+// Review R5, both ways: AWS refusals are found before anything is removed.
+// A refusal from `--delete --plan` stops the removal with every plugin's
+// Kubernetes objects and the record left as they were; with none, the
+// removal runs as TestRunRemoveAll shows.
+func TestRunRemoveStopsOnAnAWSRefusalWithNothingRemoved(t *testing.T) {
+	f := &fakeCluster{record: "base,solo,top", refuse: true}
+	o := runFixture(t, f, nil)
+	var out bytes.Buffer
+	err := Run(context.Background(), &out, ActionRemove, nil, o)
+	if err == nil || !strings.Contains(err.Error(), "plugin base: its AWS resources cannot be deleted, so nothing was removed") ||
+		!strings.Contains(err.Error(), "does not own") {
+		t.Errorf("want the refusal, got %v", err)
+	}
+	if want := []string{"setup-aws base --delete --plan"}; !slices.Equal(f.log, want) {
+		t.Errorf("log = %q\nwant  %q (nothing removed)", f.log, want)
+	}
+	if f.record != "base,solo,top" {
+		t.Errorf("record = %q after a refusal", f.record)
+	}
+	if !strings.Contains(out.String(), PlanLine+"base\n") || strings.Contains(out.String(), RemoveLine) {
+		t.Errorf("output:\n%s", out.String())
+	}
+
+	f = &fakeCluster{record: "base,solo,top"}
+	o = runFixture(t, f, nil)
+	if err := Run(context.Background(), io.Discard, ActionRemove, nil, o); err != nil {
+		t.Fatal(err)
+	}
+	if f.record != "" || !slices.Contains(f.log, "remove base") || !slices.Contains(f.log, "setup-aws base --delete") {
+		t.Errorf("record %q, log %q", f.record, f.log)
 	}
 }
 

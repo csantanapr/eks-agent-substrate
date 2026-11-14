@@ -20,6 +20,9 @@ const (
 	ReadyLine   = "Plugin ready: "
 	RemoveLine  = "Removing plugin "
 	RemovedLine = "Plugin removed: "
+	// PlanLine comes before any removal, for each plugin with AWS resources:
+	// what deleting them would do, and whether AWS refuses it.
+	PlanLine = "Checking what removing plugin would delete in AWS: "
 	// NeedsKeptLine follows RemovedLine for a plugin with Needs: the running
 	// control plane still carries them (a preview gate, a credential
 	// provider, ingress clients, another release) until it is deployed again.
@@ -148,7 +151,9 @@ func hasNeeds(p Plugin) bool {
 //   - verify: Verify for ids and what they require.
 //   - remove: ids (every recorded plugin when ids is empty), in reverse
 //     order: Remove, then `setup-aws plugin <id> --delete`, then dropped from
-//     the record. A recorded plugin that requires one being removed stops it.
+//     the record. A recorded plugin that requires one being removed stops it,
+//     and so does an AWS refusal, which `setup-aws plugin <id> --delete
+//     --plan` finds for every plugin before anything is removed.
 func Run(ctx context.Context, w io.Writer, action string, ids []string, o Options) error {
 	if o.Cluster == "" || o.Region == "" {
 		return errors.New("plugin: cluster and region are required")
@@ -257,6 +262,19 @@ func remove(ctx context.Context, w io.Writer, ids []string, o Options) error {
 		}
 		return strings.Compare(b.ID, a.ID)
 	})
+	// Ask AWS first, for every plugin: `--delete --plan` finds each refusal
+	// (a same-named resource with another owner) and deletes nothing, so a
+	// refusal stops the removal before any Kubernetes object is gone, rather
+	// than leaving a plugin half removed (review R5).
+	for _, p := range ps {
+		if !p.SetupAWS {
+			continue
+		}
+		fmt.Fprintln(w, PlanLine+p.ID)
+		if err := SetupAWS(ctx, w, o, "plugin", p.ID, "--delete", "--plan"); err != nil {
+			return fmt.Errorf("plugin %s: its AWS resources cannot be deleted, so nothing was removed: %w", p.ID, err)
+		}
+	}
 	left := slices.Clone(rec)
 	for _, p := range ps {
 		fmt.Fprintln(w, RemoveLine+p.ID)
