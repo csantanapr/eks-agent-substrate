@@ -182,8 +182,9 @@ func (r *clusterRun) ensureRoles(ctx context.Context) error {
 // reconcileClusterRole puts a missing or different inline policy of an
 // existing Auto Mode cluster's role, so a rerun brings a cluster made by an
 // older setup-aws up to date. Only a role carrying this deployment's owner
-// tag is changed; any other is refused (logged and left alone), since the
-// cluster may be one setup-aws did not create (one eksctl made, say).
+// tag is changed. Any other is left as it is with a warning and the run goes
+// on (it is not an error), since the cluster may be one setup-aws did not
+// create (one eksctl made, say).
 func (r *clusterRun) reconcileClusterRole(ctx context.Context) error {
 	if r.cluster == nil || !r.auto {
 		return nil
@@ -212,7 +213,7 @@ func (r *clusterRun) reconcileClusterRole(ctx context.Context) error {
 		}
 	}
 	if owner != r.e.names.OwnerValue {
-		slog.Warn("refused: the cluster's IAM role is not owned by this deployment, so its inline policies are left alone (tagged NodeClasses and StorageClasses get no deployment tags)",
+		slog.Warn("the cluster's IAM role is not owned by this deployment, so its inline policies are left alone (tagged NodeClasses and StorageClasses get no deployment tags)",
 			"role", role, "owner", owner, "want", r.e.names.OwnerValue)
 		return nil
 	}

@@ -176,8 +176,8 @@ func TestAutoModeClusterRoleMayLaunchTaggedNodes(t *testing.T) {
 
 // Both directions for a rerun on an existing Auto Mode cluster: a missing
 // node tag policy is put, once, on the cluster's owned role; a matching one
-// is left alone (no write); a role another deployment owns is refused, with
-// nothing written.
+// is left alone (no write); a role another deployment owns is left as it is
+// with a warning, nothing written, and the run goes on.
 func TestExistingClusterRoleInlinePoliciesAreReconciled(t *testing.T) {
 	f := newClusterFake()
 	if err := clusterTestRun(t, f, false).run(context.Background()); err != nil {
@@ -204,7 +204,7 @@ func TestExistingClusterRoleInlinePoliciesAreReconciled(t *testing.T) {
 		t.Errorf("matching policy: err %v, writes %v", err, f.writes)
 	}
 
-	// Another deployment's role: refused, nothing written.
+	// Another deployment's role: no error, nothing written.
 	delete(role.inline, nodeTagPolicyName)
 	role.tags[OwnerTagKey] = "other.us-west-2"
 	f.writes = nil
