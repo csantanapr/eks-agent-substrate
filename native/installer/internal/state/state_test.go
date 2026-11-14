@@ -10,14 +10,20 @@ import (
 )
 
 func TestInstallOrderAddsTheOptionalSteps(t *testing.T) {
+	choose := []Step{Welcome, CheckSetup, Account, Cluster, Database, Settings, Plugins, Review}
 	for _, tc := range []struct {
 		s    Setup
 		want []Step
 	}{
 		{Setup{Database: DatabaseRDS}, Order},
-		{Setup{Database: DatabaseBundled}, []Step{Welcome, CheckSetup, Account, Cluster, Database, Provision, ControlPlane, Complete}},
+		{Setup{Database: DatabaseBundled}, append(slices.Clone(choose), Provision, ControlPlane, Complete)},
 		{Setup{Database: DatabaseRDS, ClusterIsNew: true, DemoMode: true},
-			[]Step{Welcome, CheckSetup, Account, Cluster, Database, CreateCluster, Provision, RDS, ControlPlane, Demo, Complete}},
+			append(slices.Clone(choose), CreateCluster, Provision, RDS, ControlPlane, Demo, Complete)},
+		// A chosen plugin adds its step after the control plane, before the
+		// demo; an empty choice adds none.
+		{Setup{Database: DatabaseBundled, Plugins: []string{"efs"}, DemoMode: true},
+			append(slices.Clone(choose), Provision, ControlPlane, InstallPlugins, Demo, Complete)},
+		{Setup{Database: DatabaseBundled, Plugins: []string{}}, append(slices.Clone(choose), Provision, ControlPlane, Complete)},
 	} {
 		if got := InstallOrder(&tc.s); !slices.Equal(got, tc.want) {
 			t.Errorf("%+v: %v, want %v", tc.s, got, tc.want)
@@ -40,8 +46,36 @@ func TestClusterConfigFromEnv(t *testing.T) {
 	if c.KubernetesVersion != "1.38" || c.AutoMode != "" || c.MicroVMNodes != "3" || c.SystemInstanceType != "m8i.xlarge" {
 		t.Errorf("config %+v", c)
 	}
-	if !slices.Contains(c.Env(), "AUTO_MODE=") || !slices.Contains(c.Env(), "EKS_PUBLIC_ACCESS_CIDRS=0.0.0.0/0") {
+	if !slices.Contains(c.Env(), "AUTO_MODE=") || !slices.Contains(c.Env(), "EKS_PUBLIC_ACCESS_CIDRS=auto") {
 		t.Errorf("env %v", c.Env())
+	}
+}
+
+// The release, its image repository and TAGS come from the lookup (config.env
+// under the environment); an empty TAGS stays empty, an empty release does
+// not.
+func TestNewSetupFromReadsTheReleaseAndTags(t *testing.T) {
+	env := map[string]string{"SUBSTRATE_TAG": "v1.0.1", "SUBSTRATE_IMAGE_REPO": "registry.example.com/substrate", "TAGS": ""}
+	s := NewSetupFrom(func(k string) (string, bool) { v, ok := env[k]; return v, ok })
+	if s.SubstrateTag != "v1.0.1" || s.ImageRepo != "registry.example.com/substrate" || s.Tags != "" || s.SandboxClasses != AllSandboxClasses {
+		t.Errorf("setup %+v", s)
+	}
+	s = NewSetupFrom(func(k string) (string, bool) { return "", k == "SUBSTRATE_TAG" })
+	if s.SubstrateTag != DefaultTag || s.ImageRepo != DefaultImageRepo || s.Tags != DefaultTags {
+		t.Errorf("defaults %+v", s)
+	}
+}
+
+func TestValidSandboxClasses(t *testing.T) {
+	for _, ok := range []string{"gvisor", "microvm", "gvisor,microvm", "microvm,gvisor"} {
+		if err := ValidSandboxClasses(ok); err != nil {
+			t.Errorf("%q refused: %v", ok, err)
+		}
+	}
+	for _, bad := range []string{"", "kata", "gvisor,gvisor", "gvisor,", "gvisor microvm"} {
+		if ValidSandboxClasses(bad) == nil {
+			t.Errorf("%q accepted", bad)
+		}
 	}
 }
 

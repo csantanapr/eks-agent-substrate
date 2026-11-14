@@ -14,6 +14,49 @@ import (
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin"
 )
 
+const forkCommit = "9f36a0d7f2abca950f25fc7bd023752d3852504c"
+
+// Both ways: a release tag is a shallow clone --branch; a full commit id
+// (a fork's untagged pin) is init, a shallow fetch of the commit and a
+// detached checkout, never clone --branch, which cannot fetch a commit.
+func TestFetchTreeByTagOrCommit(t *testing.T) {
+	prev := runCommand
+	t.Cleanup(func() { runCommand = prev })
+	for _, tc := range []struct {
+		ref  string
+		want []string
+	}{
+		{"v1.0.0", []string{"git clone --quiet --depth 1 --branch v1.0.0 R STAGE"}},
+		{forkCommit, []string{
+			"git init --quiet --initial-branch=substrate STAGE",
+			"git -C STAGE fetch --quiet --depth 1 R " + forkCommit,
+			"git -C STAGE checkout --quiet --detach FETCH_HEAD",
+		}},
+		// Not 40 hex characters: a branch or tag name.
+		{"9f36a0d", []string{"git clone --quiet --depth 1 --branch 9f36a0d R STAGE"}},
+	} {
+		var got []string
+		root := t.TempDir()
+		dir := TreeDir(root, "x")
+		runCommand = func(_ context.Context, _ io.Writer, c command) error {
+			l := strings.Join(c.Argv, " ")
+			for _, a := range c.Argv {
+				if strings.HasPrefix(a, dir+".stage-") {
+					l = strings.ReplaceAll(l, a, "STAGE")
+				}
+			}
+			got = append(got, l)
+			return nil
+		}
+		if err := FetchTree(context.Background(), io.Discard, dir, "R", tc.ref); err != nil {
+			t.Fatalf("%s: %v", tc.ref, err)
+		}
+		if !slices.Equal(got, tc.want) {
+			t.Errorf("%s:\n got %q\nwant %q", tc.ref, got, tc.want)
+		}
+	}
+}
+
 // Test plugins, registered once for this package's tests: one that needs a
 // gate, a provider and an ingress client, and one that replaces the release.
 func init() {
@@ -23,7 +66,7 @@ func init() {
 		IngressIDs:          []string{"spiffe://cluster.local/ns/x/sa/y"},
 	}})
 	plugin.Register(plugin.Plugin{ID: "cp-test-fork", Order: 2, Needs: plugin.Needs{
-		Source: &plugin.Source{Repo: "https://example.invalid/fork.git", Commit: "abc123", Tag: "v1.0.0-fork", ImageRepo: "ghcr.io/example/fork"},
+		Source: &plugin.Source{Repo: "https://example.invalid/fork.git", Commit: forkCommit, Tag: "v1.0.0-fork", ImageRepo: "ghcr.io/example/fork"},
 	}})
 }
 
@@ -132,7 +175,9 @@ func TestDeployMergesRecordedAndChosenPlugins(t *testing.T) {
 	if err := Deploy(context.Background(), &out, o); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"kubeconfig", "read-record", "fetch https://example.invalid/fork.git v1.0.0-fork", "commit abc123", "overlay"}
+	// The fork is fetched by its pinned commit (it has no tags), checked,
+	// and installed with the Source's tag as the image tag.
+	want := []string{"kubeconfig", "read-record", "fetch https://example.invalid/fork.git " + forkCommit, "commit " + forkCommit, "overlay"}
 	if len(f.calls) != len(want)+1 || !slices.Equal(f.calls[:len(want)], want) {
 		t.Fatalf("calls = %q, want %q then ate-setup", f.calls, want)
 	}

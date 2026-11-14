@@ -1,0 +1,29 @@
+# The worker pool for the probe actors of both atespaces (a pool's namespace
+# does not limit which templates select it). The credprovider-aws plugin
+# replaces the ko:// image with the release worker image, pinned by digest;
+# the pool is pinned to the gvisor node group, the only nodes atelet runs on
+# besides microvm.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ate-demo-credprovider
+---
+apiVersion: ate.dev/v1
+kind: WorkerPool
+metadata:
+  name: credprovider-probe
+  namespace: ate-demo-credprovider
+  labels:
+    workload: credprovider-probe
+spec:
+  # One actor per atespace at a time; an actor occupies its whole worker.
+  replicas: 2
+  workerImage: ko://go.ate.dev/substrate/cmd/ateworker-gvisor
+  sandboxClasses:
+  - name: gvisor
+  template:
+    nodeSelector:
+      ate.dev/pool: gvisor
+    resources:
+      limits: { cpu: "1", memory: 1Gi }
+      requests: { cpu: 250m, memory: 1Gi }

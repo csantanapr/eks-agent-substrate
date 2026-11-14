@@ -11,8 +11,10 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -30,13 +32,31 @@ import (
 )
 
 func main() {
+	cwd, _ := os.Getwd()
+	exeDir := ""
+	if exe, err := os.Executable(); err == nil {
+		exeDir = filepath.Dir(exe)
+	}
+	// eks-talk's config.env and config.local.env, under the environment,
+	// give the defaults, as they do for the scripts; Settings writes
+	// config.local.env.
+	cfg, err := state.FindConfig(os.LookupEnv, cwd, exeDir)
+	exitOn(err)
+	conf := func(key, def string) string {
+		if v, ok := cfg.Lookup(key); ok && v != "" {
+			return v
+		}
+		return def
+	}
 	var (
 		doctorMode = flag.Bool("doctor", false, "run the preflight checks and exit")
 		dryRun     = flag.Bool("dry-run", false, "walk the full wizard without touching AWS (simulated commands)")
-		profile    = flag.String("profile", os.Getenv("AWS_PROFILE"), "AWS shared config profile (AWS_PROFILE)")
-		region     = flag.String("region", os.Getenv("AWS_REGION"), "AWS Region (AWS_REGION)")
-		cluster    = flag.String("cluster", os.Getenv("CLUSTER_NAME"), "preselect this cluster, or the name of a new one (CLUSTER_NAME)")
-		tag        = flag.String("tag", "v1.0.0", "Substrate release to install")
+		profile    = flag.String("profile", conf("AWS_PROFILE", ""), "AWS shared config profile (AWS_PROFILE)")
+		region     = flag.String("region", conf("AWS_REGION", ""), "AWS Region (AWS_REGION)")
+		cluster    = flag.String("cluster", os.Getenv("CLUSTER_NAME"), "preselect this cluster, or the name of a new one (CLUSTER_NAME; the wizard also offers config.env's)")
+		tag        = flag.String("tag", conf("SUBSTRATE_TAG", state.DefaultTag), "Substrate release to install (SUBSTRATE_TAG)")
+		imageRepo  = flag.String("image-repo", conf("SUBSTRATE_IMAGE_REPO", state.DefaultImageRepo), "where the release's images come from (SUBSTRATE_IMAGE_REPO)")
+		classes    = flag.String("sandbox-classes", state.DefaultSandboxClasses, "sandbox classes to install and check: gvisor, microvm or both")
 		database   = flag.String("database", controlplane.DatabaseRDS, "the control plane's database: rds (Amazon RDS for PostgreSQL) or bundled (in-cluster PostgreSQL)")
 		demoMode   = flag.Bool("demo", false, "end the install with the counter demo on gVisor and microVM, and check it")
 		teardown   = flag.Bool("teardown", false, "open the wizard on the teardown of --cluster: remove Substrate, then its AWS resources")
@@ -58,18 +78,17 @@ func main() {
 		probeInst  = flag.Bool("probe-installed", false, "print whether --cluster already runs Substrate (the wizard's reinstall guard), then exit")
 		plugins    = flag.String("plugins", "", "comma-separated plugin IDs: the wizard preselects them, --deploy-control-plane carries their needs, --plugin-action acts on them")
 		pluginAct  = flag.String("plugin-action", "", "deploy, verify or remove the --plugins on --cluster (remove with no --plugins: every recorded plugin), then exit")
+
+		redact  = flag.Bool("redact", false, "also mask the rest of each account id, ARNs and bucket names, on screen, in snapshots and in the exit notes")
+		snapDir = flag.String("snapshot-dir", "", "where s saves the screen as .ansi, .txt and .html (default: under the user cache dir)")
 	)
 	flag.Parse()
 
 	if *database != controlplane.DatabaseRDS && *database != controlplane.DatabaseBundled {
 		exitOn(fmt.Errorf("--database is %q; want %s or %s", *database, controlplane.DatabaseRDS, controlplane.DatabaseBundled))
 	}
+	exitOn(state.ValidSandboxClasses(*classes))
 
-	cwd, _ := os.Getwd()
-	exeDir := ""
-	if exe, err := os.Executable(); err == nil {
-		exeDir = filepath.Dir(exe)
-	}
 	findOverlay := func() string {
 		dir, err := eksoverlay.Find(*overlay, cwd, exeDir)
 		exitOn(err)
@@ -92,52 +111,58 @@ func main() {
 	cpOptions := func() controlplane.Options {
 		return controlplane.Options{
 			Cluster: *cluster, Region: *region, Profile: *profile,
-			Tag: *tag, Repo: controlplane.DefaultRepo, ImageRepo: "ghcr.io/agent-substrate/substrate",
-			SnapBucket: *snapBucket, AssetBucket: *assetBkt, SandboxClasses: "gvisor,microvm",
+			Tag: *tag, Repo: controlplane.DefaultRepo, ImageRepo: *imageRepo,
+			SnapBucket: *snapBucket, AssetBucket: *assetBkt, SandboxClasses: *classes,
 			Database: *database, TreeRoot: *treeRoot, Overlay: findOverlay(),
 			Plugins: pluginIDs, Plugin: pluginOptions(),
 		}
 	}
 	demoOptions := demo.Options{
 		Cluster: *cluster, Region: *region, Profile: *profile, Tag: *tag, TreeRoot: *treeRoot,
-		ImageRepo: "ghcr.io/agent-substrate/substrate", SandboxClasses: "gvisor,microvm",
+		ImageRepo: *imageRepo, SandboxClasses: *classes,
 	}
 
-	switch {
+	// A subcommand's ctx ends on SIGINT (ctrl+c) or SIGTERM instead of the
+	// process dying, so its children are stopped and its cleanup runs: the
+	// database bootstrap deletes the Secret holding the logins. The wizard,
+	// which reads ctrl+c as a key, keeps the default handlers (default case).
+	switch ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM); {
 	case *addOverlay != "":
 		exitOn(eksoverlay.Apply(os.Stdout, absPath(*addOverlay), findOverlay(), *region))
 		return
 	case *deployCP:
-		exitOn(controlplane.Deploy(context.Background(), os.Stdout, cpOptions()))
+		exitOn(controlplane.Deploy(ctx, os.Stdout, cpOptions()))
 		return
 	case *removeCP:
-		exitOn(controlplane.Delete(context.Background(), os.Stdout, cpOptions()))
+		exitOn(controlplane.Delete(ctx, os.Stdout, cpOptions()))
 		return
 	case *deployDemo || *verify:
 		if *deployDemo {
-			exitOn(demo.Deploy(context.Background(), os.Stdout, demoOptions))
+			exitOn(demo.Deploy(ctx, os.Stdout, demoOptions))
 		}
 		if *verify {
-			exitOn(demo.Verify(context.Background(), os.Stdout, demoOptions))
+			exitOn(demo.Verify(ctx, os.Stdout, demoOptions))
 		}
 		return
 	case *pluginAct != "":
-		exitOn(runPlugins(context.Background(), *pluginAct, pluginIDs, cpOptions()))
+		exitOn(runPlugins(ctx, *pluginAct, pluginIDs, cpOptions()))
 		return
 	case *probeInst:
-		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		ctx, cancel := context.WithTimeout(ctx, time.Minute)
 		defer cancel()
 		exitOn(probe.Run(ctx, os.Stdout, *profile, *region, *cluster))
 		return
 	case *doctorMode:
 		fmt.Println("substrate-eks preflight doctor")
 		fmt.Println()
-		if n := doctor.RunCLI(context.Background(), doctor.Checks(*profile, *region)); n > 0 {
+		if n := doctor.RunCLI(ctx, doctor.Checks(*profile, *region)); n > 0 {
 			fmt.Printf("\n%d fatal problem(s) found.\n", n)
 			os.Exit(1)
 		}
 		fmt.Println("\nAll good — run the installer.")
 		return
+	default:
+		stop()
 	}
 
 	if *region == "" && !*dryRun {
@@ -146,15 +171,24 @@ func main() {
 	if *teardown && *cluster == "" {
 		exitOn(fmt.Errorf("--teardown needs --cluster (CLUSTER_NAME): the cluster whose install to remove"))
 	}
-	s := state.NewSetup()
+	s := state.NewSetupFrom(cfg.Lookup)
 	s.Profile, s.Region, s.ClusterName, s.SubstrateTag = *profile, *region, *cluster, *tag
+	s.ImageRepo, s.SandboxClasses = *imageRepo, *classes
+	if s.ClusterName == "" && !*teardown {
+		// config.local.env's cluster, as the scripts would use, ready to
+		// pick or create; never a teardown's target, which is named.
+		s.ClusterName = conf("CLUSTER_NAME", "")
+	}
 	s.Database, s.DemoMode, s.Teardown = *database, *demoMode, *teardown
 	s.KeepClusterOnly = *keepClust
 	s.Plugins = pluginIDs
 
+	cache, _ := os.UserCacheDir()
 	if *logPath == "" {
-		dir, _ := os.UserCacheDir()
-		*logPath = filepath.Join(dir, "substrate-eks", "logs", "installer-"+time.Now().Format("20060102-150405")+".log")
+		*logPath = filepath.Join(cache, "substrate-eks", "logs", "installer-"+time.Now().Format("20060102-150405")+".log")
+	}
+	if *snapDir == "" {
+		*snapDir = filepath.Join(cache, "substrate-eks", "snapshots")
 	}
 	// The log holds full command lines and output, which name the account
 	// (bucket names); it holds no secret. execx is a verbatim substrate-gke
@@ -169,9 +203,10 @@ func main() {
 	b := builder{self: self, setupAWS: *setupAWS, overlay: *overlay, cwd: cwd, exeDir: exeDir, treeRoot: *treeRoot}
 	d := ui.Deps{
 		Probe: b.probe, CreateCluster: b.createCluster, Bootstrap: b.bootstrap, RDS: b.rds,
-		ControlPlane: b.controlPlane, Demo: b.demoStep, Verify: b.verify,
+		ControlPlane: b.controlPlane, Plugins: b.plugins, Demo: b.demoStep, Verify: b.verify,
 		RemoveControlPlane: b.removeControlPlane, Teardown: b.teardown, Inventory: b.inventory,
 		LogPath: logger.Path(), DryRun: *dryRun,
+		Splash: true, SnapshotDir: *snapDir, Redact: *redact, Config: cfg,
 	}
 	if *dryRun {
 		if s.Region == "" {
@@ -197,6 +232,10 @@ func main() {
 		real := &execx.Real{Log: logger}
 		defer real.Drain()
 		d.Runner = real
+		d.StopTree = ui.StopProcessTree
+		if cfg.Dir != "" {
+			d.SaveConfig = func(s *state.Setup) (string, error) { return saveConfig(cfg, s, cache) }
+		}
 		d.Checks = doctor.Checks(s.Profile, s.Region)
 		reads := awsx.Fresh{Profile: s.Profile, Region: s.Region}
 		d.Identity, d.Clusters, d.Describe = reads.Identity, reads.ListClusters, reads.Describe
@@ -278,6 +317,19 @@ func absPath(p string) string {
 	a, err := filepath.Abs(p)
 	exitOn(err)
 	return a
+}
+
+// saveConfig writes s's Settings answers to cfg's config.local.env (0600),
+// keeping a different earlier file as a backup under the user cache dir, and
+// returns its path. It is written when the install starts, so the scripts
+// and the next wizard run start from the same answers.
+func saveConfig(cfg state.Config, s *state.Setup, cache string) (string, error) {
+	text, err := cfg.RenderLocal(state.ConfigValues(s))
+	if err != nil {
+		return "", err
+	}
+	backup := filepath.Join(cache, "substrate-eks", "config-backups", "config.local.env."+time.Now().Format("20060102-150405"))
+	return cfg.LocalPath(), cfg.WriteLocal(text, backup)
 }
 
 // createPrivate makes path a 0600 file in a 0700 directory, keeping what an

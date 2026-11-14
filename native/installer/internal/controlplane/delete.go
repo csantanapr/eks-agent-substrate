@@ -88,7 +88,7 @@ func Delete(ctx context.Context, w io.Writer, o Options) error {
 		repo = DefaultRepo
 	}
 	tree := TreeDir(o.TreeRoot, o.Tag)
-	if err := fetchTree(ctx, w, tree, repo, o.Tag); err != nil {
+	if err := fetchTree(ctx, w, tree, repo, o.treeRef()); err != nil {
 		return err
 	}
 	if err := applyOverlay(w, tree, o.Overlay, o.Region); err != nil {
