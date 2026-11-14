@@ -242,8 +242,10 @@ func AteSetupEnv(o Options, kubeconfig string) []string {
 // kubeconfig and runs ate-setup, on RDS (bootstrapped first) or the bundled
 // PostgreSQL.
 func Deploy(ctx context.Context, w io.Writer, o Options) error {
-	if o.Cluster == "" || o.Region == "" || o.SnapBucket == "" || o.Overlay == "" {
-		return errors.New("cluster, region, snapshot bucket and overlay are required")
+	// ate-setup stages the microVM assets in AssetBucket (AteSetupEnv); an
+	// empty one fails only minutes into the run.
+	if o.Cluster == "" || o.Region == "" || o.SnapBucket == "" || o.AssetBucket == "" || o.Overlay == "" {
+		return errors.New("cluster, region, snapshot bucket, asset bucket and overlay are required")
 	}
 	if db := o.db(); db != DatabaseRDS && db != DatabaseBundled {
 		return fmt.Errorf("database %q is not %s or %s", db, DatabaseRDS, DatabaseBundled)
