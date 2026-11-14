@@ -166,11 +166,29 @@ func (b builder) selfSpec(s *state.Setup, cluster, label string, sim []string, f
 		shown = append(shown, shellQuote(a))
 	}
 	return execx.Spec{
-		Label:    label,
-		Display:  strings.Join(shown, " "),
-		Argv:     append([]string{b.self}, args...),
+		Label:   label,
+		Display: strings.Join(shown, " "),
+		Argv:    append([]string{b.self}, args...),
+		// The control plane's StorageClass and the plugins tag what they
+		// make with TAGS, read from the environment: pin it to the run's
+		// answer, which Settings may have changed.
+		Env:      []string{"TAGS=" + s.Tags},
 		SimLines: sim,
 	}
+}
+
+// releaseFlags are --image-repo and --sandbox-classes, each only when it is
+// not the subcommand's default, for the steps that install or read the
+// release's worker images.
+func releaseFlags(s *state.Setup) []string {
+	var f []string
+	if s.ImageRepo != state.DefaultImageRepo {
+		f = append(f, "--image-repo", s.ImageRepo)
+	}
+	if s.SandboxClasses != state.DefaultSandboxClasses {
+		f = append(f, "--sandbox-classes", s.SandboxClasses)
+	}
+	return f
 }
 
 // controlPlane re-executes the installer with --deploy-control-plane.
@@ -207,11 +225,12 @@ func (b builder) controlPlane(s *state.Setup) execx.Spec {
 	)
 	flags := []string{"--deploy-control-plane", "--database", s.Database, "--tag", s.SubstrateTag,
 		"--snap-bucket", s.SnapBucket(), "--asset-bucket", s.AssetBucket()}
+	flags = append(flags, releaseFlags(s)...)
 	if len(s.Plugins) > 0 {
 		flags = append(flags, "--plugins", plugin.FormatRecord(s.Plugins))
 	}
 	spec := b.selfSpec(s, s.ClusterName, "ate-setup deploy ate-system", sim, flags...)
-	spec.Display = "go run ./cmd/ate-setup deploy ate-system  (substrate " + s.SubstrateTag + " + deploy/eks, database " + s.Database + ")"
+	spec.Display = "go run ./cmd/ate-setup deploy ate-system  (substrate " + s.SubstrateTag + " + deploy/eks, " + s.SandboxClasses + ", database " + s.Database + ")"
 	spec.DisplayIsSummary = true
 	return spec
 }
@@ -253,7 +272,7 @@ func (b builder) demoStep(s *state.Setup) execx.Spec {
 		sim = append(sim, demo.VerifyLine+c, "suspended counter-"+c+"; snapshot in s3://"+s.SnapBucket()+"/",
 			demo.VerifyPassLine+c+": memory, file and rootfs counters continued after resume")
 	}
-	return b.selfSpec(s, s.ClusterName, "counter demo", sim, "--deploy-demo", "--verify", "--tag", s.SubstrateTag)
+	return b.selfSpec(s, s.ClusterName, "counter demo", sim, append([]string{"--deploy-demo", "--verify", "--tag", s.SubstrateTag}, releaseFlags(s)...)...)
 }
 
 // verify is `substrate-eks --verify`, the user-facing check (AC7.2), shown
@@ -261,7 +280,7 @@ func (b builder) demoStep(s *state.Setup) execx.Spec {
 func (b builder) verify(s *state.Setup) execx.Spec {
 	// --tag, as demoStep and removeControlPlane pass it: verify reads the
 	// tree of the release that was installed (review F11).
-	return b.selfSpec(s, s.ClusterName, "verify", nil, "--verify", "--tag", s.SubstrateTag)
+	return b.selfSpec(s, s.ClusterName, "verify", nil, append([]string{"--verify", "--tag", s.SubstrateTag}, releaseFlags(s)...)...)
 }
 
 // removeControlPlane re-executes the installer with --remove-control-plane

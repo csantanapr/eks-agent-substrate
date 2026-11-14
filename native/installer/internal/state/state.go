@@ -7,6 +7,7 @@ package state
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/awsx"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/controlplane"
@@ -16,20 +17,27 @@ import (
 type Step int
 
 // The steps. EKS has no Images step yet (the install uses the published
-// release images) and folds the sandbox choice into ControlPlane (gvisor and
-// microvm are both installed). Teardown's steps come after Complete, as
-// substrate-gke's upgrade steps do: their place on screen comes from the
-// Machine's order, not from these values.
+// release images) and folds the sandbox choice into Settings. Teardown's
+// steps come after Complete, as substrate-gke's upgrade steps do: their place
+// on screen comes from the Machine's order, not from these values.
 const (
 	Welcome Step = iota
 	CheckSetup
 	Account // substrate-gke: Project
 	Cluster
 	Database
+	// Settings edits config.env's knobs for the run, Plugins chooses the
+	// optional parts, and Review shows every command, its time and the cost
+	// before anything runs.
+	Settings
+	Plugins
+	Review
 	CreateCluster
 	Provision
 	RDS
 	ControlPlane
+	// InstallPlugins deploys and checks the chosen plugins.
+	InstallPlugins
 	Demo
 	Complete
 
@@ -39,19 +47,23 @@ const (
 )
 
 // Order is the linear flow of the wizard: connect an existing cluster, with
-// the RDS database. InstallOrder adds or drops the optional steps.
-var Order = []Step{Welcome, CheckSetup, Account, Cluster, Database, Provision, RDS, ControlPlane, Complete}
+// the RDS database and no plugin. InstallOrder adds or drops the optional
+// steps.
+var Order = []Step{Welcome, CheckSetup, Account, Cluster, Database, Settings, Plugins, Review, Provision, RDS, ControlPlane, Complete}
 
 // InstallOrder is the install flow for the answers in s, as substrate-gke's
 // InstallOrder picks DemoOrder for a demo run. Every choice that changes the
-// flow is made on the Cluster and Database screens, before any step runs:
+// flow is made on the Cluster, Database, Settings and Plugins screens, before
+// Review, and nothing runs before Review:
 //   - CreateCluster runs `setup-aws create cluster` when the run creates the
 //     cluster, before Provision, which needs it ACTIVE;
 //   - RDS runs `setup-aws create rds` after Provision when the database is
 //     RDS, before ControlPlane, which connects to it;
+//   - InstallPlugins deploys the chosen plugins after ControlPlane, which
+//     already carries their needs;
 //   - Demo deploys and checks the counter demo on a demo run (--demo).
 func InstallOrder(s *Setup) []Step {
-	order := []Step{Welcome, CheckSetup, Account, Cluster, Database}
+	order := []Step{Welcome, CheckSetup, Account, Cluster, Database, Settings, Plugins, Review}
 	if s.ClusterIsNew {
 		order = append(order, CreateCluster)
 	}
@@ -60,6 +72,9 @@ func InstallOrder(s *Setup) []Step {
 		order = append(order, RDS)
 	}
 	order = append(order, ControlPlane)
+	if len(s.Plugins) > 0 {
+		order = append(order, InstallPlugins)
+	}
 	if s.DemoMode {
 		order = append(order, Demo)
 	}
@@ -86,6 +101,12 @@ func (s Step) Title() string {
 		return "Connect your cluster"
 	case Database:
 		return "Choose the database"
+	case Settings:
+		return "Settings"
+	case Plugins:
+		return "Choose plugins"
+	case Review:
+		return "Review the plan"
 	case CreateCluster:
 		return "Create the cluster"
 	case Provision:
@@ -94,6 +115,8 @@ func (s Step) Title() string {
 		return "Create the database"
 	case ControlPlane:
 		return "Turn on Substrate"
+	case InstallPlugins:
+		return "Install the plugins"
 	case Demo:
 		return "Deploy the demo"
 	case Complete:
@@ -287,28 +310,62 @@ type Setup struct {
 	KeepClusterOnly bool
 
 	// SubstrateTag is the release the control plane installs, with its
-	// published images from ImageRepo.
+	// published images from ImageRepo (config.env's SUBSTRATE_TAG and
+	// SUBSTRATE_IMAGE_REPO); the control plane and demo steps get both.
 	SubstrateTag string
 	ImageRepo    string
-	// SandboxClasses ate-setup installs.
+	// SandboxClasses ate-setup installs, comma-separated: gvisor, microvm or
+	// both (AllSandboxClasses).
 	SandboxClasses string
 }
 
-// NewSetup returns the defaults: the release eks-talk pins, RDS, and
-// config.env's cluster knobs and tags unless the environment sets them.
-func NewSetup() *Setup {
-	tags, ok := os.LookupEnv("TAGS")
-	if !ok {
-		tags = "project=agent-substrate auto-delete=no"
+// Defaults the installer passes on, and the flag defaults of its
+// subcommands: a child given no --image-repo or --sandbox-classes uses these.
+const (
+	DefaultTag            = "v1.0.0"
+	DefaultImageRepo      = "ghcr.io/agent-substrate/substrate"
+	AllSandboxClasses     = "gvisor,microvm"
+	DefaultSandboxClasses = AllSandboxClasses
+	DefaultTags           = "project=agent-substrate auto-delete=no"
+)
+
+// NewSetup returns the defaults from the environment alone; NewSetupFrom
+// from any lookup, such as Config.Lookup over config.env.
+func NewSetup() *Setup { return NewSetupFrom(os.LookupEnv) }
+
+// NewSetupFrom returns the defaults: the release eks-talk pins, RDS, and
+// config.env's cluster knobs, tags and release unless lookup sets them.
+func NewSetupFrom(lookup func(string) (string, bool)) *Setup {
+	get := func(key, def string) string {
+		if v, ok := lookup(key); ok && (v != "" || key == "TAGS") {
+			return v
+		}
+		return def
 	}
 	return &Setup{
-		SubstrateTag:     "v1.0.0",
-		ImageRepo:        "ghcr.io/agent-substrate/substrate",
-		SandboxClasses:   "gvisor,microvm",
+		SubstrateTag:     get("SUBSTRATE_TAG", DefaultTag),
+		ImageRepo:        get("SUBSTRATE_IMAGE_REPO", DefaultImageRepo),
+		SandboxClasses:   DefaultSandboxClasses,
 		Database:         DatabaseRDS,
-		Tags:             tags,
-		NewClusterConfig: ClusterConfigFromEnv(os.LookupEnv),
+		Tags:             get("TAGS", DefaultTags),
+		NewClusterConfig: ClusterConfigFromEnv(lookup),
 	}
+}
+
+// ValidSandboxClasses reports why classes cannot be installed: it must name
+// gvisor, microvm or both, each once, comma-separated.
+func ValidSandboxClasses(classes string) error {
+	seen := map[string]bool{}
+	for _, c := range strings.Split(classes, ",") {
+		if c != "gvisor" && c != "microvm" {
+			return fmt.Errorf("sandbox classes %q: want gvisor, microvm or gvisor,microvm", classes)
+		}
+		if seen[c] {
+			return fmt.Errorf("sandbox classes %q name %s twice", classes, c)
+		}
+		seen[c] = true
+	}
+	return nil
 }
 
 // SelectCluster records an existing cluster as the run's target, and

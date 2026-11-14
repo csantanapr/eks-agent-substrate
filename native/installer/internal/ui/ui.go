@@ -7,6 +7,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -18,6 +19,7 @@ import (
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/awsx"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/doctor"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/execx"
+	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/snap"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/state"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/steps"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/theme"
@@ -35,14 +37,35 @@ type Deps struct {
 	// Probe is the reinstall guard's read of one cluster (probe.ParseInstalled
 	// reads its output).
 	Probe func(cluster string, s *state.Setup) execx.Spec
-	// The long steps' commands, one per step.
-	CreateCluster, Bootstrap, RDS, ControlPlane, Demo func(*state.Setup) execx.Spec
-	RemoveControlPlane, Teardown                      func(*state.Setup) execx.Spec
+	// The long steps' commands, one per step. Plugins is --plugin-action
+	// deploy for the chosen plugins.
+	CreateCluster, Bootstrap, RDS, ControlPlane, Plugins, Demo func(*state.Setup) execx.Spec
+	RemoveControlPlane, Teardown                               func(*state.Setup) execx.Spec
 	// Verify and Inventory are commands the Complete screen prints.
 	Verify, Inventory func(*state.Setup) execx.Spec
 	// LogPath is shown on failure and at the end.
 	LogPath string
 	DryRun  bool
+
+	// Splash plays the opening animation before Welcome; any key skips it.
+	Splash bool
+	// Now is the header clock; nil is time.Now.
+	Now func() time.Time
+	// SnapshotDir is where s saves the screen (snap.Writer).
+	SnapshotDir string
+	// Redact masks account ids, ARNs and bucket names on screen, in
+	// snapshots and in the exit notes (--redact).
+	Redact bool
+	// Config is config.env and config.local.env: the Settings screen's help.
+	Config state.Config
+	// SaveConfig writes the Settings answers to config.local.env when the
+	// install starts and returns its path; nil writes nothing (a dry run, or
+	// no eks-talk checkout).
+	SaveConfig func(*state.Setup) (string, error)
+	// StopTree ends every process the installer started and their children,
+	// for ctrl+c on a running step (StopProcessTree); nil only cancels the
+	// step, which is enough for the dry run's replay.
+	StopTree func()
 }
 
 type (
@@ -59,6 +82,10 @@ type (
 	tickMsg time.Time
 )
 
+// errStopped is a step the user stopped with ctrl+c: done, not successful,
+// and rerun with enter like a failure.
+var errStopped = errors.New("stopped with ctrl+c")
+
 // task is a long step in flight or finished.
 type task struct {
 	items      []steps.ChecklistItem
@@ -68,6 +95,10 @@ type task struct {
 	err        error
 	start, end time.Time
 	spec       execx.Spec
+	// cancel ends the Runner's context; stopped is the user's ctrl+c, which
+	// makes the end of the step errStopped whatever the runner reports.
+	cancel  context.CancelFunc
+	stopped bool
 }
 
 func newTask(spec execx.Spec, items []steps.ChecklistItem) *task {
@@ -91,6 +122,20 @@ type Model struct {
 	cl    *clusterScreen
 	db    *databaseScreen
 	scope *scopeScreen
+	set   *settingsScreen
+	pl    *pluginsScreen
+
+	// splash is the opening animation, at splashFrame.
+	splash      bool
+	splashFrame int
+	// stopAsk is ctrl+c on a running step, waiting for y.
+	stopAsk bool
+	// notice is a one-line message under the screen, until noticeUntil.
+	notice      string
+	noticeUntil time.Time
+	// session names this run's snapshots; snapN counts them.
+	session string
+	snapN   int
 
 	quitting bool
 }
@@ -98,8 +143,13 @@ type Model struct {
 // New returns the wizard at Welcome, on the install flow, or on the teardown
 // flow when s.Teardown.
 func New(d Deps, s *state.Setup) Model {
+	if d.Now == nil {
+		d.Now = time.Now
+	}
 	m := Model{d: d, m: state.NewMachine(), s: s, tasks: map[state.Step]*task{},
-		cl: newClusterScreen(), db: &databaseScreen{}, scope: &scopeScreen{}}
+		cl: newClusterScreen(), db: &databaseScreen{}, scope: &scopeScreen{},
+		set: &settingsScreen{}, pl: &pluginsScreen{},
+		splash: d.Splash, session: d.Now().Format("20060102-150405")}
 	if s.Teardown {
 		m.m.SetOrder(state.TeardownOrder)
 	} else {
@@ -112,8 +162,13 @@ func tick() tea.Cmd {
 	return tea.Tick(120*time.Millisecond, func(t time.Time) tea.Msg { return tickMsg(t) })
 }
 
-// Init starts the spinner.
-func (m Model) Init() tea.Cmd { return tick() }
+// Init starts the spinner, and the splash when it plays.
+func (m Model) Init() tea.Cmd {
+	if m.splash {
+		return tea.Batch(tick(), splashTick())
+	}
+	return tick()
+}
 
 func listen(t *task, ch <-chan execx.Event) tea.Cmd {
 	return func() tea.Msg {
@@ -126,7 +181,41 @@ func listen(t *task, ch <-chan execx.Event) tea.Cmd {
 }
 
 func (m *Model) run(t *task) tea.Cmd {
-	return listen(t, m.d.Runner.Start(context.Background(), t.spec))
+	ctx, cancel := context.WithCancel(context.Background())
+	t.cancel = cancel
+	return listen(t, m.d.Runner.Start(ctx, t.spec))
+}
+
+// runningTask is the long step in flight on this screen, the cluster
+// guard's removal included, or nil.
+func (m Model) runningTask() *task {
+	if t := m.tasks[m.m.Current()]; t != nil && !t.done {
+		return t
+	}
+	if t := m.cl.removal; m.m.Current() == state.Cluster && m.cl.mode == "removing" && t != nil && !t.done {
+		return t
+	}
+	return nil
+}
+
+// stopTask is the confirmed ctrl+c on a running step (review F10). Ending
+// the Runner's context alone kills only the direct child: `go run` leaves
+// the program it built running, and that program its kubectl and ate-setup,
+// all still writing to the step's pipes. So StopTree first ends the whole
+// tree, then the context is cancelled. The step then ends as errStopped,
+// which enter reruns as it does a failure.
+func (m *Model) stopTask(t *task) tea.Cmd {
+	t.stopped = true
+	tree, cancel := m.d.StopTree, t.cancel
+	return func() tea.Msg {
+		if tree != nil {
+			tree()
+		}
+		if cancel != nil {
+			cancel()
+		}
+		return nil
+	}
 }
 
 // longStep builds the command and checklist of a step that runs one, and
@@ -141,6 +230,8 @@ func (m *Model) longStep(st state.Step) (func(*state.Setup) execx.Spec, []steps.
 		return m.d.RDS, steps.RDS(), true
 	case state.ControlPlane:
 		return m.d.ControlPlane, steps.ControlPlane(), true
+	case state.InstallPlugins:
+		return m.d.Plugins, steps.Plugins(resolved(m.s.Plugins)), true
 	case state.Demo:
 		return m.d.Demo, steps.Demo(strings.Split(m.s.SandboxClasses, ",")), true
 	case state.RemoveControlPlane:
@@ -186,6 +277,10 @@ func (m *Model) enter() tea.Cmd {
 		if m.s.Database == state.DatabaseBundled {
 			m.db.cursor = 1
 		}
+	case state.Settings:
+		m.enterSettings()
+	case state.Plugins:
+		m.enterPlugins()
 	case state.TeardownScope:
 		return m.enterScope()
 	}
@@ -250,7 +345,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.w, m.h = msg.Width, msg.Height
 	case tickMsg:
 		m.frame++
+		if m.notice != "" && !m.noticeUntil.IsZero() && m.d.Now().After(m.noticeUntil) {
+			m.notice, m.noticeUntil = "", time.Time{}
+		}
 		return m, tick()
+	case splashMsg:
+		return m.onSplash()
 	case checksMsg:
 		m.results = msg
 	case identityMsg:
@@ -271,31 +371,115 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, listen(t, msg.ch)
 		}
 		t.done, t.err, t.end = true, msg.ev.Err, time.Now()
+		// A cancelled Runner may close its channel without an error (execx
+		// drops the final event once its context ends), so the stop decides.
+		if t.stopped {
+			t.err = errStopped
+		}
+		if t.cancel != nil {
+			t.cancel()
+		}
 		if t.err == nil {
 			t.active = len(t.items)
+		}
+		if m.runningTask() == nil {
+			m.stopAsk = false
 		}
 		if t == m.cl.removal {
 			return m, m.removalDone()
 		}
 	case tea.KeyMsg:
-		if msg.String() == "ctrl+c" {
-			m.quitting = true
-			return m, tea.Quit
-		}
-		var cmd tea.Cmd
-		switch m.m.Current() {
-		case state.Cluster:
-			cmd = m.clusterKey(msg)
-		case state.Database:
-			cmd = m.databaseKey(msg)
-		case state.TeardownScope:
-			cmd = m.scopeKey(msg)
-		default:
-			cmd = m.stepKey(msg)
-		}
-		return m, cmd
+		return m, m.key(msg)
 	}
 	return m, nil
+}
+
+// key routes a key: the splash and the stop confirmation take every key,
+// then ctrl+c and the snapshot key, then the screen's own.
+func (m *Model) key(msg tea.KeyMsg) tea.Cmd {
+	k := msg.String()
+	if m.splash {
+		if k == "ctrl+c" {
+			m.quitting = true
+			return tea.Quit
+		}
+		return m.endSplash() // any other key skips it
+	}
+	if m.stopAsk {
+		t := m.runningTask()
+		switch {
+		case t == nil:
+			m.stopAsk = false
+		case k == "y" || k == "ctrl+c":
+			m.stopAsk = false
+			return m.stopTask(t)
+		case k == "n" || k == "esc":
+			m.stopAsk = false
+		}
+		return nil
+	}
+	if k == "ctrl+c" {
+		// A running step is stopped, after a confirmation, rather than left
+		// running behind a closed wizard (review F10).
+		if t := m.runningTask(); t != nil && !t.stopped {
+			m.stopAsk = true
+			return nil
+		}
+		m.quitting = true
+		return tea.Quit
+	}
+	if k == "ctrl+s" || (k == "s" && !m.capturesText()) {
+		m.snapshot()
+		return nil
+	}
+	m.notice, m.noticeUntil = "", time.Time{}
+	switch m.m.Current() {
+	case state.Cluster:
+		return m.clusterKey(msg)
+	case state.Database:
+		return m.databaseKey(msg)
+	case state.Settings:
+		return m.settingsKey(msg)
+	case state.Plugins:
+		return m.pluginsKey(msg)
+	case state.Review:
+		return m.reviewKey(msg)
+	case state.TeardownScope:
+		return m.scopeKey(msg)
+	}
+	return m.stepKey(msg)
+}
+
+// capturesText reports a screen where s is a typed character: a name being
+// typed, a confirmation, or a setting being edited. ctrl+s still snapshots.
+func (m Model) capturesText() bool {
+	switch m.m.Current() {
+	case state.Cluster:
+		return m.cl.mode == "name" || m.cl.mode == "remove-confirm"
+	case state.TeardownScope:
+		return true
+	case state.Settings:
+		return m.set.editing
+	}
+	return false
+}
+
+// snapshot saves the screen as it is now (snap.Writer) and says where.
+func (m *Model) snapshot() {
+	m.snapN++
+	name := fmt.Sprintf("snap-%s-%02d-%s", m.session, m.snapN, slug(m.m.Current().Title()))
+	path, err := snap.Writer{Dir: m.d.SnapshotDir, Title: "substrate-eks installer"}.Save(name, m.View())
+	m.notice = "saved snapshot " + tildify(path) + " (.ansi, .html beside it)"
+	if err != nil {
+		m.notice = "snapshot not saved: " + err.Error()
+	}
+	m.noticeUntil = m.d.Now().Add(4 * time.Second)
+}
+
+var nonSlug = regexp.MustCompile(`[^a-z0-9]+`)
+
+func slug(s string) string {
+	return strings.Trim(nonSlug.ReplaceAllString(strings.ToLower(s), "-"), "-")
 }
 
 // stepKey handles the keys of every screen without its own list or input.
@@ -344,15 +528,30 @@ func (m *Model) startTeardown() tea.Cmd {
 	return m.enter()
 }
 
-// View renders the rail and the current screen. Every 12-digit number on it
-// is masked to its last four digits, so a screenshot never carries an
-// account id, whatever a command printed (issue #5 AC10.4).
+// View renders the header, the rail, the current screen and the key hints.
+// Every 12-digit number on it is masked to its last four digits, so a
+// screenshot never carries an account id, whatever a command printed (issue
+// #5 AC10.4); --redact masks the rest of each id, ARNs and bucket names too.
 func (m Model) View() string {
 	if m.quitting {
 		return ""
 	}
-	out := lipgloss.JoinHorizontal(lipgloss.Top, m.rail(), "  ", m.body()) + "\n" + m.hints()
-	return maskIDs(out)
+	if m.splash {
+		return m.splashView()
+	}
+	head := m.header()
+	foot := m.hints()
+	out := head + "\n" + lipgloss.JoinHorizontal(lipgloss.Top, m.rail(), "  ", m.body(m.bodyHeight(head, foot))) + "\n" + foot
+	return m.redact(maskIDs(out))
+}
+
+// bodyHeight is the rows the body panel may take, borders included, or 0
+// when the terminal size is not known yet.
+func (m Model) bodyHeight(head, foot string) int {
+	if m.h <= 0 {
+		return 0
+	}
+	return max(m.h-lipgloss.Height(head)-lipgloss.Height(foot), 5)
 }
 
 func (m Model) rail() string {
@@ -390,10 +589,31 @@ func (m Model) bodyWidth() int {
 	return 80
 }
 
-func (m Model) body() string {
+// body is the current screen in its panel, h rows tall at most (0: as tall
+// as it is). A screen taller than that keeps its top, as substrate-gke's
+// clampHeight does; the stop confirmation is drawn first so it is never cut.
+func (m Model) body(h int) string {
 	var b strings.Builder
 	cur := m.m.Current()
+	if m.stopAsk {
+		if t := m.runningTask(); t != nil {
+			b.WriteString(theme.Warning.Render("Stop "+t.spec.Label+"?") + "\n")
+			b.WriteString(theme.Subtle.Render("This ends the command and every process it started. The step is marked") + "\n")
+			b.WriteString(theme.Subtle.Render("stopped; enter runs it again (every step is idempotent).") + "\n")
+			b.WriteString(theme.Key.Render("y") + " stop it   " + theme.Key.Render("n") + " keep it running\n\n")
+		}
+	}
 	switch cur {
+	case state.Settings:
+		b.WriteString(m.settingsView())
+	case state.Plugins:
+		b.WriteString(m.pluginsView())
+	case state.Review:
+		b.WriteString(m.reviewView(max(h-2, 0)))
+	case state.InstallPlugins:
+		b.WriteString(theme.Title.Render("Install the plugins") + "\n")
+		b.WriteString(theme.Subtle.Render("Deploy and check "+strings.Join(pluginTitles(resolved(m.s.Plugins)), ", ")) + "\n\n")
+		b.WriteString(m.taskView(m.tasks[cur]))
 	case state.Welcome:
 		b.WriteString(theme.Logo() + "\n\n")
 		if m.s.Teardown {
@@ -405,7 +625,7 @@ func (m Model) body() string {
 			b.WriteString(theme.Title.Render("Agent Substrate on Amazon EKS") + "\n\n")
 			b.WriteString("This wizard creates an EKS cluster or connects an existing one, provisions\n")
 			b.WriteString("the AWS resources Substrate uses, and installs its control plane.\n\n")
-			b.WriteString(theme.Subtle.Render("Every step is idempotent. Nothing is created until you have chosen the cluster and the database.") + "\n")
+			b.WriteString(theme.Subtle.Render("Every step is idempotent. Nothing is created until you start the install on the Review screen, which shows every command, its time and the cost.") + "\n")
 		}
 		if m.d.DryRun {
 			b.WriteString("\n" + theme.Warning.Render("--dry-run: commands are replayed; nothing touches AWS.") + "\n")
@@ -487,7 +707,15 @@ func (m Model) body() string {
 	case state.Complete:
 		b.WriteString(m.completeView())
 	}
-	return theme.AccentPanel.Width(m.bodyWidth()).Render(strings.TrimRight(b.String(), "\n"))
+	content := strings.TrimRight(b.String(), "\n")
+	if h > 2 {
+		// Wrapped first, so a long line counts as the rows it takes.
+		inner := lipgloss.NewStyle().Width(m.bodyWidth() - 2).Render(content)
+		if lines := strings.Split(inner, "\n"); len(lines) > h-2 {
+			content = strings.Join(lines[:h-2], "\n")
+		}
+	}
+	return theme.AccentPanel.Width(m.bodyWidth()).Render(content)
 }
 
 // completeView is the end of either flow. The install's prints the teardown
@@ -508,7 +736,7 @@ func (m Model) completeView() string {
 		b.WriteString("Try it:\n")
 		// The installer's own kubeconfig (mode 0600, the chosen profile, no
 		// token); ~/.kube/config is never read or written.
-		cmd("export KUBECONFIG=" + awsx.KubeconfigPath(m.s.ClusterName, m.s.Region))
+		cmd("export KUBECONFIG=" + homeTilde(awsx.KubeconfigPath(m.s.ClusterName, m.s.Region)))
 		cmd("kubectl -n ate-system get pods")
 		if m.s.DemoMode {
 			b.WriteString("Check the demo again any time:\n")
@@ -524,7 +752,7 @@ func (m Model) completeView() string {
 		}
 	}
 	if m.d.LogPath != "" {
-		b.WriteString("\n" + theme.Subtle.Render("Log: "+m.d.LogPath) + "\n")
+		b.WriteString("\n" + theme.Subtle.Render("Log: "+tildify(m.d.LogPath)) + "\n")
 	}
 	return b.String()
 }
@@ -559,7 +787,7 @@ func (m Model) ExitNotes() []string {
 		}
 	}
 	for i := range out {
-		out[i] = maskIDs(out[i])
+		out[i] = m.redact(maskIDs(out[i]))
 	}
 	return out
 }
@@ -586,6 +814,21 @@ func (m Model) taskView(t *task) string {
 			b.WriteString(theme.Fainted.Render(theme.GlyphPending+" "+it.Label) + "\n")
 		}
 	}
+	// The outcome comes before the output's tail, so a screen too short for
+	// both still shows it (the body keeps its top).
+	switch {
+	case t.stopped && !t.done:
+		b.WriteString("\n" + theme.Warning.Render(m.spinner()+" Stopping: ending the command and every process it started…") + "\n")
+	case errors.Is(t.err, errStopped):
+		b.WriteString("\n" + theme.Warning.Render("Stopped with ctrl+c: the command and every process it started were ended · enter to run it again") + "\n")
+	case t.err != nil:
+		b.WriteString("\n" + theme.Bad.Render("Failed: "+t.err.Error()+" · enter to retry") + "\n")
+		if m.d.LogPath != "" {
+			b.WriteString(theme.Subtle.Render("Full output: "+tildify(m.d.LogPath)) + "\n")
+		}
+	case t.done:
+		b.WriteString("\n" + theme.Good.Render(fmt.Sprintf("Done in %s", t.end.Sub(t.start).Round(time.Second))) + "\n")
+	}
 	b.WriteString("\n")
 	tail := t.lines
 	if len(tail) > 6 {
@@ -594,28 +837,30 @@ func (m Model) taskView(t *task) string {
 	for _, l := range tail {
 		b.WriteString(theme.Fainted.Render(truncate(l, m.bodyWidth()-4)) + "\n")
 	}
-	if t.err != nil {
-		b.WriteString("\n" + theme.Bad.Render("Failed: "+t.err.Error()+" · enter to retry") + "\n")
-		if m.d.LogPath != "" {
-			b.WriteString(theme.Subtle.Render("Full output: "+m.d.LogPath) + "\n")
-		}
-	} else if t.done {
-		b.WriteString(theme.Good.Render(fmt.Sprintf("Done in %s", t.end.Sub(t.start).Round(time.Second))) + "\n")
-	}
 	return b.String()
 }
 
 func (m Model) hints() string {
 	var h []string
 	cur := m.m.Current()
-	switch cur {
-	case state.Cluster:
+	switch {
+	case m.stopAsk:
+		h = []string{"y stop the step", "n keep it running"}
+	case m.runningTask() != nil:
+		h = []string{"ctrl+c stop this step"}
+	case cur == state.Cluster:
 		h = m.clusterHints()
-	case state.Database:
+	case cur == state.Database:
 		h = []string{"↑/↓ select", "enter confirm", "esc back", "ctrl+c quit"}
-	case state.TeardownScope:
+	case cur == state.Settings:
+		h = m.settingsHints()
+	case cur == state.Plugins:
+		h = []string{"↑/↓ move", "space select", "enter continue", "esc back", "ctrl+c quit"}
+	case cur == state.Review:
+		h = []string{"y start the install", "esc back", "ctrl+c quit"}
+	case cur == state.TeardownScope:
 		h = m.scopeHints()
-	case state.Complete:
+	case cur == state.Complete:
 		h = []string{"q quit"}
 		if !m.s.Teardown {
 			h = []string{"t tear down", "q quit"}
@@ -626,7 +871,27 @@ func (m Model) hints() string {
 			h = []string{"enter retry", "esc back", "ctrl+c quit"}
 		}
 	}
-	return theme.Subtle.Render("  " + strings.Join(h, " · "))
+	if !m.stopAsk {
+		if m.capturesText() {
+			h = append(h, "ctrl+s snapshot")
+		} else {
+			h = append(h, "s snapshot")
+		}
+	}
+	line := theme.Subtle.Render("  " + strings.Join(h, " · "))
+	if m.notice != "" {
+		line = "  " + theme.Warning.Render(m.notice) + theme.Fainted.Render("  ·  ") + theme.Subtle.Render(strings.Join(h, " · "))
+	}
+	return lipgloss.NewStyle().MaxWidth(max(m.width(), 40)).Render(line)
+}
+
+// width is the terminal's, or the width the screens assume before the first
+// WindowSizeMsg (bodyWidth's 80 plus the rail).
+func (m Model) width() int {
+	if m.w > 40 {
+		return m.w
+	}
+	return m.bodyWidth() + 36
 }
 
 func truncate(s string, n int) string {
@@ -674,4 +939,16 @@ func edit(s string, k tea.KeyMsg) string {
 		}
 	}
 	return s
+}
+
+// editN is edit for a Settings value: up to n bytes, spaces included (TAGS
+// and the CIDRs are space-separated lists).
+func editN(s string, k tea.KeyMsg, n int) string {
+	if k.Type == tea.KeySpace && len(s) < n {
+		return s + " "
+	}
+	if k.Type == tea.KeyRunes && len(s) < n {
+		return s + string(k.Runes)
+	}
+	return edit(s, tea.KeyMsg{Type: k.Type})
 }
