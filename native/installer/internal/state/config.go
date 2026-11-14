@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -207,22 +208,34 @@ func (c Config) Lookup(key string) (string, bool) {
 }
 
 // StepKeys are settings the steps read from their own environment, not the
-// wizard: the RDS instance's (setup-aws create rds), the LLM gateway's
-// Bedrock profile, the EFS add-on version, and OpenClaw's images and peer.
-// StepEnv hands the config files' values for them to every step, so setting
-// one in config.env or config.local.env works like exporting it.
-var StepKeys = []string{
-	"DB_ENGINE_VERSION", "DB_INSTANCE_CLASS", "DB_STORAGE_GB", "DB_MULTI_AZ", "DB_BACKUP_DAYS", "DB_DELETION_PROTECTION",
-	"BEDROCK_INFERENCE_PROFILE", "EFS_ADDON_VERSION",
-	"OPENCLAW_GATEWAY_IMAGE", "OPENCLAW_ACTOR_IMAGE", "OPENCLAW_DASHBOARD_IMAGE", "OPENCLAW_WORKERS", "WHATSAPP_PEER",
-}
+// wizard. Setting one in config.env or config.local.env works like
+// exporting it, and only the step that reads it gets it (review N2):
+//   - RDSKeys, the RDS instance's: the wizard passes them (StepEnv) to
+//     `setup-aws create rds`, which reads no config file, and its shown
+//     command carries them;
+//   - PluginKeys, the LLM gateway's Bedrock profile, the EFS add-on version,
+//     and OpenClaw's images, workers and WhatsApp peer: the installer's
+//     subcommands that run plugins read them from the files themselves, at
+//     start, and set them in their own environment (so the `setup-aws
+//     plugin <id>` they run inherits them). The wizard passes none, so no
+//     command, Review screen or log line holds WHATSAPP_PEER, a phone number.
+var (
+	RDSKeys = []string{
+		"DB_ENGINE_VERSION", "DB_INSTANCE_CLASS", "DB_STORAGE_GB", "DB_MULTI_AZ", "DB_BACKUP_DAYS", "DB_DELETION_PROTECTION",
+	}
+	PluginKeys = []string{
+		"BEDROCK_INFERENCE_PROFILE", "EFS_ADDON_VERSION",
+		"OPENCLAW_GATEWAY_IMAGE", "OPENCLAW_ACTOR_IMAGE", "OPENCLAW_DASHBOARD_IMAGE", "OPENCLAW_WORKERS", "WHATSAPP_PEER",
+	}
+	StepKeys = append(slices.Clone(RDSKeys), PluginKeys...)
+)
 
-// StepEnv is KEY=value for each of StepKeys set, non-empty, in
-// config.local.env or config.env and not in the environment: a child step
-// inherits the environment already, and an exported value wins.
-func (c Config) StepEnv() []string {
+// StepEnv is KEY=value for each of keys (RDSKeys, PluginKeys) set,
+// non-empty, in config.local.env or config.env and not in the environment:
+// a child step inherits the environment already, and an exported value wins.
+func (c Config) StepEnv(keys []string) []string {
 	var out []string
-	for _, k := range StepKeys {
+	for _, k := range keys {
 		if c.Env != nil {
 			if _, ok := c.Env(k); ok {
 				continue

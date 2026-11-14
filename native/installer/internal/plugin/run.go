@@ -301,11 +301,19 @@ func remove(ctx context.Context, w io.Writer, ids []string, o Options) error {
 			return fmt.Errorf("plugin %s: its AWS resources cannot be deleted, so nothing was removed: %w", p.ID, err)
 		}
 	}
+	// Each Remove runs on the release the control plane runs (review N1),
+	// which is another than o's when a fork's plugin was removed earlier or
+	// --tag changed since the install. The advice after each removal still
+	// compares it with o's: the release a control plane deploy would install.
+	on := o
+	if on.Release = o.RunningRelease(); len(ps) > 0 && on.Tag != o.Tag {
+		fmt.Fprintf(w, "Removing on Substrate %s, the release %s runs (not %s)\n", on.Tag, o.Cluster, o.Tag)
+	}
 	left := slices.Clone(rec)
 	for _, p := range ps {
 		fmt.Fprintln(w, RemoveLine+p.ID)
 		if p.Remove != nil {
-			if err := p.Remove(ctx, w, o); err != nil {
+			if err := p.Remove(ctx, w, on); err != nil {
 				return fmt.Errorf("plugin %s: %w", p.ID, err)
 			}
 		}

@@ -28,9 +28,23 @@ import (
 // reads written in front (an empty value is left out: it means the default).
 type builder struct {
 	self, setupAWS, overlay, cwd, exeDir, treeRoot string
-	// stepEnv is state.Config.StepEnv: settings from the config files that
-	// the steps read from their environment. Every Spec carries it.
+	// stepEnv is state.Config.StepEnv(state.RDSKeys): settings from the
+	// config files that `setup-aws create rds` reads from its environment.
+	// A Spec carries only the ones its step reads (settings).
 	stepEnv []string
+}
+
+// settings are the entries of stepEnv whose key is one of keys
+// (state.RDSKeys): a step gets only what it reads, so no other step's
+// command shows it (review N2).
+func (b builder) settings(keys []string) []string {
+	var out []string
+	for _, e := range b.stepEnv {
+		if k, _, _ := strings.Cut(e, "="); slices.Contains(keys, k) {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 // findSetupAWS returns native/tools/setup-aws, searched above cwd and the
@@ -77,14 +91,16 @@ func (b builder) env(s *state.Setup) []string {
 }
 
 // setupAWS is `go -C <setup-aws> run . <args>`, as substrate-gke runs
-// setup-gcp, with sim replayed under --dry-run.
-func (b builder) setupAWSSpec(s *state.Setup, label string, env []string, sim []string, args ...string) execx.Spec {
+// setup-gcp, with sim replayed under --dry-run. settings are the step
+// settings this subcommand reads (b.settings), shown and passed; env is
+// passed only.
+func (b builder) setupAWSSpec(s *state.Setup, label string, settings, env []string, sim []string, args ...string) execx.Spec {
 	dir := b.findSetupAWS()
 	argv := append([]string{"go", "-C", dir, "run", "."}, args...)
 	var shown []string
 	// The step settings are shown too, so the pasted command runs the same
 	// step: setup-aws reads no config file.
-	for _, e := range append(slices.Clone(b.stepEnv), b.env(s)...) {
+	for _, e := range append(slices.Clone(settings), b.env(s)...) {
 		if k, v, _ := strings.Cut(e, "="); v != "" && k != "TAGS" && k != "PLAN" && k != "KEEP_CLUSTER" {
 			shown = append(shown, k+"="+shellQuote(v))
 		}
@@ -94,7 +110,7 @@ func (b builder) setupAWSSpec(s *state.Setup, label string, env []string, sim []
 		Label:    label,
 		Display:  strings.Join(append(shown, args...), " "),
 		Argv:     argv,
-		Env:      append(append(slices.Clone(b.stepEnv), b.env(s)...), env...),
+		Env:      append(append(slices.Clone(settings), b.env(s)...), env...),
 		SimLines: sim,
 	}
 }
@@ -115,7 +131,7 @@ func simStart(s *state.Setup, what string) string {
 
 // createCluster runs `setup-aws create cluster` with config.env's knobs.
 func (b builder) createCluster(s *state.Setup) execx.Spec {
-	return b.setupAWSSpec(s, "setup-aws create cluster", s.NewClusterConfig.Env(),
+	return b.setupAWSSpec(s, "setup-aws create cluster", nil, s.NewClusterConfig.Env(),
 		simPhases(phases.Cluster, simStart(s, "Creating the cluster..."),
 			`level=INFO msg="Cluster ready." cluster=`+s.ClusterName+` created=27 changed=0 took=19m40s`),
 		"create", "cluster")
@@ -123,14 +139,15 @@ func (b builder) createCluster(s *state.Setup) execx.Spec {
 
 // bootstrap runs `setup-aws bootstrap`.
 func (b builder) bootstrap(s *state.Setup) execx.Spec {
-	return b.setupAWSSpec(s, "setup-aws bootstrap", nil,
+	return b.setupAWSSpec(s, "setup-aws bootstrap", nil, nil,
 		simPhases(phases.Bootstrap, simStart(s, "Starting full bootstrap..."), `level=INFO msg="Bootstrap completed successfully."`),
 		"bootstrap")
 }
 
-// rds runs `setup-aws create rds`.
+// rds runs `setup-aws create rds`, the one setup-aws step that reads step
+// settings (the DB_* ones).
 func (b builder) rds(s *state.Setup) execx.Spec {
-	return b.setupAWSSpec(s, "setup-aws create rds", nil,
+	return b.setupAWSSpec(s, "setup-aws create rds", b.settings(state.RDSKeys), nil,
 		simPhases(phases.RDS, simStart(s, "Starting RDS setup..."), `level=INFO msg="RDS setup completed successfully."`),
 		"create", "rds")
 }
@@ -141,7 +158,7 @@ func (b builder) teardown(s *state.Setup) execx.Spec {
 	if s.KeepCluster {
 		args = append(args, "--keep-cluster")
 	}
-	return b.setupAWSSpec(s, "setup-aws "+strings.Join(args, " "), nil,
+	return b.setupAWSSpec(s, "setup-aws "+strings.Join(args, " "), nil, nil,
 		simPhases(phases.Teardown, `level=INFO msg="Starting teardown of `+s.ClusterName+"."+s.Region+`..."`,
 			`level=INFO msg="Teardown complete: nothing left for `+s.ClusterName+"."+s.Region+`"`),
 		args...)
@@ -150,7 +167,7 @@ func (b builder) teardown(s *state.Setup) execx.Spec {
 // inventory is `setup-aws inventory`, which the teardown's Complete screen
 // offers to show that nothing with the owner tag is left.
 func (b builder) inventory(s *state.Setup) execx.Spec {
-	return b.setupAWSSpec(s, "setup-aws inventory", nil, nil, "inventory")
+	return b.setupAWSSpec(s, "setup-aws inventory", nil, nil, nil, "inventory")
 }
 
 // selfSpec re-executes the installer with a subcommand flag for s's cluster.
@@ -178,7 +195,7 @@ func (b builder) selfSpec(s *state.Setup, cluster, label string, sim []string, f
 		// The control plane's StorageClass and the plugins tag what they
 		// make with TAGS, read from the environment: pin it to the run's
 		// answer, which Settings may have changed.
-		Env:      append(slices.Clone(b.stepEnv), "TAGS="+s.Tags),
+		Env:      []string{"TAGS=" + s.Tags},
 		SimLines: sim,
 	}
 }
@@ -276,6 +293,9 @@ func (b builder) plugins(s *state.Setup) execx.Spec {
 	for _, id := range resolvedIDs(s.Plugins) {
 		sim = append(sim, plugin.DeployLine+id, plugin.VerifyLine+id, plugin.ReadyLine+id)
 	}
+	// No plugin settings (state.PluginKeys) in its Env: --plugin-action
+	// reads them from the config files itself (loadPluginSettings), so the
+	// log, which prints each Spec's Env, never holds WHATSAPP_PEER.
 	return b.selfSpec(s, s.ClusterName, "plugins", sim, append([]string{"--plugin-action", plugin.ActionDeploy}, releaseFlags(s)...)...)
 }
 

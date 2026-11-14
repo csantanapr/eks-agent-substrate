@@ -136,6 +136,25 @@ func SourceOf(tag string) string {
 	return ""
 }
 
+// RunningRelease is the release o's control plane runs, located like o's,
+// for removing what runs on it: o's own release when Running is its tag or
+// is not known (""), else the Source of the plugin that installs Running, or
+// Running's tag on upstream's tree from o's image repository. A removal
+// never runs on --tag or SUBSTRATE_TAG when the cluster runs another release
+// (review N1): that release's kubectl-ate and ate-setup would act on what
+// another release made, and an overlay patch that does not apply to the
+// --tag release would block the way out.
+func (o Options) RunningRelease() Release {
+	if o.Running == "" || o.Running == o.Tag {
+		return o.Release
+	}
+	var n Needs
+	if p, ok := Get(SourceOf(o.Running)); ok {
+		n = p.Needs
+	}
+	return n.Release(o.Running, o.ImageRepo).Locate(o.TreeRoot, o.OverlayDigest, o.Region)
+}
+
 // ReleaseFix is how to change the release of an installed control plane,
 // which --deploy-control-plane refuses: remove the control plane, then
 // install again with or without plugin id, whose Source is one of the two.
@@ -184,9 +203,10 @@ type Options struct {
 	// the tree by.
 	OverlayDigest string
 	// Running is the release tag the installed control plane runs, as
-	// --probe-installed reads it ("" when unknown). Remove compares it with
-	// Tag: a control plane still on another release (its plugin removed) is
-	// left only by a reinstall.
+	// --probe-installed reads it ("" when unknown). Run's remove runs each
+	// Remove on it (RunningRelease) and compares it with Tag: a control
+	// plane still on another release (its plugin removed, or --tag changed
+	// since the install) is left only by a reinstall.
 	Running string
 	// Kubeconfig is the installer's own kubeconfig for the cluster
 	// (awsx.KubeconfigPath), already written by the caller; its current

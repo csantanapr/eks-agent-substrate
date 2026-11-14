@@ -113,18 +113,22 @@ When the install starts, the wizard writes the Settings answers to
 were, and keeps the previous file as a backup under
 `~/.cache/substrate-eks/config-backups/`. The next run starts from them. The
 wizard reads `config.env`, then `config.local.env`; the environment wins over
-both. The settings a step reads itself (the `DB_*` six, `BEDROCK_INFERENCE_PROFILE`,
-`EFS_ADDON_VERSION`, the `OPENCLAW_*` images and workers, `WHATSAPP_PEER`)
-reach every step from the files too, and a `setup-aws` step's command on the
-Review screen shows them. Outside a checkout it uses built-in defaults and
-writes nothing.
+both. A setting a step reads itself reaches that step from the files too,
+and no other step: the wizard passes the `DB_*` six to `setup-aws create
+rds`, whose command on the Review screen shows them. The installer's
+`--plugin-action` and `--remove-control-plane` read `BEDROCK_INFERENCE_PROFILE`,
+`EFS_ADDON_VERSION`, the `OPENCLAW_*` images and workers and `WHATSAPP_PEER`
+from the files themselves (an exported value wins), so no command, screen or
+log line carries them (`WHATSAPP_PEER` is a phone number). Outside a checkout
+it uses built-in defaults and writes nothing.
 
 Press `s` on any screen (`ctrl+s` where you type text) to save it as `.ansi`,
 `.txt` and `.html` under `--snapshot-dir` (default
 `~/.cache/substrate-eks/snapshots`). `docs/render.mjs` turns the `.html`
 pages into the PNGs in this README. Account ids are always masked to their
-last four digits; `--redact` also masks the rest of each id, ARNs and bucket
-names, on screen, in snapshots and in the notes printed on exit.
+last four digits; `--redact` also masks the rest of each id, ARNs, bucket
+names and phone numbers (E.164, `+<digits>`), on screen, in snapshots and in
+the notes printed on exit.
 
 ### Flags
 
@@ -141,7 +145,7 @@ names, on screen, in snapshots and in the notes printed on exit.
 | `--dry-run` | off | Walk every screen with simulated commands; nothing touches AWS. |
 | `--teardown`, `--keep-cluster` | off | Open on the teardown of `--cluster`; keep the cluster. |
 | `--snapshot-dir` | `~/.cache/substrate-eks/snapshots` | Where `s` saves the screen. |
-| `--redact` | off | Mask account ids, ARNs and bucket names in full. |
+| `--redact` | off | Mask account ids, ARNs, bucket names and phone numbers in full. |
 | `--log` | `~/.cache/substrate-eks/logs/installer-<time>.log` | The log of every command and its output (mode 0600). |
 
 The steps the wizard runs are subcommands of the same binary, so each one
@@ -203,7 +207,10 @@ refuse what the control plane gives it. `--deploy-control-plane` refuses to
 change the release of an installed control plane, and so do `--deploy-demo`
 and `--plugin-action deploy` on a release the control plane does not run. To
 add or drop `mode3` on an installed cluster, run `--remove-control-plane`,
-then install again with or without it.
+then install again with or without it. Removals (`--remove-control-plane`
+and `--plugin-action remove`) run on the release the control plane runs,
+whatever `--tag` names: a fork whose plugin was removed, or the old tag
+after `SUBSTRATE_TAG` moved to a new one.
 
 The Makefile and `install.sh` run Go with `GOTOOLCHAIN=local` and
 `GOPROXY=direct`, so module downloads go straight to their source.
@@ -249,8 +256,16 @@ cluster with `ate-setup delete ate-system`, so its volumes and claims are
 released, and deletes in reverse order everything the installer created: Pod Identity associations and roles, the RDS
 instance and its logins, the S3 buckets, the ECR repositories, the node groups,
 the cluster, and the launch template, VPC and network. It deletes only
-resources that carry this deployment's owner tag. A second run finds nothing
-to delete. `KEEP_CLUSTER=true` removes Substrate and its AWS data but leaves
+resources that carry this deployment's owner tag. Every network interface in
+a VPC this installer created is tagged and treated as the deployment's own:
+`create cluster`, `bootstrap`, `create rds` and the `efs`, `s3files` and
+`db-rotation` plugins give each interface there without an owner tag the
+owner tag and `TAGS` (AWS services make most of them, and no create call can
+tag those), leaving one with another deployment's owner tag as it is. So
+teardown deletes an available interface in that VPC, including one you or
+another tool made there; one an AWS service manages is never deleted, and
+teardown waits for it to go with what it belongs to. A second run finds
+nothing to delete. `KEEP_CLUSTER=true` removes Substrate and its AWS data but leaves
 the cluster.
 
 The wizard's Complete screen offers teardown (`t`) and prints the exact

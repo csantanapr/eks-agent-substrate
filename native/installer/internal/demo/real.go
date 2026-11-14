@@ -12,7 +12,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -25,17 +24,11 @@ import (
 
 // newReal is env backed by os/exec, net/http and the AWS SDK.
 func newReal(o Options) *env {
-	var (
-		once   sync.Once
-		cfg    aws.Config
-		cfgErr error
-	)
+	// awsload: the demo step's checks run past the end of a session. It
+	// keeps one config per Region and profile for the process, and never a
+	// failed load, so a read after the profile is fixed works (review N4).
 	awsConfig := func(ctx context.Context) (aws.Config, error) {
-		once.Do(func() {
-			// awsload: the demo step's checks run past the end of a session.
-			cfg, cfgErr = awsload.Config(ctx, o.Region, o.Profile)
-		})
-		return cfg, cfgErr
+		return awsload.Config(ctx, o.Region, o.Profile)
 	}
 	return &env{
 		run:    runStreaming,

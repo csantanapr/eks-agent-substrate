@@ -95,8 +95,8 @@ and the teardown commands. `t` starts the teardown there.
 ![Complete: the kubeconfig to export, the verify command, and the teardown commands](native/installer/docs/complete.png)
 
 Press `s` on any screen to save it as `.ansi`, `.txt` and `.html` under
-`--snapshot-dir`; `--redact` also masks account ids, ARNs and bucket names on
-screen and in the snapshots. [`native/README.md`](native/README.md) has every
+`--snapshot-dir`; `--redact` also masks account ids, ARNs, bucket names and
+phone numbers on screen and in the snapshots. [`native/README.md`](native/README.md) has every
 flag and make target.
 
 ## Prerequisites
@@ -367,7 +367,10 @@ go -C native/installer run . --remove-control-plane --cluster $C --region $R --p
 ```
 
 `--remove-control-plane` removes the plugins too; pick them again on the
-Plugins screen. The worker images are pinned to the digest the new tag names.
+Plugins screen. It removes them and Substrate on the release the cluster
+runs, whatever `--tag` or `SUBSTRATE_TAG` names, so it also works once
+`config.local.env` already names the new tag. The worker images are pinned
+to the digest the new tag names.
 The EKS changes in `native/deploy/eks` must apply to the new tag: the
 control plane step stops and says so when its Go patch does not.
 
@@ -390,6 +393,11 @@ the installer created that carries this deployment's owner tag: Pod Identity
 associations and roles, the RDS instance (without a final snapshot) and its
 logins, both S3 buckets with every object version, the ECR repositories, the
 node groups, the cluster, the launch template and the VPC.
+Every network interface in a VPC the installer created is tagged and treated
+as the deployment's own (the install tags each one there that has no owner
+tag), so teardown deletes an available one, even one you added to that VPC
+yourself. One an AWS service manages is never deleted: teardown waits for it
+to go with what it belongs to.
 `KEEP_CLUSTER=true` keeps the cluster, its node groups and its network.
 
 ![Delete AWS resources: each teardown phase checked off, ending with the inventory](native/installer/docs/delete-aws.png)

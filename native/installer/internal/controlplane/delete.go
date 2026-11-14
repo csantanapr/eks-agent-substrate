@@ -78,19 +78,22 @@ func Delete(ctx context.Context, w io.Writer, o Options) error {
 	if _, err := resolvePlugins(ctx, w, &o, &po); err != nil {
 		return err
 	}
-	// A plugin removed earlier leaves its release running with the record
-	// no longer naming it (a control plane deploy cannot change it), and
-	// removing the control plane is the way out: remove it with the release
-	// that runs.
+	// The release that runs decides the removal, never --tag (review N1): a
+	// plugin removed earlier leaves its fork running with the record no
+	// longer naming it, and SUBSTRATE_TAG may already name the release to
+	// move to (README "Move to a new release"). Removing the control plane is
+	// the way out of both, so it runs on what is installed: the fork's
+	// release through its plugin's Source, else upstream's tree at the tag
+	// that runs (plugin.Options.RunningRelease).
 	running, err := InstalledRelease(ctx, kc)
 	if err != nil {
 		return fmt.Errorf("read the release %s runs: %w", o.Cluster, err)
 	}
-	if id := plugin.SourceOf(running); id != "" && running != o.Tag {
-		o.Plugins = []string{id}
-		if _, err := resolvePlugins(ctx, w, &o, &po); err != nil {
-			return err
-		}
+	po.Running = running
+	if rel := po.RunningRelease(); rel != po.Release {
+		fmt.Fprintf(w, "%s runs Substrate %s, not %s: removing it on %s\n", o.Cluster, rel.Tag, po.Tag, rel.Tag)
+		po.Release = rel
+		o.Tag, o.ImageRepo, o.Repo, o.ref = rel.Tag, rel.ImageRepo, rel.Repo, rel.Ref
 	}
 	// Every recorded plugin goes first, Kubernetes objects then AWS
 	// resources: their objects run on Substrate, and a volume they hold

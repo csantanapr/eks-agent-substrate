@@ -23,6 +23,7 @@ func TestSubcommandHelper(t *testing.T) {
 		t.Skip("runs only as the child of TestSubcommandStopsOnASignal")
 	}
 	os.Args = append([]string{"substrate-eks"}, strings.Split(args, "\n")...)
+	registerSettingsProbe()
 	main()
 }
 

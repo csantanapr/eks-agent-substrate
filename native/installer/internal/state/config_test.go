@@ -207,12 +207,19 @@ func TestStepEnv(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := c.StepEnv()
+	got := c.StepEnv(StepKeys)
 	want := []string{"DB_MULTI_AZ=true", "BEDROCK_INFERENCE_PROFILE=us.anthropic.claude-haiku-5-5"}
 	if !slices.Equal(got, want) {
 		t.Errorf("StepEnv = %q, want %q", got, want)
 	}
-	if (Config{}).StepEnv() != nil {
+	// Only the keys asked for.
+	if got := c.StepEnv(RDSKeys); !slices.Equal(got, []string{"DB_MULTI_AZ=true"}) {
+		t.Errorf("StepEnv(RDSKeys) = %q", got)
+	}
+	if got := c.StepEnv(PluginKeys); !slices.Equal(got, []string{"BEDROCK_INFERENCE_PROFILE=us.anthropic.claude-haiku-5-5"}) {
+		t.Errorf("StepEnv(PluginKeys) = %q", got)
+	}
+	if (Config{}).StepEnv(StepKeys) != nil {
 		t.Error("outside a checkout StepEnv is not empty")
 	}
 }

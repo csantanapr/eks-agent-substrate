@@ -49,6 +49,13 @@ func cluster(record, installed string) string {
 // its exit error and output.
 func runMain(t *testing.T, answers string, args ...string) (error, string) {
 	t.Helper()
+	return runMainIn(t, "", nil, answers, args...)
+}
+
+// runMainIn is runMain with the child working in cwd ("" this test's own)
+// and extra added to its environment, last, so it wins.
+func runMainIn(t *testing.T, cwd string, extra []string, answers string, args ...string) (error, string) {
+	t.Helper()
 	self, err := filepath.Abs(os.Args[0])
 	if err != nil {
 		t.Fatal(err)
@@ -73,6 +80,7 @@ func runMain(t *testing.T, answers string, args ...string) (error, string) {
 		"AWS_ACCESS_KEY_ID=placeholder", "AWS_SECRET_ACCESS_KEY=placeholder", "AWS_SESSION_TOKEN=",
 		"AWS_EC2_METADATA_DISABLED=true", "AWS_ENDPOINT_URL="+srv.URL, "XDG_CACHE_HOME="+dir,
 		"PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), kubectlAnswers+"="+answers)
+	cmd.Env, cmd.Dir = append(cmd.Env, extra...), cwd
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
 	done := make(chan error, 1)
@@ -139,18 +147,25 @@ func TestDeploysAreRefusedOnAnotherRelease(t *testing.T) {
 // plane runs, so removing a plugin with needs (openclaw's ingress clients)
 // while the fork still runs with mode3 no longer recorded gives the
 // reinstall, the refusal's fix; on v1.0.0 it says a control plane deploy
-// drops the needs.
+// drops the needs. The plugin's Remove runs on the release that runs, not on
+// --tag (review N1): openclaw's builds kubectl-ate from that release's tree,
+// so the tree it finds missing names the running release.
 func TestPluginRemovalOnAnotherReleaseGivesTheReinstall(t *testing.T) {
 	for _, tc := range []struct {
-		installed, want, not string
+		installed, tag, want, not string
 	}{
-		{mode3.Tag, "so a control plane deploy is refused: to drop them, run --remove-control-plane, then install again with or without --plugins mode3",
+		{mode3.Tag, "v1.0.0", "so a control plane deploy is refused: to drop them, run --remove-control-plane, then install again with or without --plugins mode3",
 			"run --deploy-control-plane again"},
-		{"v1.0.0", "run --deploy-control-plane again to drop them", "run --remove-control-plane"},
+		{"v1.0.0", "v1.0.0", "run --deploy-control-plane again to drop them", "run --remove-control-plane"},
+		{"v1.0.0", "v1.0.1", "so a control plane deploy is refused: to drop them, run --remove-control-plane, then install again with --tag v1.0.1",
+			"run --deploy-control-plane again"},
 	} {
-		err, out := runMain(t, cluster("openclaw", tc.installed), "--plugin-action", "remove", "--plugins", "openclaw")
+		err, out := runMain(t, cluster("openclaw", tc.installed), "--plugin-action", "remove", "--plugins", "openclaw", "--tag", tc.tag)
 		if err != nil || !strings.Contains(out, "Plugin removed: openclaw") || !strings.Contains(out, tc.want) || strings.Contains(out, tc.not) {
-			t.Errorf("installed %s: %v\n%s", tc.installed, err, out)
+			t.Errorf("installed %s, --tag %s: %v\n%s", tc.installed, tc.tag, err, out)
+		}
+		if !strings.Contains(out, "WARNING: no Substrate "+tc.installed+" tree at ") {
+			t.Errorf("installed %s, --tag %s: the removal did not run on the installed release:\n%s", tc.installed, tc.tag, out)
 		}
 	}
 }

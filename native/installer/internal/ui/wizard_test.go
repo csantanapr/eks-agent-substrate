@@ -481,6 +481,22 @@ func TestRedact(t *testing.T) {
 	if out := m.redact(in); utf8.RuneCountInString(out) != utf8.RuneCountInString(in) || strings.Contains(out, "Admin") || !strings.HasPrefix(out, "arn:aws:sts::") {
 		t.Errorf("redact %q -> %q", in, out)
 	}
+	// Phone numbers (E.164, review N2), both ways: masked with --redact,
+	// keeping the + and the width; shown without it. A + before too few or
+	// too many digits for E.164 is not a phone number.
+	for in, want := range map[string]string{
+		"Sending status ping to +15555550100.": "Sending status ping to +•••••••••••.",
+		"WHATSAPP_PEER=+447700900123 set":      "WHATSAPP_PEER=+•••••••••••• set",
+		"diff +12 lines, +0123456789":          "diff +12 lines, +0123456789",
+		"id +1234567890123456789":              "id +1234567890123456789",
+	} {
+		if out := m.redact(in); out != want {
+			t.Errorf("redact %q -> %q, want %q", in, out, want)
+		}
+		if out := (Model{}).redact(in); out != in {
+			t.Errorf("without --redact %q -> %q", in, out)
+		}
+	}
 }
 
 // On a full terminal the body keeps its top, so a long step's outcome is

@@ -54,8 +54,8 @@ type Deps struct {
 	Now func() time.Time
 	// SnapshotDir is where s saves the screen (snap.Writer).
 	SnapshotDir string
-	// Redact masks account ids, ARNs and bucket names on screen, in
-	// snapshots and in the exit notes (--redact).
+	// Redact masks account ids, ARNs, bucket names and phone numbers on
+	// screen, in snapshots and in the exit notes (--redact).
 	Redact bool
 	// Config is config.env and config.local.env: the Settings screen's help.
 	Config state.Config
@@ -538,7 +538,8 @@ func (m *Model) startTeardown() tea.Cmd {
 // View renders the header, the rail, the current screen and the key hints.
 // Every 12-digit number on it is masked to its last four digits, so a
 // screenshot never carries an account id, whatever a command printed (issue
-// #5 AC10.4); --redact masks the rest of each id, ARNs and bucket names too.
+// #5 AC10.4); --redact masks the rest of each id, ARNs, bucket names and
+// phone numbers too.
 func (m Model) View() string {
 	if m.quitting {
 		return ""

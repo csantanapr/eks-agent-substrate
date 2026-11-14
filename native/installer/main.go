@@ -78,7 +78,7 @@ func main() {
 		plugins    = flag.String("plugins", "", "comma-separated plugin IDs: the wizard preselects them, --deploy-control-plane carries their needs, --plugin-action acts on them, and with the recorded ones they decide the release every step uses")
 		pluginAct  = flag.String("plugin-action", "", "deploy, verify or remove the --plugins on --cluster (remove with no --plugins: every recorded plugin), then exit")
 
-		redact  = flag.Bool("redact", false, "also mask the rest of each account id, ARNs and bucket names, on screen, in snapshots and in the exit notes")
+		redact  = flag.Bool("redact", false, "also mask the rest of each account id, ARNs, bucket names and phone numbers, on screen, in snapshots and in the exit notes")
 		snapDir = flag.String("snapshot-dir", "", "where s saves the screen as .ansi, .txt and .html (default: under the user cache dir)")
 	)
 	flag.Parse()
@@ -159,6 +159,8 @@ func main() {
 		exitOn(controlplane.Deploy(ctx, os.Stdout, cpOptions()))
 		return
 	case *removeCP:
+		// It removes every recorded plugin first.
+		exitOn(loadPluginSettings(cfg))
 		exitOn(controlplane.Delete(ctx, os.Stdout, cpOptions()))
 		return
 	case *deployDemo || *verify:
@@ -175,6 +177,7 @@ func main() {
 		}
 		return
 	case *pluginAct != "":
+		exitOn(loadPluginSettings(cfg))
 		exitOn(runPlugins(ctx, *pluginAct, pluginIDs, clusterOptions()))
 		return
 	case *probeInst:
@@ -229,8 +232,10 @@ func main() {
 	defer logger.Close()
 
 	self, _ := os.Executable()
+	// Only the RDS settings: the plugin ones are read by the subcommands
+	// that run plugins (loadPluginSettings), so no Spec carries them.
 	b := builder{self: self, setupAWS: *setupAWS, overlay: *overlay, cwd: cwd, exeDir: exeDir, treeRoot: *treeRoot,
-		stepEnv: cfg.StepEnv()}
+		stepEnv: cfg.StepEnv(state.RDSKeys)}
 	d := ui.Deps{
 		Probe: b.probe, CreateCluster: b.createCluster, Bootstrap: b.bootstrap, RDS: b.rds,
 		ControlPlane: b.controlPlane, Plugins: b.plugins, Demo: b.demoStep, Verify: b.verify,
@@ -374,6 +379,22 @@ func clusterRelease(ctx context.Context, o plugin.Options, chosen []string, depl
 		}
 	}
 	return o, nil
+}
+
+// loadPluginSettings sets the plugin settings (state.PluginKeys) that
+// config.env and config.local.env give, and the environment does not, in
+// this process's environment, for the plugin code a subcommand runs and the
+// `setup-aws plugin <id>` children it starts; an exported value wins. The
+// wizard passes them to no step (review N2): execx's log prints every step's
+// Env, and WHATSAPP_PEER is a phone number.
+func loadPluginSettings(cfg state.Config) error {
+	for _, kv := range cfg.StepEnv(state.PluginKeys) {
+		k, v, _ := strings.Cut(kv, "=")
+		if err := os.Setenv(k, v); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func absPath(p string) string {
