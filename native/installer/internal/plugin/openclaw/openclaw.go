@@ -111,7 +111,8 @@ func init() {
 		ID:    ID,
 		Title: "OpenClaw always-on agent",
 		Summary: "An always-on OpenClaw gateway with its state on EFS; each conversation's agent is an actor that suspends when idle " +
-			"and resumes on the next message. Prebuilt images; reached with kubectl port-forward only.",
+			"and resumes on the next message. Reached with kubectl port-forward only. Needs its gateway, actor and dashboard images " +
+			"pinned by digest (OPENCLAW_GATEWAY_IMAGE, OPENCLAW_ACTOR_IMAGE, OPENCLAW_DASHBOARD_IMAGE).",
 		Order:    40,
 		Minutes:  15,
 		Requires: []string{efs.ID},
@@ -139,19 +140,34 @@ func image(env, def string) (string, error) {
 // images are the gateway, actor and dashboard refs.
 type images struct{ gateway, actor, dashboard, worker string }
 
-func demoImages(ctx context.Context, o plugin.Options) (images, error) {
+// pinnedImages are the gateway, actor and dashboard refs, or one error
+// naming every variable still to set. Deploy and Verify call it before
+// they touch the cluster.
+func pinnedImages() (images, error) {
 	var im images
+	var missing []string
+	for _, x := range []struct {
+		ref      *string
+		env, def string
+	}{{&im.gateway, "OPENCLAW_GATEWAY_IMAGE", GatewayImage}, {&im.actor, "OPENCLAW_ACTOR_IMAGE", ActorImage},
+		{&im.dashboard, "OPENCLAW_DASHBOARD_IMAGE", DashboardImage}} {
+		ref, err := image(x.env, x.def)
+		if err != nil {
+			missing = append(missing, x.env)
+		}
+		*x.ref = ref
+	}
+	if len(missing) > 0 {
+		return im, fmt.Errorf("the OpenClaw images are not pinned by digest: set %s to <image>@sha256:<digest> "+
+			"(the gateway, actor and dashboard images published from csantanapr/always-on-agent)", strings.Join(missing, ", "))
+	}
+	return im, nil
+}
+
+// withWorker adds the released ateworker-gvisor of the release the cluster
+// runs, pinned by digest.
+func withWorker(ctx context.Context, o plugin.Options, im images) (images, error) {
 	var err error
-	if im.gateway, err = image("OPENCLAW_GATEWAY_IMAGE", GatewayImage); err != nil {
-		return im, err
-	}
-	if im.actor, err = image("OPENCLAW_ACTOR_IMAGE", ActorImage); err != nil {
-		return im, err
-	}
-	if im.dashboard, err = image("OPENCLAW_DASHBOARD_IMAGE", DashboardImage); err != nil {
-		return im, err
-	}
-	// The released ateworker-gvisor of the release the cluster runs.
 	im.worker, err = pinImage(ctx, workerImageRepo+"/ateworker-gvisor:"+o.Tag)
 	return im, err
 }
@@ -302,11 +318,14 @@ func prerequisites(ctx context.Context, w io.Writer, o plugin.Options) error {
 }
 
 func deploy(ctx context.Context, w io.Writer, o plugin.Options) error {
+	im, err := pinnedImages()
+	if err != nil {
+		return err
+	}
 	if err := prerequisites(ctx, w, o); err != nil {
 		return err
 	}
-	im, err := demoImages(ctx, o)
-	if err != nil {
+	if im, err = withWorker(ctx, o, im); err != nil {
 		return err
 	}
 	wa, err := whatsappFor(os.Getenv("WHATSAPP_PEER"))
@@ -762,6 +781,10 @@ if (r.status !== 200) process.exit(1);
 // the gateway reaches the demo actor through atenet-router. It sends no
 // model turn, so it needs no LLM gateway.
 func verify(ctx context.Context, w io.Writer, o plugin.Options) error {
+	im, err := pinnedImages()
+	if err != nil {
+		return err
+	}
 	args, err := efs.Out(ctx, o, "-n", "ate-system", "get", "deployment", "atenet-router", "-o", "jsonpath={.spec.template.spec.containers[*].args}")
 	if err != nil {
 		return err
@@ -778,11 +801,20 @@ func verify(ctx context.Context, w io.Writer, o plugin.Options) error {
 	}
 	fmt.Fprintln(w, "PASS: every Service in namespace openclaw is ClusterIP, and there is no Ingress")
 
-	for _, d := range []struct{ name, timeout string }{{"openclaw-gateway", "600s"}, {"openclaw-dashboard", "180s"}} {
+	for _, d := range []struct{ name, timeout, image string }{
+		{"openclaw-gateway", "600s", im.gateway}, {"openclaw-dashboard", "180s", im.dashboard}} {
 		if err := efs.Run(ctx, w, o, "-n", Namespace, "rollout", "status", "deployment/"+d.name, "--timeout="+d.timeout); err != nil {
 			return err
 		}
+		got, err := efs.Out(ctx, o, "-n", Namespace, "get", "deployment", d.name, "-o", "jsonpath={.spec.template.spec.containers[*].image}")
+		if err != nil {
+			return err
+		}
+		if !slices.Contains(strings.Fields(got), d.image) {
+			return fmt.Errorf("deployment %s/%s runs %q, not the pinned %s: deploy the plugin again", Namespace, d.name, got, d.image)
+		}
 	}
+	fmt.Fprintln(w, "PASS: the gateway and dashboard run the pinned images")
 	ap, err := gatewayAccessPoint(ctx, o)
 	if err != nil {
 		return err

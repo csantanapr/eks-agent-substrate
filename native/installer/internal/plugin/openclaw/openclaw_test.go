@@ -171,20 +171,63 @@ func TestExposure(t *testing.T) {
 	}
 }
 
-// Deploy stops on an unpinned image before it applies anything.
-func TestDeployNeedsPinnedImages(t *testing.T) {
-	for _, e := range []string{"OPENCLAW_GATEWAY_IMAGE", "OPENCLAW_ACTOR_IMAGE", "OPENCLAW_DASHBOARD_IMAGE"} {
+// recordExec records every child and fails each one, so a hook stops at
+// its first child: what it ran shows whether it got past the image check.
+func recordExec(t *testing.T) *[]string {
+	var log []string
+	prev := plugin.Exec
+	plugin.Exec = func(_ context.Context, _ io.Writer, c plugin.Cmd) error {
+		log = append(log, strings.Join(c.Argv, " "))
+		return fmt.Errorf("stop")
+	}
+	t.Cleanup(func() { plugin.Exec = prev })
+	return &log
+}
+
+var imageVars = []string{"OPENCLAW_GATEWAY_IMAGE", "OPENCLAW_ACTOR_IMAGE", "OPENCLAW_DASHBOARD_IMAGE"}
+
+// Without the digests, Deploy and Verify refuse naming all three variables
+// and start no child: the cluster is never reached.
+func TestHooksRefuseUnpinnedImagesBeforeTheCluster(t *testing.T) {
+	for _, e := range imageVars {
 		t.Setenv(e, "")
 	}
-	log := fakeExec(t, map[string]string{"kubectl --kubeconfig /kc -n ate-system get deployment ate-api-server": "deployment.apps/ate-api-server"})
 	o := plugin.Options{Cluster: "demo", Region: "us-west-2", Kubeconfig: "/kc", Tag: "v1.0.0"}
-	err := deploy(context.Background(), io.Discard, o)
-	if err == nil || !strings.Contains(err.Error(), "not pinned by digest") {
-		t.Fatalf("got %v", err)
+	for name, hook := range map[string]func(context.Context, io.Writer, plugin.Options) error{"deploy": deploy, "verify": verify} {
+		log := recordExec(t)
+		err := hook(context.Background(), io.Discard, o)
+		if err == nil || !strings.Contains(err.Error(), "set OPENCLAW_GATEWAY_IMAGE, OPENCLAW_ACTOR_IMAGE, OPENCLAW_DASHBOARD_IMAGE to <image>@sha256:<digest>") {
+			t.Errorf("%s: %v", name, err)
+		}
+		if len(*log) > 0 {
+			t.Errorf("%s ran %v before refusing", name, *log)
+		}
 	}
-	for _, l := range *log {
-		if strings.Contains(l, " apply ") || strings.Contains(l, " create ") {
-			t.Errorf("applied before the image check: %s", l)
+	// One left unpinned is named alone.
+	t.Setenv("OPENCLAW_GATEWAY_IMAGE", GatewayImage+digest)
+	t.Setenv("OPENCLAW_DASHBOARD_IMAGE", DashboardImage+digest)
+	if _, err := pinnedImages(); err == nil || !strings.Contains(err.Error(), "set OPENCLAW_ACTOR_IMAGE to") {
+		t.Errorf("one missing: %v", err)
+	}
+}
+
+// With the three set, Deploy and Verify go on to the cluster.
+func TestHooksProceedWithPinnedImages(t *testing.T) {
+	t.Setenv("OPENCLAW_GATEWAY_IMAGE", GatewayImage+digest)
+	t.Setenv("OPENCLAW_ACTOR_IMAGE", ActorImage+digest)
+	t.Setenv("OPENCLAW_DASHBOARD_IMAGE", DashboardImage+digest)
+	o := plugin.Options{Cluster: "demo", Region: "us-west-2", Kubeconfig: "/kc", Tag: "v1.0.0"}
+	for name, first := range map[string]string{
+		"deploy": "kubectl --kubeconfig /kc -n ate-system get deployment ate-api-server",
+		"verify": "kubectl --kubeconfig /kc -n ate-system get deployment atenet-router",
+	} {
+		log := recordExec(t)
+		hook := map[string]func(context.Context, io.Writer, plugin.Options) error{"deploy": deploy, "verify": verify}[name]
+		if err := hook(context.Background(), io.Discard, o); err == nil || strings.Contains(err.Error(), "not pinned") {
+			t.Errorf("%s: %v", name, err)
+		}
+		if len(*log) == 0 || !strings.HasPrefix((*log)[0], first) {
+			t.Errorf("%s: first child %v, want %s", name, *log, first)
 		}
 	}
 }
