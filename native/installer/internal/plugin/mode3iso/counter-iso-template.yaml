@@ -1,0 +1,37 @@
+# The counter demo's ActorTemplate for the isolated pool: mode 3's template
+# (counter-mode3-template.yaml) selecting the counter-iso workers. Created
+# with `kubectl ate create actor-template -f`; it is not a Kubernetes object.
+#
+# ${COUNTER_IMAGE} is the counter image mode 3's template runs.
+metadata:
+  atespace: ate-demo-counter-iso
+  name: counter-iso
+workerSelector:
+  matchLabels:
+    workload: counter-iso
+containers:
+- name: counter
+  image: ${COUNTER_IMAGE}
+  command:
+  - /ko-app/counter
+  - --extra-port=9090
+  - --tcp-port=9091
+  wakeupProbe:
+    httpGet:
+      path: /readyz
+      port: 80
+  volumeMounts:
+  - name: data
+    mountPath: /home/counter
+# An actor occupies its whole worker; it is sized below the worker's limits.
+resources:
+  limits:
+    cpuMillicores: 1000
+    memoryBytes: 536870912 # 512Mi
+snapshotConfig:
+  # MEMORY: a suspend captures process memory as well as the durable volume,
+  # so the in-memory counter continues across suspend and resume.
+  preferredFidelity: SNAPSHOT_FIDELITY_MEMORY
+volumes:
+- name: data
+  durableDir: {}

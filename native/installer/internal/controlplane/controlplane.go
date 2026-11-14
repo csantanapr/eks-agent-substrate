@@ -405,6 +405,9 @@ var checkCommit = func(ctx context.Context, tree, commit string) error {
 // this installer created gets it as its default class with RDS too (R1).
 func install(ctx context.Context, w io.Writer, o Options, kubeContext, kc, tree string) error {
 	env := AteSetupEnv(o, kc)
+	if err := autoNodes(ctx, w, o, kc); err != nil {
+		return err
+	}
 	if o.db() == DatabaseBundled || o.clusterOwned {
 		if err := applyStorageClass(ctx, w, o, kc); err != nil {
 			return err

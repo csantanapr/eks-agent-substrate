@@ -761,7 +761,7 @@ func (t *tfEC2) find(kind string, filters []ec2types.Filter) []*tdObj {
 				v = o.name
 			case name == "status":
 				v = o.state
-			case name == "nat-gateway-id":
+			case name == "nat-gateway-id", name == "instance-id":
 				v = o.id
 			case strings.HasPrefix(name, "tag:"):
 				v = o.tags[strings.TrimPrefix(name, "tag:")]
@@ -878,6 +878,26 @@ func (t *tfEC2) DescribeVolumes(_ context.Context, in *ec2.DescribeVolumesInput,
 	}
 	return out, nil
 }
+
+// DescribeFleets answers by ID only, as EC2 does for instant fleets; an
+// unknown ID is InvalidFleetId.NotFound.
+func (t *tfEC2) DescribeFleets(_ context.Context, in *ec2.DescribeFleetsInput, _ ...func(*ec2.Options)) (*ec2.DescribeFleetsOutput, error) {
+	f := t.f()
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := &ec2.DescribeFleetsOutput{}
+	for _, id := range in.FleetIds {
+		o := f.get("fleet", id)
+		if o == nil {
+			return nil, apiErr("InvalidFleetId.NotFound")
+		}
+		// A fleet's name field holds the instance it launched.
+		out.Fleets = append(out.Fleets, ec2types.FleetData{FleetId: aws.String(id), FleetState: ec2types.FleetStateCode(o.state), Type: ec2types.FleetTypeInstant,
+			Instances: []ec2types.DescribeFleetsInstances{{InstanceIds: []string{o.name}}}})
+	}
+	return out, nil
+}
+
 func (t *tfEC2) DescribeInstances(_ context.Context, in *ec2.DescribeInstancesInput, _ ...func(*ec2.Options)) (*ec2.DescribeInstancesOutput, error) {
 	defer t.lock()()
 	if !aws.ToBool(in.IncludeManagedResources) {

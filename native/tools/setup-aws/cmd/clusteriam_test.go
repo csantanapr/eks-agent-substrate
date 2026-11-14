@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
 )
 
 type policyStatement struct {
@@ -93,8 +95,9 @@ func TestClusterRolesInlinePoliciesHaveNoWildcards(t *testing.T) {
 				}
 			}
 		}
-		// Only the Auto Mode cluster role has an inline policy.
-		if want := map[string]int{"on": 1, "": 0}[auto]; n != want {
+		// Only the Auto Mode cluster role has inline policies: volume and
+		// node tags.
+		if want := map[string]int{"on": 2, "": 0}[auto]; n != want {
 			t.Errorf("auto=%q: %d inline policies, want %d", auto, n, want)
 		}
 	}
@@ -134,5 +137,81 @@ func TestClusterRoleVolumePolicyIsReconciled(t *testing.T) {
 	}
 	if countCalls(f.writes, put) != 1 {
 		t.Errorf("a drifted policy was not put back: %v", f.writes)
+	}
+}
+
+// The node tag policy: the documented compute and networking creates, on
+// this account and Region's resources of the kinds they make, for this
+// cluster, with the owner tag on the request.
+func TestAutoModeClusterRoleMayLaunchTaggedNodes(t *testing.T) {
+	f := newClusterFake()
+	if err := clusterTestRun(t, f, false).run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	doc := f.roles["demo-us-west-2-eks-cluster"].inline[nodeTagPolicyName]
+	st := statements(t, doc)
+	if len(st) != 2 {
+		t.Fatalf("%d statements, want 2: %s", len(st), doc)
+	}
+	want := []struct{ actions, resources, like string }{
+		{"ec2:CreateFleet ec2:RunInstances ec2:CreateLaunchTemplate",
+			"arn:aws:ec2:us-west-2:111122223333:fleet/* arn:aws:ec2:us-west-2:111122223333:instance/* arn:aws:ec2:us-west-2:111122223333:launch-template/* " +
+				"arn:aws:ec2:us-west-2:111122223333:network-interface/* arn:aws:ec2:us-west-2:111122223333:volume/*",
+			"aws:RequestTag/eks:kubernetes-node-class-name aws:RequestTag/eks:kubernetes-node-pool-name"},
+		{"ec2:CreateNetworkInterface", "arn:aws:ec2:us-west-2:111122223333:network-interface/*", "aws:RequestTag/eks:kubernetes-cni-node-name"},
+	}
+	for i, s := range st {
+		var like []string
+		for _, k := range sortedKeys(s.Condition["StringLike"]) {
+			like = append(like, k)
+		}
+		eq := s.Condition["StringEquals"]
+		if s.Effect != "Allow" || strings.Join(strs(s.Action), " ") != want[i].actions || strings.Join(strs(s.Resource), " ") != want[i].resources ||
+			strings.Join(like, " ") != want[i].like || len(eq) != 2 ||
+			eq["aws:RequestTag/eks:eks-cluster-name"] != "${aws:PrincipalTag/eks:eks-cluster-name}" || eq["aws:RequestTag/"+OwnerTagKey] != "demo.us-west-2" {
+			t.Errorf("statement %d = %+v", i, s)
+		}
+	}
+}
+
+// Both directions for a rerun on an existing Auto Mode cluster: a missing
+// node tag policy is put, once, on the cluster's owned role; a matching one
+// is left alone (no write); a role another deployment owns is refused, with
+// nothing written.
+func TestExistingClusterRoleInlinePoliciesAreReconciled(t *testing.T) {
+	f := newClusterFake()
+	if err := clusterTestRun(t, f, false).run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	role := f.roles["demo-us-west-2-eks-cluster"]
+	// EKS answers DescribeCluster with the role the cluster was created with.
+	f.cluster.RoleArn = aws.String(role.arn)
+	// A cluster made before the node tag policy existed.
+	delete(role.inline, nodeTagPolicyName)
+	f.writes = nil
+	r := clusterTestRun(t, f, false)
+	if err := r.run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	put := "PutRolePolicy demo-us-west-2-eks-cluster " + nodeTagPolicyName
+	if countCalls(f.writes, put) != 1 || len(f.writes) != 1 || role.inline[nodeTagPolicyName] != r.nodeTagPolicy() || len(r.changes) != 1 {
+		t.Errorf("missing policy: writes %v, changes %v", f.writes, r.changes)
+	}
+
+	// Matching: nothing is written.
+	f.writes = nil
+	if err := clusterTestRun(t, f, false).run(context.Background()); err != nil || len(f.writes) != 0 {
+		t.Errorf("matching policy: err %v, writes %v", err, f.writes)
+	}
+
+	// Another deployment's role: refused, nothing written.
+	delete(role.inline, nodeTagPolicyName)
+	role.tags[OwnerTagKey] = "other.us-west-2"
+	f.writes = nil
+	if err := clusterTestRun(t, f, false).run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.writes) != 0 || role.inline[nodeTagPolicyName] != "" {
+		t.Errorf("foreign role: writes %v", f.writes)
 	}
 }

@@ -119,8 +119,9 @@ func TestCreateClusterFreshAccount(t *testing.T) {
 		t.Error("Auto Mode cluster role lacks AmazonEKSComputePolicy")
 	}
 
-	// Add-ons: NetworkPolicy on, EBS CSI through Pod Identity.
-	if v := aws.ToString(f.addonIn["vpc-cni"].ConfigurationValues); v != `{"enableNetworkPolicy":"true"}` {
+	// Add-ons: NetworkPolicy on and the CNI's interfaces tagged, EBS CSI
+	// through Pod Identity.
+	if v := aws.ToString(f.addonIn["vpc-cni"].ConfigurationValues); v != `{"enableNetworkPolicy":"true","env":{"ADDITIONAL_ENI_TAGS":"{\"agent-substrate-on-eks/deployment\":\"demo.us-west-2\",\"auto-delete\":\"no\",\"project\":\"agent-substrate\"}"}}` {
 		t.Errorf("vpc-cni config %s", v)
 	}
 	if p := f.addonIn["aws-ebs-csi-driver"].PodIdentityAssociations; len(p) != 1 || aws.ToString(p[0].ServiceAccount) != ebsControllerSA ||

@@ -16,6 +16,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
 	ekstypes "github.com/aws/aws-sdk-go-v2/service/eks/types"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
@@ -135,8 +136,85 @@ func (r *clusterRun) ensureCluster(ctx context.Context) error {
 			}
 		}
 	}
+	return r.tagImplicitENIs(ctx)
+}
+
+// tagImplicitENIs tags the network interfaces AWS creates in this
+// deployment's VPC, which no create call here can tag: the cluster's
+// control-plane interfaces (EKS, "Amazon EKS <cluster>") and the NAT
+// gateway's, with the owner tag and TAGS, on every run. Then it warns about
+// any interface left in the VPC without the owner tag; that is not an
+// error, since the VPC CNI and Auto Mode attach (and tag) theirs later. Only
+// a VPC that carries this deployment's owner tag is touched.
+func (r *clusterRun) tagImplicitENIs(ctx context.Context) error {
+	if r.vpcID == "" || planned(r.vpcID) {
+		return nil
+	}
+	vpcs, err := r.c.EC2.DescribeVpcs(ctx, &ec2.DescribeVpcsInput{Filters: []ec2types.Filter{{Name: aws.String("vpc-id"), Values: []string{r.vpcID}}}})
+	if err != nil {
+		return fmt.Errorf("describe VPC %s: %w", r.vpcID, err)
+	}
+	if len(vpcs.Vpcs) != 1 || ec2TagMap(vpcs.Vpcs[0].Tags)[OwnerTagKey] != r.e.names.OwnerValue {
+		slog.Info("the cluster's VPC is not this deployment's; its network interfaces are left as they are", "vpc", r.vpcID)
+		return nil
+	}
+	var enis []ec2types.NetworkInterface
+	p := ec2.NewDescribeNetworkInterfacesPaginator(r.c.EC2, &ec2.DescribeNetworkInterfacesInput{
+		Filters: []ec2types.Filter{{Name: aws.String("vpc-id"), Values: []string{r.vpcID}}}})
+	for p.HasMorePages() {
+		page, err := p.NextPage(ctx)
+		if err != nil {
+			return fmt.Errorf("describe the network interfaces of VPC %s: %w", r.vpcID, err)
+		}
+		enis = append(enis, page.NetworkInterfaces...)
+	}
+	var untagged []string
+	for _, n := range enis {
+		id, have := aws.ToString(n.NetworkInterfaceId), ec2TagMap(n.TagSet)
+		if implicitENI(n, r.e.names.Cluster) {
+			var add []ec2types.Tag
+			for _, k := range sortedKeys(r.e.tags) {
+				if have[k] != r.e.tags[k] {
+					add = append(add, ec2types.Tag{Key: aws.String(k), Value: aws.String(r.e.tags[k])})
+				}
+			}
+			if len(add) > 0 {
+				if err := r.change(fmt.Sprintf("tag network interface %s (%s)", id, aws.ToString(n.Description)), func() error {
+					_, err := r.c.EC2.CreateTags(ctx, &ec2.CreateTagsInput{Resources: []string{id}, Tags: add})
+					return err
+				}); err != nil {
+					return fmt.Errorf("tag network interface %s: %w", id, err)
+				}
+				if !r.plan() {
+					continue
+				}
+			}
+		}
+		if have[OwnerTagKey] != r.e.names.OwnerValue {
+			untagged = append(untagged, id)
+		}
+	}
+	if len(untagged) > 0 {
+		slog.Warn("network interfaces in the VPC without the owner tag (the VPC CNI and Auto Mode tag the ones they attach later)",
+			"vpc", r.vpcID, "untagged", strings.Join(untagged, " "))
+		return nil
+	}
+	slog.Info("every network interface in the VPC carries the owner tag", "vpc", r.vpcID, "interfaces", len(enis))
 	return nil
 }
+
+// implicitENI reports a network interface AWS made for cluster in its VPC:
+// a NAT gateway's, or one of the cluster's control-plane interfaces.
+// DescribeNetworkInterfaces answers "nat_gateway" for a NAT gateway's (seen
+// on sub-p13), not the SDK's NetworkInterfaceTypeNatGateway ("natGateway"),
+// so both spellings count.
+func implicitENI(n ec2types.NetworkInterface, cluster string) bool {
+	t := n.InterfaceType
+	return t == natGatewayENI || t == ec2types.NetworkInterfaceTypeNatGateway || aws.ToString(n.Description) == "Amazon EKS "+cluster
+}
+
+// natGatewayENI is the interface type EC2 reports for a NAT gateway's.
+const natGatewayENI ec2types.NetworkInterfaceType = "nat_gateway"
 
 func sortedCopy(s []string) []string {
 	c := slices.Clone(s)
