@@ -9,6 +9,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/controlplane"
 )
 
 // StopProcessTree ends every process this installer started and all their
@@ -19,7 +21,18 @@ import (
 // rest running and holding the step's output open.
 //
 // The installer runs one step at a time, so its children are that step's.
-func StopProcessTree() { stopTree(os.Getpid(), 5*time.Second) }
+func StopProcessTree() { stopTree(os.Getpid(), stepGrace, treeGrace) }
+
+// How long a stopped process may take to exit after SIGTERM before SIGKILL.
+// The step's own process gets stepGrace: on SIGTERM the re-executed
+// installer runs its cleanup, and the control plane step's database
+// bootstrap then deletes its Secret, namespace and Job, bounded by
+// controlplane.BootstrapCleanup (review R6). Every process below it gets
+// treeGrace.
+const (
+	stepGrace = controlplane.BootstrapCleanup + 15*time.Second
+	treeGrace = 5 * time.Second
+)
 
 // proc is one row of ps. start (ps lstart) tells a process from a later one
 // that reuses its pid.
@@ -91,10 +104,13 @@ func alive(known map[int]proc) []proc {
 
 // stopTree freezes root's tree, so that no process in it starts another
 // while it is listed (SIGSTOP each newly found descendant until a listing
-// finds none), sends each SIGTERM and SIGCONT, waits up to grace for them to
-// exit, and SIGKILLs what is left. A process that exits and leaves orphans
-// cannot hide them: they were found and frozen before anything was killed.
-func stopTree(root int, grace time.Duration) {
+// finds none), sends each SIGTERM and SIGCONT, and waits for them to exit:
+// once grace is up it SIGKILLs what is left below root's direct children,
+// and once childGrace is up, everything left. A process that exits and
+// leaves orphans cannot hide them: they were found and frozen before
+// anything was killed. Processes a child starts after the freeze (its
+// cleanup's kubectl) are its own to end.
+func stopTree(root int, childGrace, grace time.Duration) {
 	known := map[int]proc{}
 	for range 50 {
 		procs, err := listProcs()
@@ -117,9 +133,19 @@ func stopTree(root int, grace time.Duration) {
 		_ = syscall.Kill(pid, syscall.SIGTERM)
 		_ = syscall.Kill(pid, syscall.SIGCONT)
 	}
-	for end := time.Now().Add(grace); time.Now().Before(end); time.Sleep(100 * time.Millisecond) {
-		if len(alive(known)) == 0 {
+	start, belowKilled := time.Now(), false
+	for ; time.Since(start) < childGrace; time.Sleep(100 * time.Millisecond) {
+		left := alive(known)
+		if len(left) == 0 {
 			return
+		}
+		if !belowKilled && time.Since(start) >= grace {
+			for _, p := range left {
+				if p.ppid != root {
+					_ = syscall.Kill(p.pid, syscall.SIGKILL)
+				}
+			}
+			belowKilled = true
 		}
 	}
 	for _, p := range alive(known) {

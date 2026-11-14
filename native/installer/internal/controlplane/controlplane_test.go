@@ -292,8 +292,8 @@ func TestRDSDeployKeepsSecretsOutOfArgvAndLogs(t *testing.T) {
 			t.Errorf("the setup ConfigMap lacks %q", want)
 		}
 	}
-	if k.find("delete namespace ate-db-bootstrap --timeout") == nil {
-		t.Error("the bootstrap namespace was not deleted")
+	if k.find("delete namespace ate-db-bootstrap --ignore-not-found --wait=false") == nil || k.find("wait --for=delete namespace/ate-db-bootstrap") == nil {
+		t.Error("the bootstrap namespace was not deleted and waited for")
 	}
 }
 

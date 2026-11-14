@@ -10,13 +10,18 @@ import (
 	"testing"
 )
 
-// The bootstrap's cleanup deletes, in this order: the Secret with the
-// logins, the Job with its pod, the namespace.
+// The bootstrap's cleanup runs, in this order: the Secret with the logins,
+// the namespace delete without waiting, the Job's delete, which waits for it
+// and its pod (review R6: a kill during that wait leaves nothing the API
+// server does not then remove).
 var cleanupCmds = []string{
 	"-n ate-db-bootstrap delete secret creds --ignore-not-found",
+	"delete namespace ate-db-bootstrap --ignore-not-found --wait=false",
 	"-n ate-db-bootstrap delete job bootstrap --ignore-not-found --cascade=foreground",
-	"delete namespace ate-db-bootstrap",
 }
+
+// nsWait is the wait for the namespace to go, after a success only.
+const nsWait = "wait --for=delete namespace/ate-db-bootstrap --timeout=2m"
 
 // cancelAt wraps k so that the command containing at cancels ctx and fails
 // as exec.CommandContext does, and so that, like CommandContext, a command
@@ -78,10 +83,10 @@ func TestCancelledBootstrapStillDeletesTheSecretAndJob(t *testing.T) {
 				}
 			}
 			if !slices.IsSorted(idx) {
-				t.Errorf("cleanup order %v, want secret, job, namespace", idx)
+				t.Errorf("cleanup order %v, want secret, namespace (no wait), job", idx)
 			}
-			if ns := k.cmds[idx[2]].Argv; !slices.Contains(ns, "--wait=false") {
-				t.Errorf("after a cancel the namespace delete waits: %v", ns)
+			if k.find(nsWait) != nil {
+				t.Error("after a cancel the cleanup waits for the namespace")
 			}
 			if k.find("./cmd/ate-setup") != nil || strings.Contains(log.String(), BootstrapDone) {
 				t.Errorf("ate-setup ran or the bootstrap reported done after a cancel:\n%s", log.String())
@@ -90,8 +95,8 @@ func TestCancelledBootstrapStillDeletesTheSecretAndJob(t *testing.T) {
 	}
 }
 
-// The normal path deletes the same three after the Job's logs, waits for the
-// namespace, and only then reports the bootstrap done.
+// The normal path runs the same three after the Job's logs, then waits for
+// the namespace to go, and only then reports the bootstrap done.
 func TestBootstrapDeletesTheSecretAndJobWhenItSucceeds(t *testing.T) {
 	k := &fakeKube{}
 	o, tree := rdsFixture(t, k, "demo.us-west-2")
@@ -101,12 +106,11 @@ func TestBootstrapDeletesTheSecretAndJobWhenItSucceeds(t *testing.T) {
 	}
 	idx := ran(k)
 	logs := slices.IndexFunc(k.cmds, func(c command) bool { return strings.Contains(strings.Join(c.Argv, " "), "logs job/bootstrap") })
+	wait := slices.IndexFunc(k.cmds, func(c command) bool { return strings.Join(c.Argv, " ") == "kubectl "+nsWait })
 	ate := slices.IndexFunc(k.cmds, func(c command) bool { return slices.Contains(c.Argv, "./cmd/ate-setup") })
-	if slices.Contains(idx, -1) || !slices.IsSorted(append([]int{logs}, append(idx, ate)...)) {
-		t.Fatalf("logs at %d, cleanup at %v, ate-setup at %d: want logs, secret, job, namespace, ate-setup", logs, idx, ate)
-	}
-	if ns := k.cmds[idx[2]].Argv; slices.Contains(ns, "--wait=false") {
-		t.Errorf("after a success the namespace delete does not wait: %v", ns)
+	if slices.Contains(idx, -1) || wait < 0 || !slices.IsSorted(append([]int{logs}, append(idx, wait, ate)...)) {
+		t.Fatalf("logs at %d, cleanup at %v, namespace wait at %d, ate-setup at %d: want logs, secret, namespace, job, namespace wait, ate-setup",
+			logs, idx, wait, ate)
 	}
 	if !strings.Contains(log.String(), BootstrapDone+bootstrapNS) {
 		t.Errorf("no done line:\n%s", log.String())
