@@ -16,7 +16,8 @@ no install step runs a shell script.
 No application is exposed: every Service is ClusterIP, the database and
 buckets are private, and you reach the demos with port forwards. The
 Kubernetes API endpoint is public and IAM authenticated, limited to the
-address ranges in `EKS_PUBLIC_ACCESS_CIDRS`.
+address ranges in `EKS_PUBLIC_ACCESS_CIDRS`: by default (`auto`) only the
+address of the machine that creates the cluster.
 
 ## What you get
 
@@ -78,7 +79,7 @@ the cursor. `n` moves on.
 `space` picks one, and the plugins it needs with it; a plugin that needs Auto
 Mode is refused on a cluster without it.
 
-![Choose plugins: the LLM gateway, EFS and S3 Files volumes, the Secrets Manager credential provider and login rotation, and OpenClaw](native/installer/docs/plugins.png)
+![Choose plugins: the LLM gateway, EFS and S3 Files volumes, the Secrets Manager credential provider and login rotation, OpenClaw, and mode 3 on Kata and on isolated sandboxes](native/installer/docs/plugins.png)
 
 **Review the plan** shows every command in order, its time and its hourly
 cost. Nothing changes in AWS before you press `y`. The install then writes
@@ -117,9 +118,12 @@ flag and make target.
 
 ## Configure
 
-Defaults are in `config.env`. Your own values go in `config.local.env`
-(gitignored), which the wizard reads after it and which Settings writes when
-an install starts. The environment wins over both. For example:
+Defaults are in `config.env`, one commented line per setting: the cluster
+and its node groups, the API access ranges, the tags, the release, the RDS
+instance (`DB_*`), the Bedrock profile, the EFS add-on version and the
+OpenClaw images. Your own values go in `config.local.env` (gitignored), which
+the installer reads after it and which Settings writes when an install
+starts. The environment wins over both. For example:
 
 ```bash
 CLUSTER_NAME=my-substrate
@@ -322,7 +326,12 @@ kubectl delete pod hello               # Auto Mode removes the empty node
 ```
 
 Auto Mode nodes enforce NetworkPolicy, use IMDSv2 with hop limit 1 and run
-in the private subnets. Set `AUTO_MODE=` in `config.local.env` (or switch it
+in the private subnets. On a cluster the installer created, the control
+plane step gives Auto Mode tagged copies of its built-in NodePools (NodeClass
+`substrate-eks`, NodePools `substrate-general-purpose` and `substrate-system`),
+so the nodes it launches, their volumes and their network interfaces carry
+the owner tag and `TAGS`, as the node groups' do through their launch
+templates. Set `AUTO_MODE=` in `config.local.env` (or switch it
 off on Settings) for a cluster without Auto Mode: the mode is fixed when the
 cluster is created.
 
@@ -425,7 +434,7 @@ the EKS API endpoint limited to your own ranges (`EKS_PUBLIC_ACCESS_CIDRS`).
 | `native/tools/setup-aws/` | The AWS side: cluster, buckets, roles, ECR, RDS, plugins' AWS resources, teardown, inventory |
 | `native/deploy/eks/` | The kustomize Component and Go patch that make upstream's install run on EKS with S3 |
 | `native/README.md` | How the installer is built, every flag and make target |
-| `config.env` | Settings; overrides go in `config.local.env` |
+| `config.env` | Every setting, with its help; overrides go in `config.local.env` |
 | `patches/` | The reference patch `make -C native parity` compares `native/deploy/eks` with |
 | `.github/` | CI (`checks.sh`, the native tests and render parity) and the workflows that build the mode 3 images to GHCR |
 | `slides/` | The talk deck (open `slides/index.html`, or [on GitHub Pages](https://csantanapr.github.io/eks-agent-substrate/)); `.github/workflows/slides-pages.yaml` publishes it on every push to main. [`slides/demo.md`](slides/demo.md) has copy-paste commands for the actor demos on isolated sandboxes |

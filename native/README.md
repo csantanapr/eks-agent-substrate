@@ -76,7 +76,7 @@ make verify AWS_PROFILE=my-profile AWS_REGION=us-west-2 CLUSTER_NAME=my-cluster
 
 ## The wizard
 
-![Choose plugins: the LLM gateway, EFS and S3 Files volumes, the Secrets Manager credential provider and login rotation, and OpenClaw](installer/docs/plugins.png)
+![Choose plugins: the LLM gateway, EFS and S3 Files volumes, the Secrets Manager credential provider and login rotation, OpenClaw, and mode 3 on Kata and on isolated sandboxes](installer/docs/plugins.png)
 
 The screens, in order: Welcome, Check your setup (the tools and your AWS
 identity), Choose AWS account, Connect your cluster (the clusters in the
@@ -106,7 +106,11 @@ When the install starts, the wizard writes the Settings answers to
 were, and keeps the previous file as a backup under
 `~/.cache/substrate-eks/config-backups/`. The next run starts from them. The
 wizard reads `config.env`, then `config.local.env`; the environment wins over
-both. Outside a checkout it uses built-in defaults and writes nothing.
+both. The settings a step reads itself (the `DB_*` six, `BEDROCK_INFERENCE_PROFILE`,
+`EFS_ADDON_VERSION`, the `OPENCLAW_*` images and workers, `WHATSAPP_PEER`)
+reach every step from the files too, and a `setup-aws` step's command on the
+Review screen shows them. Outside a checkout it uses built-in defaults and
+writes nothing.
 
 Press `s` on any screen (`ctrl+s` where you type text) to save it as `.ansi`,
 `.txt` and `.html` under `--snapshot-dir` (default
