@@ -967,7 +967,7 @@ func (e *tdEnv) inventory(ctx context.Context) ([]tdRow, error) {
 		}
 		for _, m := range page.ResourceTagMappingList {
 			svc, rtype, id := arnType(aws.ToString(m.ResourceARN))
-			if svc == "eks" || svc == "iam" || svc == "s3" || tdKnown[svc+":"+rtype] {
+			if svc == "eks" || svc == "iam" || svc == "s3" || tdKnown[svc+":"+rtype] || pluginReadsType(svc+":"+rtype) {
 				continue
 			}
 			// Secrets beyond the two logins (the master user secret RDS

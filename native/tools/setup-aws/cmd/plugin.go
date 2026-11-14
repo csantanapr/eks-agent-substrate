@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 
 	"github.com/spf13/cobra"
@@ -55,9 +56,6 @@ func registerPlugin(d pluginDef) {
 		panic("setup-aws: duplicate plugin " + d.ID)
 	}
 	pluginDefs[d.ID] = d
-	for _, t := range d.TaggingTypes {
-		tdKnown[t] = true
-	}
 	if d.Create == nil {
 		return
 	}
@@ -153,6 +151,20 @@ var pluginCmd = &cobra.Command{
 }
 
 func init() { rootCmd.AddCommand(pluginCmd) }
+
+// pluginReadsType reports a tagging-API type ("service:type") a registered
+// plugin's Inventory reads itself. It is looked up in pluginDefs at run time,
+// rather than added to tdKnown at registration, so a test that empties
+// pluginDefs sees the core inventory exactly, whichever plugins are compiled
+// in.
+func pluginReadsType(t string) bool {
+	for _, d := range pluginDefs {
+		if slices.Contains(d.TaggingTypes, t) {
+			return true
+		}
+	}
+	return false
+}
 
 // sortedPluginDefs is every registered plugin by ID.
 func sortedPluginDefs() []pluginDef {
