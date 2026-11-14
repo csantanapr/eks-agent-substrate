@@ -432,6 +432,51 @@ func TestGuardRemovesSubstrateFromAClusterItCreated(t *testing.T) {
 	}
 }
 
+var ansiSeq = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+func stripANSI(s string) string { return ansiSeq.ReplaceAllString(s, "") }
+
+// The guard's remove offer and its confirmation say what the removal
+// removes first, as --remove-control-plane does: the plugins the record
+// lists, by name; every installed plugin when the probe could not read the
+// record; and no plugin when it lists none.
+func TestGuardRemovalNamesTheRecordedPlugins(t *testing.T) {
+	const installed = "SUBSTRATE_EKS_INSTALLED true atelet image=ghcr.io/x/ate-api-server:v1.0.0"
+	for _, tc := range []struct {
+		name, probe string
+		want        []string // in the offer and the confirmation
+		not         []string
+	}{
+		{"two recorded", installed + " plugins=efs,mode3", []string{"removes the installed plugins efs and mode3,", "Removes the installed plugins efs and mode3 ("},
+			[]string{"every installed plugin"}},
+		{"one recorded", installed + " plugins=efs", []string{"removes the installed plugin efs,", "Removes the installed plugin efs ("}, nil},
+		{"record unreadable", installed, []string{"removes every installed plugin,", "Removes every installed plugin ("}, nil},
+		{"none recorded", installed + " plugins=", []string{"t runs ate-setup delete ate-system", "Runs ate-setup delete ate-system"},
+			[]string{"plugin", "other AWS resources"}},
+	} {
+		r := &recorder{probes: map[string]string{"own-installed": tc.probe}}
+		m := toStep(t, New(testDeps(r), newSetup("own-installed")), state.Cluster)
+		m = press(m, "enter")
+		if m.cl.mode != "installed" {
+			t.Fatalf("%s: mode %q", tc.name, m.cl.mode)
+		}
+		offer := strings.Join(strings.Fields(stripANSI(m.clusterPanel())), " ")
+		m = press(m, "t")
+		confirm := strings.Join(strings.Fields(stripANSI(m.clusterPanel())), " ")
+		if m.cl.mode != "remove-confirm" {
+			t.Fatalf("%s: mode %q after t", tc.name, m.cl.mode)
+		}
+		if !strings.Contains(offer, tc.want[0]) || !strings.Contains(confirm, tc.want[1]) {
+			t.Errorf("%s:\noffer   %s\nconfirm %s\nwant %q and %q", tc.name, offer, confirm, tc.want[0], tc.want[1])
+		}
+		for _, n := range tc.not {
+			if strings.Contains(offer, n) || strings.Contains(confirm, n) {
+				t.Errorf("%s: says %q:\n%s\n%s", tc.name, n, offer, confirm)
+			}
+		}
+	}
+}
+
 func TestDatabaseChoiceAddsOrOmitsTheRDSStep(t *testing.T) {
 	for _, tc := range []struct {
 		keys    []string
