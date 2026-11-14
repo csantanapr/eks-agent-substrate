@@ -143,6 +143,27 @@ func TestRunRemoveAll(t *testing.T) {
 	}
 }
 
+// Both ways: removing a plugin with Needs says the control plane still
+// carries them and how to drop them; removing one without says nothing.
+func TestRunRemoveSaysNeedsAreKept(t *testing.T) {
+	f := &fakeCluster{record: "base,top"}
+	o := runFixture(t, f, nil)
+	var out bytes.Buffer
+	if err := Run(context.Background(), &out, ActionRemove, []string{"top"}, o); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), NeedsKeptLine+"top;") || !strings.Contains(out.String(), "--deploy-control-plane") {
+		t.Errorf("no needs line for top:\n%s", out.String())
+	}
+	out.Reset()
+	if err := Run(context.Background(), &out, ActionRemove, []string{"base"}, o); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.String(), NeedsKeptLine) {
+		t.Errorf("needs line for base, which has none:\n%s", out.String())
+	}
+}
+
 // Both directions: removing what a staying plugin requires is refused before
 // anything is removed; removing both is allowed.
 func TestRunRemoveKeepsRequirements(t *testing.T) {

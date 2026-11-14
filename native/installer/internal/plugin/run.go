@@ -20,6 +20,10 @@ const (
 	ReadyLine   = "Plugin ready: "
 	RemoveLine  = "Removing plugin "
 	RemovedLine = "Plugin removed: "
+	// NeedsKeptLine follows RemovedLine for a plugin with Needs: the running
+	// control plane still carries them (a preview gate, a credential
+	// provider, ingress clients, another release) until it is deployed again.
+	NeedsKeptLine = "The control plane still carries the needs of "
 )
 
 // Actions for Run (--plugin-action).
@@ -269,6 +273,11 @@ func remove(ctx context.Context, w io.Writer, ids []string, o Options) error {
 			return err
 		}
 		fmt.Fprintln(w, RemovedLine+p.ID)
+		if hasNeeds(p) {
+			// Run has no buckets or database to reinstall the control plane
+			// with, so it says what still runs and how to drop it.
+			fmt.Fprintf(w, NeedsKeptLine+"%s; run --deploy-control-plane again to drop them (the record no longer lists %s)\n", p.ID, p.ID)
+		}
 	}
 	return nil
 }
