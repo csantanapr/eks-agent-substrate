@@ -95,7 +95,8 @@ func init() {
 // the wizard offers it only there, and Run refuses it anywhere else.
 const needsAutoMode = "needs EKS Auto Mode: its isolated-sandbox RuntimeClass and NodePool come from Auto Mode"
 
-// errNoAutoMode is the same refusal from Deploy and Verify themselves.
+// errNoAutoMode is the same refusal from Verify, which Run does not gate:
+// on a standard cluster it would otherwise fail on the missing worker Pods.
 func errNoAutoMode(cluster string) error {
 	return fmt.Errorf("plugin %s %s; %s has EKS Auto Mode off", ID, needsAutoMode, cluster)
 }
@@ -182,10 +183,9 @@ const (
 	ateletRollout = "--timeout=5m"
 )
 
+// deploy runs only on Auto Mode: plugin.Run refuses it elsewhere
+// (NeedsAutoMode).
 func deploy(ctx context.Context, w io.Writer, o plugin.Options) error {
-	if !o.AutoMode {
-		return errNoAutoMode(o.Cluster)
-	}
 	tree, err := mode3.Tree(o)
 	if err != nil {
 		return err

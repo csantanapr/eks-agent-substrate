@@ -309,12 +309,18 @@ func TestRegistered(t *testing.T) {
 // with it the NodePool, atelet-iso and the pool go in, the template with
 // mode 3's counter image once the worker Pods and atelet-iso are up.
 func TestDeploy(t *testing.T) {
+	// Without Auto Mode, Run refuses the deploy through NeedsAutoMode (only
+	// the record is read), and Verify refuses on its own.
 	f := newFake(t)
-	for _, fn := range []func(context.Context, io.Writer, plugin.Options) error{deploy, verify} {
-		err := fn(context.Background(), io.Discard, testOptions(t, false))
-		if err == nil || !strings.Contains(err.Error(), "needs EKS Auto Mode") || !strings.Contains(err.Error(), "c1 has EKS Auto Mode off") || len(f.log) != 0 {
-			t.Errorf("no Auto Mode: err = %v, ran %q", err, f.log)
-		}
+	f.out["-n kube-system get configmap substrate-eks-plugins"] = []string{"mode3"} // the control plane carries mode 3
+	err := plugin.Run(context.Background(), io.Discard, plugin.ActionDeploy, []string{ID}, testOptions(t, false))
+	if err == nil || !strings.Contains(err.Error(), needsAutoMode) || !strings.Contains(err.Error(), "c1 has EKS Auto Mode off") || len(f.applies) != 0 {
+		t.Errorf("Run deploy without Auto Mode: err = %v, ran %q", err, f.log)
+	}
+	f = newFake(t)
+	err = verify(context.Background(), io.Discard, testOptions(t, false))
+	if err == nil || !strings.Contains(err.Error(), "c1 has EKS Auto Mode off") || len(f.log) != 0 {
+		t.Errorf("verify without Auto Mode: err = %v, ran %q", err, f.log)
 	}
 
 	f = newFake(t)
@@ -371,7 +377,7 @@ func TestDeploy(t *testing.T) {
 	f.out["get nodepool general-purpose"] = []string{testGeneralPurpose}
 	f.out["get nodeclass default"] = []string{testNodeClass}
 	f.out["get nodeclass ate-isolated"] = []string{testInvalid}
-	err := deploy(context.Background(), io.Discard, testOptions(t, true))
+	err = deploy(context.Background(), io.Discard, testOptions(t, true))
 	if err == nil || !strings.Contains(err.Error(), "isn't authorized to call ec2:CreateLaunchTemplate") || !strings.Contains(err.Error(), "setup-aws create cluster") || len(f.applies) != 2 {
 		t.Errorf("invalid NodeClass: err %v, %d applies", err, len(f.applies))
 	}
