@@ -86,24 +86,34 @@ func TestSameReleaseNamesTheFix(t *testing.T) {
 }
 
 // Teardown removes the recorded plugins and runs ate-setup delete on the
-// install's release: the fork's when a recorded plugin installed it, or when
-// the fork still runs after its plugin was removed (the record no longer
-// names it, and removing the control plane is the fix the removal printed);
-// the --tag one otherwise.
+// release the cluster runs, never on --tag when another runs (review N1):
+// the fork's when a recorded plugin installed it, or when the fork still
+// runs after its plugin was removed (the record no longer names it, and
+// removing the control plane is the fix the removal printed); upstream's at
+// the running tag when that is another than --tag (SUBSTRATE_TAG already
+// names the release to move to); the --tag one only when it is the one that
+// runs or none can be read.
 func TestDeleteRunsOnTheInstallsRelease(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
+		tag       string // --tag; "" is opts()'s v1.0.0
 		record    []string
 		installed string
 		fork      bool
+		want      string // the upstream tag removed on, when not the fork
 	}{
-		{name: "upstream", installed: "v1.0.0"},
-		{name: "nothing readable", installed: ""},
+		{name: "upstream", installed: "v1.0.0", want: "v1.0.0"},
+		{name: "nothing readable", installed: "", want: "v1.0.0"},
+		{name: "nothing readable, another --tag", tag: "v1.0.1", installed: "", want: "v1.0.1"},
 		{name: "fork recorded", record: []string{"cp-test-fork"}, installed: "v1.0.0-fork", fork: true},
 		{name: "fork running, its plugin removed", installed: "v1.0.0-fork", fork: true},
-		{name: "another unknown release running", installed: "v0.9.0"},
+		{name: "another unknown release running", installed: "v0.9.0", want: "v0.9.0"},
+		{name: "--tag names the next release", tag: "v1.0.1", installed: "v1.0.0", want: "v1.0.0"},
 	} {
 		o, calls, _ := deleteEnv(t, nil, nil)
+		if tc.tag != "" {
+			o.Tag = tc.tag
+		}
 		var removedOn plugin.Release
 		removePlugins = func(_ context.Context, _ io.Writer, _ string, _ []string, po plugin.Options) error {
 			removedOn = po.Release
@@ -113,11 +123,15 @@ func TestDeleteRunsOnTheInstallsRelease(t *testing.T) {
 		readInstalled = func(context.Context, string) (probe.Result, error) {
 			return probe.Result{Installed: tc.installed != "", Atelet: tc.installed != "", Version: tc.installed}, nil
 		}
-		want := plugin.Release{Tag: "v1.0.0", ImageRepo: "ghcr.io/agent-substrate/substrate", Repo: DefaultRepo, Ref: "v1.0.0"}
+		want := plugin.Release{Tag: tc.want, ImageRepo: "ghcr.io/agent-substrate/substrate", Repo: DefaultRepo, Ref: tc.want}
+		ref := tc.want
 		if tc.fork {
 			want = plugin.Release{Tag: "v1.0.0-fork", ImageRepo: "ghcr.io/example/fork", Repo: "https://example.invalid/fork.git", Ref: forkCommit}
-			cacheTree(t, treeOf(o, want), forkCommit)
+			ref = forkCommit
 		}
+		// The release's tree is cached, as its install left it, so Delete
+		// fetches nothing.
+		cacheTree(t, treeOf(o, want), ref)
 		want.Tree = treeOf(o, want)
 		if err := Delete(context.Background(), io.Discard, o); err != nil {
 			t.Fatalf("%s: %v", tc.name, err)

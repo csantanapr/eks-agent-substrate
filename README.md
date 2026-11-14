@@ -367,7 +367,10 @@ go -C native/installer run . --remove-control-plane --cluster $C --region $R --p
 ```
 
 `--remove-control-plane` removes the plugins too; pick them again on the
-Plugins screen. The worker images are pinned to the digest the new tag names.
+Plugins screen. It removes them and Substrate on the release the cluster
+runs, whatever `--tag` or `SUBSTRATE_TAG` names, so it also works once
+`config.local.env` already names the new tag. The worker images are pinned
+to the digest the new tag names.
 The EKS changes in `native/deploy/eks` must apply to the new tag: the
 control plane step stops and says so when its Go patch does not.
 

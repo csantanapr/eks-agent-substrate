@@ -139,18 +139,25 @@ func TestDeploysAreRefusedOnAnotherRelease(t *testing.T) {
 // plane runs, so removing a plugin with needs (openclaw's ingress clients)
 // while the fork still runs with mode3 no longer recorded gives the
 // reinstall, the refusal's fix; on v1.0.0 it says a control plane deploy
-// drops the needs.
+// drops the needs. The plugin's Remove runs on the release that runs, not on
+// --tag (review N1): openclaw's builds kubectl-ate from that release's tree,
+// so the tree it finds missing names the running release.
 func TestPluginRemovalOnAnotherReleaseGivesTheReinstall(t *testing.T) {
 	for _, tc := range []struct {
-		installed, want, not string
+		installed, tag, want, not string
 	}{
-		{mode3.Tag, "so a control plane deploy is refused: to drop them, run --remove-control-plane, then install again with or without --plugins mode3",
+		{mode3.Tag, "v1.0.0", "so a control plane deploy is refused: to drop them, run --remove-control-plane, then install again with or without --plugins mode3",
 			"run --deploy-control-plane again"},
-		{"v1.0.0", "run --deploy-control-plane again to drop them", "run --remove-control-plane"},
+		{"v1.0.0", "v1.0.0", "run --deploy-control-plane again to drop them", "run --remove-control-plane"},
+		{"v1.0.0", "v1.0.1", "so a control plane deploy is refused: to drop them, run --remove-control-plane, then install again with --tag v1.0.1",
+			"run --deploy-control-plane again"},
 	} {
-		err, out := runMain(t, cluster("openclaw", tc.installed), "--plugin-action", "remove", "--plugins", "openclaw")
+		err, out := runMain(t, cluster("openclaw", tc.installed), "--plugin-action", "remove", "--plugins", "openclaw", "--tag", tc.tag)
 		if err != nil || !strings.Contains(out, "Plugin removed: openclaw") || !strings.Contains(out, tc.want) || strings.Contains(out, tc.not) {
-			t.Errorf("installed %s: %v\n%s", tc.installed, err, out)
+			t.Errorf("installed %s, --tag %s: %v\n%s", tc.installed, tc.tag, err, out)
+		}
+		if !strings.Contains(out, "WARNING: no Substrate "+tc.installed+" tree at ") {
+			t.Errorf("installed %s, --tag %s: the removal did not run on the installed release:\n%s", tc.installed, tc.tag, out)
 		}
 	}
 }

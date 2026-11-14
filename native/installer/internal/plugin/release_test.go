@@ -155,24 +155,52 @@ func TestLocateKeysTheTreeByOverlayAndRegion(t *testing.T) {
 // fix the refusal gives, since a control plane deploy would be refused; on
 // the install's own release, or with the running release unknown, it still
 // says a control plane deploy drops the needs.
+//
+// Either way the plugin's Remove runs on the release the control plane runs
+// (review N1): the fork's through its plugin's Source, upstream's at another
+// running tag, and o's own when it runs or nothing can be read.
 func TestRunRemoveOnAnotherRunningReleaseGivesTheReinstall(t *testing.T) {
 	for _, tc := range []struct {
 		running   string
 		reinstall bool
-	}{{"v1.0.0-fork", true}, {"v1.0.0", false}, {"", false}} {
+		on        Release // located for o; zero is o's own release
+	}{
+		{"v1.0.0-fork", true, forkRelease},
+		{"v0.9.0", true, Release{Tag: "v0.9.0", ImageRepo: "ghcr.io/agent-substrate/substrate", Repo: UpstreamRepo, Ref: "v0.9.0"}},
+		{"v1.0.0", false, Release{}},
+		{"", false, Release{}},
+	} {
 		f := &fakeCluster{record: "base,top"}
 		o := releaseFixture(t, f)
+		o.TreeRoot, o.OverlayDigest = "/trees", "aaaa"
+		want := o.Release
+		if tc.on != (Release{}) {
+			want = tc.on.Locate(o.TreeRoot, o.OverlayDigest, o.Region)
+		}
+		var removedOn Release
+		top := registry["top"]
+		top.Remove = func(_ context.Context, _ io.Writer, po Options) error {
+			removedOn = po.Release
+			return nil
+		}
+		registry["top"] = top
 		o.Running = tc.running
 		var out bytes.Buffer
 		if err := Run(context.Background(), &out, ActionRemove, []string{"top"}, o); err != nil {
 			t.Fatal(err)
 		}
 		s := out.String()
-		fix := strings.Contains(s, NeedsKeptLine+"top; it runs Substrate v1.0.0-fork, not the install's v1.0.0, so a control plane deploy is refused: "+
-			"to drop them, run --remove-control-plane, then install again with or without --plugins fork")
+		fix := strings.Contains(s, NeedsKeptLine+"top; it runs Substrate "+tc.running+", not the install's v1.0.0, so a control plane deploy is refused: "+
+			"to drop them, run --remove-control-plane, then install again with ")
 		deploy := strings.Contains(s, "run --deploy-control-plane again")
 		if fix != tc.reinstall || deploy == tc.reinstall {
 			t.Errorf("running %q: reinstall %v, deploy advice %v:\n%s", tc.running, fix, deploy, s)
+		}
+		if removedOn != want {
+			t.Errorf("running %q: removed on %+v, want %+v", tc.running, removedOn, want)
+		}
+		if said := strings.Contains(s, "Removing on Substrate "+want.Tag+", the release demo runs (not v1.0.0)"); said != tc.reinstall {
+			t.Errorf("running %q: said the release it removes on %v:\n%s", tc.running, said, s)
 		}
 	}
 }

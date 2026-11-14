@@ -203,7 +203,10 @@ refuse what the control plane gives it. `--deploy-control-plane` refuses to
 change the release of an installed control plane, and so do `--deploy-demo`
 and `--plugin-action deploy` on a release the control plane does not run. To
 add or drop `mode3` on an installed cluster, run `--remove-control-plane`,
-then install again with or without it.
+then install again with or without it. Removals (`--remove-control-plane`
+and `--plugin-action remove`) run on the release the control plane runs,
+whatever `--tag` names: a fork whose plugin was removed, or the old tag
+after `SUBSTRATE_TAG` moved to a new one.
 
 The Makefile and `install.sh` run Go with `GOTOOLCHAIN=local` and
 `GOPROXY=direct`, so module downloads go straight to their source.
