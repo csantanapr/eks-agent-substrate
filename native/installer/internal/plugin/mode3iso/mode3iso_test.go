@@ -108,19 +108,6 @@ const (
   {"type":"Ready","status":"False","reason":"UnhealthyDependents","message":"ValidationSucceeded=False"}]}}`
 )
 
-func TestNodeClassReady(t *testing.T) {
-	if ok, _, err := NodeClassReady([]byte(testReady)); !ok || err != nil {
-		t.Errorf("Ready: %v %v", ok, err)
-	}
-	ok, why, err := NodeClassReady([]byte(testInvalid))
-	if ok || err != nil || why != "ValidationSucceeded: CreateLaunchTemplateAuthCheckFailed: Controller isn't authorized to call ec2:CreateLaunchTemplate" {
-		t.Errorf("invalid: %v %q %v", ok, why, err)
-	}
-	if ok, _, _ := NodeClassReady([]byte(`{}`)); ok {
-		t.Error("no status counted as Ready")
-	}
-}
-
 // testNodeClass is the shape of Auto Mode's default NodeClass.
 const testNodeClass = `{"apiVersion":"eks.amazonaws.com/v1","kind":"NodeClass",
  "metadata":{"name":"default","finalizers":["eks.amazonaws.com/termination"],"annotations":{"eks.amazonaws.com/nodeclass-hash":"1"}},

@@ -186,8 +186,12 @@ func rdsFixture(t *testing.T, k *fakeKube, owner string) (Options, string) {
 		pem.Encode(w, &pem.Block{Type: "CERTIFICATE", Bytes: ca.Certificate().Raw})
 	}))
 	t.Cleanup(ca.Close)
-	prevURL, prevClient, prevDB, prevRun := rdsCABundleURL, httpClient, newDBClients, runCommand
-	t.Cleanup(func() { rdsCABundleURL, httpClient, newDBClients, runCommand = prevURL, prevClient, prevDB, prevRun })
+	prevURL, prevClient, prevDB, prevRun, prevNodes := rdsCABundleURL, httpClient, newDBClients, runCommand, autoNodes
+	t.Cleanup(func() {
+		rdsCABundleURL, httpClient, newDBClients, runCommand, autoNodes = prevURL, prevClient, prevDB, prevRun, prevNodes
+	})
+	// The tagged Auto Mode nodes step has its own tests (autonodes_test.go).
+	autoNodes = func(context.Context, io.Writer, Options, string) error { return nil }
 	rdsCABundleURL, httpClient = ca.URL, ca.Client()
 	newDBClients = func(context.Context, string, string) (RDSAPI, SecretsAPI, error) {
 		return fakeRDS{owner}, fakeSM{}, nil

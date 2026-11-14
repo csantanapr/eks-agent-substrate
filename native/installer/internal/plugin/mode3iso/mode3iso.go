@@ -28,7 +28,6 @@ import (
 	"bytes"
 	"context"
 	_ "embed"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -36,6 +35,7 @@ import (
 	"time"
 
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/awsx"
+	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/controlplane"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/demo"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin/mode3"
@@ -122,29 +122,6 @@ var createdHere = func(ctx context.Context, o plugin.Options) (bool, error) {
 // mode3.Interval (2s): 3 minutes.
 const nodeClassTries = 90
 
-// NodeClassReady reads `kubectl get nodeclass -o json`: whether it is Ready,
-// and else the message of its first condition that is False.
-func NodeClassReady(b []byte) (bool, string, error) {
-	var nc struct {
-		Status struct {
-			Conditions []struct{ Type, Status, Reason, Message string } `json:"conditions"`
-		} `json:"status"`
-	}
-	if err := json.Unmarshal(b, &nc); err != nil {
-		return false, "", fmt.Errorf("read NodeClass %s: %w", NodePoolName, err)
-	}
-	why := ""
-	for _, c := range nc.Status.Conditions {
-		if c.Type == "Ready" && c.Status == "True" {
-			return true, "", nil
-		}
-		if c.Status == "False" && c.Type != "Ready" && why == "" {
-			why = c.Type + ": " + c.Reason + ": " + c.Message
-		}
-	}
-	return false, why, nil
-}
-
 // waitNodeClass waits for NodeClass ate-isolated to be Ready: a NodeClass
 // Auto Mode cannot validate launches no node, and the worker Pods would
 // wait for one without saying why.
@@ -155,7 +132,7 @@ func waitNodeClass(ctx context.Context, w io.Writer, o plugin.Options) error {
 		if err := plugin.Kubectl(ctx, io.Discard, o, nil, &out, "get", "nodeclass", NodePoolName, "-o", "json"); err != nil {
 			return err
 		}
-		ok, msg, err := NodeClassReady(out.Bytes())
+		ok, msg, err := controlplane.NodeClassReady(out.Bytes())
 		if err != nil {
 			return err
 		}
