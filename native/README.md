@@ -255,8 +255,16 @@ cluster with `ate-setup delete ate-system`, so its volumes and claims are
 released, and deletes in reverse order everything the installer created: Pod Identity associations and roles, the RDS
 instance and its logins, the S3 buckets, the ECR repositories, the node groups,
 the cluster, and the launch template, VPC and network. It deletes only
-resources that carry this deployment's owner tag. A second run finds nothing
-to delete. `KEEP_CLUSTER=true` removes Substrate and its AWS data but leaves
+resources that carry this deployment's owner tag. Every network interface in
+a VPC this installer created is tagged and treated as the deployment's own:
+`create cluster`, `bootstrap`, `create rds` and the `efs`, `s3files` and
+`db-rotation` plugins give each interface there without an owner tag the
+owner tag and `TAGS` (AWS services make most of them, and no create call can
+tag those), leaving one with another deployment's owner tag as it is. So
+teardown deletes an available interface in that VPC, including one you or
+another tool made there; one an AWS service manages is never deleted, and
+teardown waits for it to go with what it belongs to. A second run finds
+nothing to delete. `KEEP_CLUSTER=true` removes Substrate and its AWS data but leaves
 the cluster.
 
 The wizard's Complete screen offers teardown (`t`) and prints the exact

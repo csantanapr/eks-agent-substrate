@@ -393,6 +393,11 @@ the installer created that carries this deployment's owner tag: Pod Identity
 associations and roles, the RDS instance (without a final snapshot) and its
 logins, both S3 buckets with every object version, the ECR repositories, the
 node groups, the cluster, the launch template and the VPC.
+Every network interface in a VPC the installer created is tagged and treated
+as the deployment's own (the install tags each one there that has no owner
+tag), so teardown deletes an available one, even one you added to that VPC
+yourself. One an AWS service manages is never deleted: teardown waits for it
+to go with what it belongs to.
 `KEEP_CLUSTER=true` keeps the cluster, its node groups and its network.
 
 ![Delete AWS resources: each teardown phase checked off, ending with the inventory](native/installer/docs/delete-aws.png)
