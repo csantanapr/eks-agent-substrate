@@ -23,15 +23,6 @@ type pluginsScreen struct {
 	shown bool
 }
 
-// autoModeOnly are the plugins that need EKS Auto Mode, and why.
-//
-// shortcut: plugin.Plugin has no field for a cluster requirement, so the
-// wizard keys this off the ID; move it to the plugin's own registration when
-// the framework gets one.
-var autoModeOnly = map[string]string{
-	"mode3-iso": "needs EKS Auto Mode: its isolated-sandbox RuntimeClass and NodePool come from Auto Mode",
-}
-
 // resolved is ids with what they require, in install order; nil for an
 // unknown ID (main refuses those before the wizard starts).
 func resolved(ids []string) []plugin.Plugin {
@@ -52,8 +43,8 @@ func pluginTitles(ps []plugin.Plugin) []string {
 
 // unavailable is why p cannot be chosen for this run's cluster, or "".
 func (m Model) unavailable(p plugin.Plugin) string {
-	if why, ok := autoModeOnly[p.ID]; ok && !m.s.AutoMode {
-		return why + "; " + m.s.ClusterName + " has Auto Mode off"
+	if p.NeedsAutoMode != "" && !m.s.AutoMode {
+		return p.NeedsAutoMode + "; " + m.s.ClusterName + " has Auto Mode off"
 	}
 	return ""
 }

@@ -91,7 +91,11 @@ type Plugin struct {
 	Requires []string
 	// SetupAWS reports that `setup-aws plugin <ID>` makes AWS resources.
 	SetupAWS bool
-	Needs    Needs
+	// NeedsAutoMode, when set, is why the plugin needs EKS Auto Mode: the
+	// wizard offers it only on an Auto Mode cluster, and Run refuses to
+	// deploy it on any other.
+	NeedsAutoMode string
+	Needs         Needs
 	// HourlyUSD is the rough on-demand cost the plugin adds, for the Review
 	// screen (0 when it is only Kubernetes objects).
 	HourlyUSD float64

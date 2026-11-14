@@ -28,7 +28,8 @@ func init() {
 		{ID: "t-gateway", Title: "LLM gateway", Summary: "A gateway to Amazon Bedrock.", Order: 10, Minutes: 3, Default: true},
 		{ID: "t-efs", Title: "EFS volumes", Summary: "Amazon EFS volumes per actor.", Order: 20, Minutes: 6, HourlyUSD: 0.04, SetupAWS: true},
 		{ID: "t-s3files", Title: "S3 Files volumes", Summary: "S3 Files volumes per actor.", Order: 30, Minutes: 7, HourlyUSD: 0.05, Requires: []string{"t-efs"}, SetupAWS: true},
-		{ID: "mode3-iso", Title: "Mode 3 on isolated sandboxes", Summary: "Worker Pods in Nitro sandboxes.", Order: 40, Minutes: 4},
+		{ID: "mode3-iso", Title: "Mode 3 on isolated sandboxes", Summary: "Worker Pods in Nitro sandboxes.", Order: 40, Minutes: 4,
+			NeedsAutoMode: "needs EKS Auto Mode: its isolated-sandbox RuntimeClass and NodePool come from Auto Mode"},
 	} {
 		plugin.Register(p)
 	}
