@@ -188,7 +188,10 @@ deploy the control plane with it first (`--deploy-control-plane --plugins
 <ids>`, as the wizard does). `remove` goes in reverse order: the Kubernetes
 objects, then `setup-aws plugin <id> --delete`, then the record; with no
 `--plugins` it removes every recorded plugin, and it stops when a recorded
-plugin still requires one being removed.
+plugin still requires one being removed. Before it removes anything it runs
+`setup-aws plugin <id> --delete --plan` for every plugin with AWS resources,
+and a refusal there (a resource of the plugin's name with another owner)
+stops it with nothing removed.
 
 The Makefile and `install.sh` run Go with `GOTOOLCHAIN=local` and
 `GOPROXY=direct`, so module downloads go straight to their source.
