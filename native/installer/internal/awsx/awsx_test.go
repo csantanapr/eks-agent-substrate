@@ -104,7 +104,7 @@ func TestValidClusterName(t *testing.T) {
 	for name, ok := range map[string]bool{
 		"agent-substrate": true, "a1": true, "sub-native": true,
 		"a": false, "1abc": false, "Abc": false, "ab_c": false, "ab-": false,
-		"a234567890123456789012345678": true, "a2345678901234567890123456789": false,
+		"a23456789012345678901": true, "a234567890123456789012": false,
 	} {
 		if err := ValidClusterName(name); (err == nil) != ok {
 			t.Errorf("ValidClusterName(%q) = %v, want ok=%v", name, err, ok)
