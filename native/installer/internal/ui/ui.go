@@ -878,9 +878,21 @@ func (m Model) hints() string {
 			h = append(h, "s snapshot")
 		}
 	}
-	line := theme.Subtle.Render("  " + strings.Join(h, " · "))
+	keys := strings.Join(h, " · ")
+	line := theme.Subtle.Render("  " + keys)
 	if m.notice != "" {
-		line = "  " + theme.Warning.Render(m.notice) + theme.Fainted.Render("  ·  ") + theme.Subtle.Render(strings.Join(h, " · "))
+		// The keys always fit: a long notice is shortened, not the keys
+		// after it (a notice cut the review's "ctrl+c quit" in half).
+		notice := m.notice
+		if room := max(m.width(), 40) - lipgloss.Width(keys) - 7; lipgloss.Width(notice) > room {
+			notice = ""
+			if room >= 12 {
+				notice = truncate(m.notice, room)
+			}
+		}
+		if notice != "" {
+			line = "  " + theme.Warning.Render(notice) + theme.Fainted.Render("  ·  ") + theme.Subtle.Render(keys)
+		}
 	}
 	return lipgloss.NewStyle().MaxWidth(max(m.width(), 40)).Render(line)
 }

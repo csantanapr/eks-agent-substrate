@@ -267,6 +267,21 @@ func TestPluginsThatNeedTheDemoTurnItOn(t *testing.T) {
 	}
 }
 
+// Both ways: a notice too long for the footer is shortened and the keys stay
+// whole; a short one is shown whole.
+func TestFooterNoticeNeverCutsTheKeys(t *testing.T) {
+	s := newSetup("new")
+	m := sized(toStep(t, New(testDeps(&recorder{}), s), state.Review))
+	m.notice = strings.Repeat("a long notice about the plugins ", 6)
+	if h := m.hints(); !strings.Contains(h, "ctrl+c quit") || !strings.Contains(h, "…") {
+		t.Errorf("long notice: %q", h)
+	}
+	m.notice = "wrote ~/x"
+	if h := m.hints(); !strings.Contains(h, "wrote ~/x") || !strings.Contains(h, "ctrl+c quit") {
+		t.Errorf("short notice: %q", h)
+	}
+}
+
 func TestPluginsFlagPreselectsInsteadOfTheDefaults(t *testing.T) {
 	s := newSetup("new")
 	s.Plugins = []string{"t-s3files"}
