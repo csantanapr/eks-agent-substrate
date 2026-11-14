@@ -291,6 +291,31 @@ func TestConfigCallsShareOnePin(t *testing.T) {
 	}
 }
 
+// A failed load is not kept (review N4): Config fails while the profile
+// holds no credentials, and once they are written a later Config call for
+// the same region and profile loads them and works, in the same process.
+// Caching the result before the error check gives that call a zero config
+// and no error, which this test catches.
+func TestAFailedLoadIsNotKept(t *testing.T) {
+	write, f := setup(t, "")
+	ctx := context.Background()
+	if _, err := Config(ctx, "us-west-2", "p"); err == nil {
+		t.Fatal("Config with no credentials in profile p: want an error")
+	}
+	write("AKIDOLD")
+	cfg, err := Config(ctx, "us-west-2", "p")
+	if err != nil {
+		t.Fatalf("Config once the profile is written: %v", err)
+	}
+	if arn, err := caller(ctx, cfg); err != nil || arn != fakeCallers["AKIDOLD"] {
+		t.Fatalf("caller %q, err %v; want the written profile's identity", arn, err)
+	}
+	// Nothing was sent before the profile existed; then the pin and the call.
+	if got, want := f.seen(), []string{"AKIDOLD", "AKIDOLD"}; !slices.Equal(got, want) {
+		t.Fatalf("sent %v, want %v", got, want)
+	}
+}
+
 func TestACallGivesUpWhenTheProfileIsNeverRefreshed(t *testing.T) {
 	_, f := setup(t, "AKIDOLD")
 	maxWait = 150 * time.Millisecond
