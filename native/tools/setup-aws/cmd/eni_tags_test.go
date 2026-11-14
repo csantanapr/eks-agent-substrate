@@ -104,7 +104,9 @@ func TestImplicitENIsAreTaggedAndTheRestReported(t *testing.T) {
 	vpc := aws.ToString(f.cluster.ResourcesVpcConfig.VpcId)
 	f.vpcs["vpc-other"] = &ec2types.Vpc{VpcId: aws.String("vpc-other")}
 	addENI(f, "eni-eks", vpc, "Amazon EKS demo", ec2types.NetworkInterfaceTypeInterface, nil)
-	addENI(f, "eni-nat", vpc, "Interface for NAT Gateway nat-1", ec2types.NetworkInterfaceTypeNatGateway, nil)
+	// The type EC2 reports for a NAT gateway's interface, not the SDK's
+	// "natGateway" constant (sub-p13).
+	addENI(f, "eni-nat", vpc, "Interface for NAT Gateway nat-1", "nat_gateway", nil)
 	addENI(f, "eni-cni", vpc, "aws-K8S-i-1", ec2types.NetworkInterfaceTypeInterface, nil)
 	addENI(f, "eni-elsewhere", "vpc-other", "Amazon EKS demo", ec2types.NetworkInterfaceTypeInterface, nil)
 	f.writes = nil
@@ -167,7 +169,7 @@ func TestImplicitENIsPlanWritesNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	vpc := aws.ToString(f.cluster.ResourcesVpcConfig.VpcId)
-	addENI(f, "eni-nat", vpc, "Interface for NAT Gateway nat-1", ec2types.NetworkInterfaceTypeNatGateway, nil)
+	addENI(f, "eni-nat", vpc, "Interface for NAT Gateway nat-1", "nat_gateway", nil)
 	f.writes = nil
 	if err := clusterTestRun(t, f, true).run(context.Background()); err != nil || len(f.writes) != 0 {
 		t.Errorf("plan: err %v, writes %v", err, f.writes)

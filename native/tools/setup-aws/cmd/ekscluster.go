@@ -205,9 +205,16 @@ func (r *clusterRun) tagImplicitENIs(ctx context.Context) error {
 
 // implicitENI reports a network interface AWS made for cluster in its VPC:
 // a NAT gateway's, or one of the cluster's control-plane interfaces.
+// DescribeNetworkInterfaces answers "nat_gateway" for a NAT gateway's (seen
+// on sub-p13), not the SDK's NetworkInterfaceTypeNatGateway ("natGateway"),
+// so both spellings count.
 func implicitENI(n ec2types.NetworkInterface, cluster string) bool {
-	return n.InterfaceType == ec2types.NetworkInterfaceTypeNatGateway || aws.ToString(n.Description) == "Amazon EKS "+cluster
+	t := n.InterfaceType
+	return t == natGatewayENI || t == ec2types.NetworkInterfaceTypeNatGateway || aws.ToString(n.Description) == "Amazon EKS "+cluster
 }
+
+// natGatewayENI is the interface type EC2 reports for a NAT gateway's.
+const natGatewayENI ec2types.NetworkInterfaceType = "nat_gateway"
 
 func sortedCopy(s []string) []string {
 	c := slices.Clone(s)
