@@ -7,11 +7,11 @@ import (
 	"io"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ecr"
 	ecrtypes "github.com/aws/aws-sdk-go-v2/service/ecr/types"
 
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin"
+	"github.com/csantanapr/eks-agent-substrate/native/tools/setup-aws/awsload"
 )
 
 // ecrAPI is the ECR call Remove makes.
@@ -19,13 +19,10 @@ type ecrAPI interface {
 	BatchDeleteImage(ctx context.Context, in *ecr.BatchDeleteImageInput, opts ...func(*ecr.Options)) (*ecr.BatchDeleteImageOutput, error)
 }
 
-// ecrFor is the ECR client of o's profile and Region; tests replace it.
+// ecrFor is the ECR client of o's profile and Region, loaded through
+// awsload like every step's clients; tests replace it.
 var ecrFor = func(ctx context.Context, o plugin.Options) (ecrAPI, error) {
-	opts := []func(*awsconfig.LoadOptions) error{awsconfig.WithRegion(o.Region)}
-	if o.Profile != "" {
-		opts = append(opts, awsconfig.WithSharedConfigProfile(o.Profile))
-	}
-	cfg, err := awsconfig.LoadDefaultConfig(ctx, opts...)
+	cfg, err := awsload.Config(ctx, o.Region, o.Profile)
 	if err != nil {
 		return nil, err
 	}
