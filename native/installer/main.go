@@ -11,8 +11,10 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -103,41 +105,47 @@ func main() {
 		ImageRepo: "ghcr.io/agent-substrate/substrate", SandboxClasses: "gvisor,microvm",
 	}
 
-	switch {
+	// A subcommand's ctx ends on SIGINT (ctrl+c) or SIGTERM instead of the
+	// process dying, so its children are stopped and its cleanup runs: the
+	// database bootstrap deletes the Secret holding the logins. The wizard,
+	// which reads ctrl+c as a key, keeps the default handlers (default case).
+	switch ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM); {
 	case *addOverlay != "":
 		exitOn(eksoverlay.Apply(os.Stdout, absPath(*addOverlay), findOverlay(), *region))
 		return
 	case *deployCP:
-		exitOn(controlplane.Deploy(context.Background(), os.Stdout, cpOptions()))
+		exitOn(controlplane.Deploy(ctx, os.Stdout, cpOptions()))
 		return
 	case *removeCP:
-		exitOn(controlplane.Delete(context.Background(), os.Stdout, cpOptions()))
+		exitOn(controlplane.Delete(ctx, os.Stdout, cpOptions()))
 		return
 	case *deployDemo || *verify:
 		if *deployDemo {
-			exitOn(demo.Deploy(context.Background(), os.Stdout, demoOptions))
+			exitOn(demo.Deploy(ctx, os.Stdout, demoOptions))
 		}
 		if *verify {
-			exitOn(demo.Verify(context.Background(), os.Stdout, demoOptions))
+			exitOn(demo.Verify(ctx, os.Stdout, demoOptions))
 		}
 		return
 	case *pluginAct != "":
-		exitOn(runPlugins(context.Background(), *pluginAct, pluginIDs, cpOptions()))
+		exitOn(runPlugins(ctx, *pluginAct, pluginIDs, cpOptions()))
 		return
 	case *probeInst:
-		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		ctx, cancel := context.WithTimeout(ctx, time.Minute)
 		defer cancel()
 		exitOn(probe.Run(ctx, os.Stdout, *profile, *region, *cluster))
 		return
 	case *doctorMode:
 		fmt.Println("substrate-eks preflight doctor")
 		fmt.Println()
-		if n := doctor.RunCLI(context.Background(), doctor.Checks(*profile, *region)); n > 0 {
+		if n := doctor.RunCLI(ctx, doctor.Checks(*profile, *region)); n > 0 {
 			fmt.Printf("\n%d fatal problem(s) found.\n", n)
 			os.Exit(1)
 		}
 		fmt.Println("\nAll good — run the installer.")
 		return
+	default:
+		stop()
 	}
 
 	if *region == "" && !*dryRun {
