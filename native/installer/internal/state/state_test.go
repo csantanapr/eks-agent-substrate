@@ -40,7 +40,7 @@ func TestClusterConfigFromEnv(t *testing.T) {
 	if c.KubernetesVersion != "1.38" || c.AutoMode != "" || c.MicroVMNodes != "3" || c.SystemInstanceType != "m8i.xlarge" {
 		t.Errorf("config %+v", c)
 	}
-	if !slices.Contains(c.Env(), "AUTO_MODE=") || !slices.Contains(c.Env(), "EKS_PUBLIC_ACCESS_CIDRS=0.0.0.0/0") {
+	if !slices.Contains(c.Env(), "AUTO_MODE=") || !slices.Contains(c.Env(), "EKS_PUBLIC_ACCESS_CIDRS=auto") {
 		t.Errorf("env %v", c.Env())
 	}
 }
