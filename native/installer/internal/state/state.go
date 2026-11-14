@@ -7,6 +7,7 @@ package state
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/awsx"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/controlplane"
@@ -287,28 +288,62 @@ type Setup struct {
 	KeepClusterOnly bool
 
 	// SubstrateTag is the release the control plane installs, with its
-	// published images from ImageRepo.
+	// published images from ImageRepo (config.env's SUBSTRATE_TAG and
+	// SUBSTRATE_IMAGE_REPO); the control plane and demo steps get both.
 	SubstrateTag string
 	ImageRepo    string
-	// SandboxClasses ate-setup installs.
+	// SandboxClasses ate-setup installs, comma-separated: gvisor, microvm or
+	// both (AllSandboxClasses).
 	SandboxClasses string
 }
 
-// NewSetup returns the defaults: the release eks-talk pins, RDS, and
-// config.env's cluster knobs and tags unless the environment sets them.
-func NewSetup() *Setup {
-	tags, ok := os.LookupEnv("TAGS")
-	if !ok {
-		tags = "project=agent-substrate auto-delete=no"
+// Defaults the installer passes on, and the flag defaults of its
+// subcommands: a child given no --image-repo or --sandbox-classes uses these.
+const (
+	DefaultTag            = "v1.0.0"
+	DefaultImageRepo      = "ghcr.io/agent-substrate/substrate"
+	AllSandboxClasses     = "gvisor,microvm"
+	DefaultSandboxClasses = AllSandboxClasses
+	DefaultTags           = "project=agent-substrate auto-delete=no"
+)
+
+// NewSetup returns the defaults from the environment alone; NewSetupFrom
+// from any lookup, such as Config.Lookup over config.env.
+func NewSetup() *Setup { return NewSetupFrom(os.LookupEnv) }
+
+// NewSetupFrom returns the defaults: the release eks-talk pins, RDS, and
+// config.env's cluster knobs, tags and release unless lookup sets them.
+func NewSetupFrom(lookup func(string) (string, bool)) *Setup {
+	get := func(key, def string) string {
+		if v, ok := lookup(key); ok && (v != "" || key == "TAGS") {
+			return v
+		}
+		return def
 	}
 	return &Setup{
-		SubstrateTag:     "v1.0.0",
-		ImageRepo:        "ghcr.io/agent-substrate/substrate",
-		SandboxClasses:   "gvisor,microvm",
+		SubstrateTag:     get("SUBSTRATE_TAG", DefaultTag),
+		ImageRepo:        get("SUBSTRATE_IMAGE_REPO", DefaultImageRepo),
+		SandboxClasses:   DefaultSandboxClasses,
 		Database:         DatabaseRDS,
-		Tags:             tags,
-		NewClusterConfig: ClusterConfigFromEnv(os.LookupEnv),
+		Tags:             get("TAGS", DefaultTags),
+		NewClusterConfig: ClusterConfigFromEnv(lookup),
 	}
+}
+
+// ValidSandboxClasses reports why classes cannot be installed: it must name
+// gvisor, microvm or both, each once, comma-separated.
+func ValidSandboxClasses(classes string) error {
+	seen := map[string]bool{}
+	for _, c := range strings.Split(classes, ",") {
+		if c != "gvisor" && c != "microvm" {
+			return fmt.Errorf("sandbox classes %q: want gvisor, microvm or gvisor,microvm", classes)
+		}
+		if seen[c] {
+			return fmt.Errorf("sandbox classes %q name %s twice", classes, c)
+		}
+		seen[c] = true
+	}
+	return nil
 }
 
 // SelectCluster records an existing cluster as the run's target, and
