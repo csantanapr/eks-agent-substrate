@@ -78,7 +78,7 @@ func main() {
 		plugins    = flag.String("plugins", "", "comma-separated plugin IDs: the wizard preselects them, --deploy-control-plane carries their needs, --plugin-action acts on them, and with the recorded ones they decide the release every step uses")
 		pluginAct  = flag.String("plugin-action", "", "deploy, verify or remove the --plugins on --cluster (remove with no --plugins: every recorded plugin), then exit")
 
-		redact  = flag.Bool("redact", false, "also mask the rest of each account id, ARNs and bucket names, on screen, in snapshots and in the exit notes")
+		redact  = flag.Bool("redact", false, "also mask the rest of each account id, ARNs, bucket names and phone numbers, on screen, in snapshots and in the exit notes")
 		snapDir = flag.String("snapshot-dir", "", "where s saves the screen as .ansi, .txt and .html (default: under the user cache dir)")
 	)
 	flag.Parse()

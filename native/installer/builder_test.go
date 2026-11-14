@@ -269,16 +269,46 @@ func TestDisplayIsThePasteableCommand(t *testing.T) {
 	}
 }
 
-// Both ways: the config files' step settings reach every step, setup-aws
-// ones and the installer's own subcommands alike, and the pinned knobs
-// still win over a step setting of the same name; with none, no step
-// carries one.
-func TestStepSettingsReachEveryStep(t *testing.T) {
+// Both ways (review N2): each config-file step setting reaches only the step
+// that reads it. `create rds` carries and shows the DB_* ones; the plugins
+// step carries the plugin ones, WHATSAPP_PEER among them, and shows none;
+// every other step (create cluster, bootstrap, teardown, inventory, and the
+// installer's other subcommands) carries none. The phone number is in no
+// Display, and the run's TAGS still wins over a TAGS of the same name.
+func TestStepSettingsReachOnlyTheirSteps(t *testing.T) {
+	const peer = "+15555550100"
 	b, s := testBuilder()
-	b.stepEnv = []string{"DB_MULTI_AZ=true", "TAGS=from-config"}
+	b.stepEnv = []string{"DB_MULTI_AZ=true", "DB_INSTANCE_CLASS=db.r8g.large",
+		"BEDROCK_INFERENCE_PROFILE=us.example.model", "EFS_ADDON_VERSION=v9.9.9-eksbuild.1",
+		"OPENCLAW_GATEWAY_IMAGE=example.com/gw@sha256:00", "OPENCLAW_WORKERS=2", "WHATSAPP_PEER=" + peer, "TAGS=from-config"}
+	isSetting := func(e string) bool {
+		k, _, _ := strings.Cut(e, "=")
+		return slices.Contains(state.StepKeys, k)
+	}
 	for name, spec := range allSpecs(b, s) {
-		if !slices.Contains(spec.Env, "DB_MULTI_AZ=true") {
-			t.Errorf("%s: Env %v lacks the step setting", name, spec.Env)
+		var carried []string
+		for _, e := range spec.Env {
+			if isSetting(e) {
+				carried = append(carried, e)
+			}
+		}
+		var want []string
+		switch name {
+		case "rds":
+			want = []string{"DB_MULTI_AZ=true", "DB_INSTANCE_CLASS=db.r8g.large"}
+		case "plugins":
+			want = []string{"BEDROCK_INFERENCE_PROFILE=us.example.model", "EFS_ADDON_VERSION=v9.9.9-eksbuild.1",
+				"OPENCLAW_GATEWAY_IMAGE=example.com/gw@sha256:00", "OPENCLAW_WORKERS=2", "WHATSAPP_PEER=" + peer}
+		}
+		if !slices.Equal(carried, want) {
+			t.Errorf("%s: carries step settings %q, want %q", name, carried, want)
+		}
+		if strings.Contains(spec.Display, "WHATSAPP_PEER") || strings.Contains(spec.Display, peer) {
+			t.Errorf("%s: Display shows the phone number: %s", name, spec.Display)
+		}
+		shows := strings.Contains(spec.Display, "DB_MULTI_AZ=true") && strings.Contains(spec.Display, "DB_INSTANCE_CLASS=db.r8g.large")
+		if shows != (name == "rds") || strings.Contains(spec.Display, "BEDROCK_") || strings.Contains(spec.Display, "EFS_ADDON") || strings.Contains(spec.Display, "OPENCLAW_") {
+			t.Errorf("%s: Display %s", name, spec.Display)
 		}
 		// exec takes the last of repeated keys: the run's TAGS must be last.
 		var last string
@@ -291,9 +321,12 @@ func TestStepSettingsReachEveryStep(t *testing.T) {
 			t.Errorf("%s: TAGS resolves to %q, want the run's %q", name, last, "TAGS="+s.Tags)
 		}
 	}
+	if d := b.teardown(s).Display; d != "CLUSTER_NAME=demo AWS_REGION=us-west-2 AWS_PROFILE=eks-sandbox go -C tools/setup-aws run . teardown" {
+		t.Errorf("teardown shows a step setting: %s", d)
+	}
 	b.stepEnv = nil
 	for name, spec := range allSpecs(b, s) {
-		if slices.ContainsFunc(spec.Env, func(e string) bool { return strings.HasPrefix(e, "DB_") }) {
+		if slices.ContainsFunc(spec.Env, isSetting) {
 			t.Errorf("%s: carries a step setting with none configured: %v", name, spec.Env)
 		}
 	}

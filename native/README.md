@@ -113,18 +113,21 @@ When the install starts, the wizard writes the Settings answers to
 were, and keeps the previous file as a backup under
 `~/.cache/substrate-eks/config-backups/`. The next run starts from them. The
 wizard reads `config.env`, then `config.local.env`; the environment wins over
-both. The settings a step reads itself (the `DB_*` six, `BEDROCK_INFERENCE_PROFILE`,
-`EFS_ADDON_VERSION`, the `OPENCLAW_*` images and workers, `WHATSAPP_PEER`)
-reach every step from the files too, and a `setup-aws` step's command on the
-Review screen shows them. Outside a checkout it uses built-in defaults and
-writes nothing.
+both. A setting a step reads itself reaches that step from the files too,
+and no other step: the `DB_*` six reach `setup-aws create rds`, whose command
+on the Review screen shows them, and `BEDROCK_INFERENCE_PROFILE`,
+`EFS_ADDON_VERSION`, the `OPENCLAW_*` images and workers and `WHATSAPP_PEER`
+reach the plugins step, whose command shows none of them (`WHATSAPP_PEER` is
+a phone number). Outside a checkout it uses built-in defaults and writes
+nothing.
 
 Press `s` on any screen (`ctrl+s` where you type text) to save it as `.ansi`,
 `.txt` and `.html` under `--snapshot-dir` (default
 `~/.cache/substrate-eks/snapshots`). `docs/render.mjs` turns the `.html`
 pages into the PNGs in this README. Account ids are always masked to their
-last four digits; `--redact` also masks the rest of each id, ARNs and bucket
-names, on screen, in snapshots and in the notes printed on exit.
+last four digits; `--redact` also masks the rest of each id, ARNs, bucket
+names and phone numbers (E.164, `+<digits>`), on screen, in snapshots and in
+the notes printed on exit.
 
 ### Flags
 
@@ -141,7 +144,7 @@ names, on screen, in snapshots and in the notes printed on exit.
 | `--dry-run` | off | Walk every screen with simulated commands; nothing touches AWS. |
 | `--teardown`, `--keep-cluster` | off | Open on the teardown of `--cluster`; keep the cluster. |
 | `--snapshot-dir` | `~/.cache/substrate-eks/snapshots` | Where `s` saves the screen. |
-| `--redact` | off | Mask account ids, ARNs and bucket names in full. |
+| `--redact` | off | Mask account ids, ARNs, bucket names and phone numbers in full. |
 | `--log` | `~/.cache/substrate-eks/logs/installer-<time>.log` | The log of every command and its output (mode 0600). |
 
 The steps the wizard runs are subcommands of the same binary, so each one

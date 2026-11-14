@@ -95,8 +95,8 @@ and the teardown commands. `t` starts the teardown there.
 ![Complete: the kubeconfig to export, the verify command, and the teardown commands](native/installer/docs/complete.png)
 
 Press `s` on any screen to save it as `.ansi`, `.txt` and `.html` under
-`--snapshot-dir`; `--redact` also masks account ids, ARNs and bucket names on
-screen and in the snapshots. [`native/README.md`](native/README.md) has every
+`--snapshot-dir`; `--redact` also masks account ids, ARNs, bucket names and
+phone numbers on screen and in the snapshots. [`native/README.md`](native/README.md) has every
 flag and make target.
 
 ## Prerequisites

@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -207,15 +208,26 @@ func (c Config) Lookup(key string) (string, bool) {
 }
 
 // StepKeys are settings the steps read from their own environment, not the
-// wizard: the RDS instance's (setup-aws create rds), the LLM gateway's
-// Bedrock profile, the EFS add-on version, and OpenClaw's images and peer.
-// StepEnv hands the config files' values for them to every step, so setting
-// one in config.env or config.local.env works like exporting it.
-var StepKeys = []string{
-	"DB_ENGINE_VERSION", "DB_INSTANCE_CLASS", "DB_STORAGE_GB", "DB_MULTI_AZ", "DB_BACKUP_DAYS", "DB_DELETION_PROTECTION",
-	"BEDROCK_INFERENCE_PROFILE", "EFS_ADDON_VERSION",
-	"OPENCLAW_GATEWAY_IMAGE", "OPENCLAW_ACTOR_IMAGE", "OPENCLAW_DASHBOARD_IMAGE", "OPENCLAW_WORKERS", "WHATSAPP_PEER",
-}
+// wizard. StepEnv hands the config files' values for them to the wizard,
+// which gives each to the one step that reads it (review N2), so setting one
+// in config.env or config.local.env works like exporting it:
+//   - RDSKeys, the RDS instance's, to `setup-aws create rds`, whose shown
+//     command carries them;
+//   - PluginKeys, the LLM gateway's Bedrock profile, the EFS add-on version,
+//     and OpenClaw's images, workers and WhatsApp peer, to the plugins step
+//     (--plugin-action deploy, and the `setup-aws plugin <id>` it runs),
+//     whose shown command is the installer's flags only. WHATSAPP_PEER is a
+//     phone number, so it is never shown.
+var (
+	RDSKeys = []string{
+		"DB_ENGINE_VERSION", "DB_INSTANCE_CLASS", "DB_STORAGE_GB", "DB_MULTI_AZ", "DB_BACKUP_DAYS", "DB_DELETION_PROTECTION",
+	}
+	PluginKeys = []string{
+		"BEDROCK_INFERENCE_PROFILE", "EFS_ADDON_VERSION",
+		"OPENCLAW_GATEWAY_IMAGE", "OPENCLAW_ACTOR_IMAGE", "OPENCLAW_DASHBOARD_IMAGE", "OPENCLAW_WORKERS", "WHATSAPP_PEER",
+	}
+	StepKeys = append(slices.Clone(RDSKeys), PluginKeys...)
+)
 
 // StepEnv is KEY=value for each of StepKeys set, non-empty, in
 // config.local.env or config.env and not in the environment: a child step

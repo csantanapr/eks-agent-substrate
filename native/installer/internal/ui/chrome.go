@@ -94,12 +94,16 @@ var (
 	// derives (<cluster>-snap|assets-<account>-<region>).
 	s3URL      = regexp.MustCompile(`s3://[a-z0-9][a-z0-9.-]*[a-z0-9]`)
 	bucketName = regexp.MustCompile(`[a-z0-9][a-z0-9.-]*-(?:snap|assets)-•{12}-[a-z]{2}(?:-[a-z]+)+-[0-9]`)
+	// phoneNumber is an E.164 number, + and 7 to 15 digits (WHATSAPP_PEER,
+	// in a plugin's output); its digits are masked, its + kept.
+	phoneNumber = regexp.MustCompile(`\+[1-9][0-9]{6,14}\b`)
 )
 
 func bullets(s string) string { return strings.Repeat("•", utf8.RuneCountInString(s)) }
 
 // redact masks, with --redact, every account id whole, the account and
-// resource name of every ARN, and every bucket name. It runs after maskIDs.
+// resource name of every ARN, every bucket name and every phone number. It
+// runs after maskIDs.
 func (m Model) redact(s string) string {
 	if !m.d.Redact {
 		return s
@@ -116,5 +120,6 @@ func (m Model) redact(s string) string {
 		return strings.Join(p, ":")
 	})
 	s = s3URL.ReplaceAllStringFunc(s, func(u string) string { return "s3://" + bullets(u[len("s3://"):]) })
+	s = phoneNumber.ReplaceAllStringFunc(s, func(n string) string { return "+" + bullets(n[1:]) })
 	return bucketName.ReplaceAllStringFunc(s, bullets)
 }
