@@ -363,23 +363,24 @@ func (v *verifier) api(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	ate := func(stdout io.Writer, args ...string) error {
+	ate := func(w, stdout io.Writer, args ...string) error {
 		argv := append(append([]string{bin}, args...), "--kubeconfig", v.o.Kubeconfig, "--context", v.o.Cluster)
-		return plugin.Exec(ctx, v.w, plugin.Cmd{Env: []string{"KUBECONFIG=" + v.o.Kubeconfig}, Stdout: stdout, Argv: argv})
+		return plugin.Exec(ctx, w, plugin.Cmd{Env: []string{"KUBECONFIG=" + v.o.Kubeconfig}, Stdout: stdout, Argv: argv})
 	}
-	// Left over from a run that stopped halfway: not an error.
-	_ = ate(io.Discard, "delete", "atespace", checkAtespace)
-	if err := ate(nil, "create", "atespace", checkAtespace); err != nil {
+	// One left over from a run that stopped halfway: its absence, the
+	// usual case, is not worth a line.
+	_ = ate(io.Discard, io.Discard, "delete", "atespace", checkAtespace)
+	if err := ate(v.w, nil, "create", "atespace", checkAtespace); err != nil {
 		return fmt.Errorf("create atespace %s through the API: %w", checkAtespace, err)
 	}
 	var got strings.Builder
-	if err := ate(&got, "get", "atespace", checkAtespace, "-o", "json"); err != nil {
+	if err := ate(v.w, &got, "get", "atespace", checkAtespace, "-o", "json"); err != nil {
 		return fmt.Errorf("read atespace %s through the API: %w", checkAtespace, err)
 	}
 	if !strings.Contains(got.String(), `"`+checkAtespace+`"`) {
 		return fmt.Errorf("the API returned no atespace %s", checkAtespace)
 	}
-	if err := ate(nil, "delete", "atespace", checkAtespace); err != nil {
+	if err := ate(v.w, nil, "delete", "atespace", checkAtespace); err != nil {
 		return fmt.Errorf("delete atespace %s through the API: %w", checkAtespace, err)
 	}
 	fmt.Fprintf(v.w, "%screated, read and deleted atespace %s\n", APILine, checkAtespace)
