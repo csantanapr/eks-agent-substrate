@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -368,5 +370,43 @@ func TestWorkerPoolRunsTheReleaseWorker(t *testing.T) {
 		if !strings.Contains(pool, want) || strings.Count(pool, "\n  workerImage: ") != 1 {
 			t.Errorf("%s: pool lacks %q or keeps ko://:\n%s", rel.Tag, want, pool)
 		}
+	}
+}
+
+// Both ways: a missing tree is fetched into the release's located tree from
+// the release's repository at its ref (a fork's pinned commit here, never
+// upstream at the tag), then kubectl-ate is built in it; a tree that is
+// there is not fetched again.
+func TestKubectlAteFetchesAMissingTreeFromTheRelease(t *testing.T) {
+	prevFetch, prevExec := fetchTree, plugin.Exec
+	t.Cleanup(func() { fetchTree, plugin.Exec = prevFetch, prevExec })
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	rel := plugin.Release{Tag: "v1.0.0-mode3.9f36a0d", ImageRepo: "ghcr.io/csantanapr/substrate",
+		Repo: "https://github.com/csantanapr/substrate.git", Ref: "9f36a0d7f2abca950f25fc7bd023752d3852504c"}
+	o := plugin.Options{Cluster: "demo", Region: "us-west-2", Kubeconfig: "/kc", Release: rel.Locate(t.TempDir(), "digest", "us-west-2")}
+	var fetched []string
+	fetchTree = func(_ context.Context, _ io.Writer, dir, repo, ref string) error {
+		fetched = append(fetched, dir+" "+repo+" "+ref)
+		return os.MkdirAll(filepath.Join(dir, "cmd", "kubectl-ate"), 0o755)
+	}
+	var builtIn []string
+	plugin.Exec = func(_ context.Context, _ io.Writer, c plugin.Cmd) error {
+		builtIn = append(builtIn, c.Dir)
+		return nil
+	}
+	if _, err := kubectlAte(context.Background(), io.Discard, o); err != nil {
+		t.Fatal(err)
+	}
+	if want := o.Tree + " " + rel.Repo + " " + rel.Ref; len(fetched) != 1 || fetched[0] != want {
+		t.Errorf("fetched %q, want %q", fetched, want)
+	}
+	if len(builtIn) != 1 || builtIn[0] != o.Tree {
+		t.Errorf("built kubectl-ate in %q, want %s", builtIn, o.Tree)
+	}
+	if _, err := kubectlAte(context.Background(), io.Discard, o); err != nil {
+		t.Fatal(err)
+	}
+	if len(fetched) != 1 {
+		t.Errorf("fetched a tree that is there: %q", fetched)
 	}
 }

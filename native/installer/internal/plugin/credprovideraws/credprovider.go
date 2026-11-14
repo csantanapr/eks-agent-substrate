@@ -110,6 +110,9 @@ func loadConfig(ctx context.Context, o plugin.Options) (aws.Config, error) {
 	return awsload.Config(ctx, o.Region, o.Profile)
 }
 
+// fetchTree fetches a missing Substrate tree; replaced in tests.
+var fetchTree = controlplane.FetchTree
+
 // pause waits d; replaced in tests.
 var pause = func(ctx context.Context, d time.Duration) error {
 	select {
@@ -134,7 +137,7 @@ type ate struct {
 func kubectlAte(ctx context.Context, w io.Writer, o plugin.Options) (ate, error) {
 	tree := o.Tree
 	if _, err := os.Stat(filepath.Join(tree, "cmd", "kubectl-ate")); err != nil {
-		if err := controlplane.FetchTree(ctx, w, tree, o.Repo, o.Ref); err != nil {
+		if err := fetchTree(ctx, w, tree, o.Repo, o.Ref); err != nil {
 			return ate{}, err
 		}
 	}
