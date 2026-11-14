@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
@@ -97,13 +96,9 @@ type rdsClients struct {
 
 // newRDSClients is replaced in tests.
 var newRDSClients = func(ctx context.Context, c Config) (*rdsClients, error) {
-	opts := []func(*awsconfig.LoadOptions) error{awsconfig.WithRegion(c.Region)}
-	if c.Profile != "" {
-		opts = append(opts, awsconfig.WithSharedConfigProfile(c.Profile))
-	}
-	ac, err := awsconfig.LoadDefaultConfig(ctx, opts...)
+	ac, err := loadAWSConfig(ctx, c)
 	if err != nil {
-		return nil, fmt.Errorf("load AWS config: %w", err)
+		return nil, err
 	}
 	return &rdsClients{EC2: ec2.NewFromConfig(ac), RDS: rds.NewFromConfig(ac), SM: secretsmanager.NewFromConfig(ac)}, nil
 }

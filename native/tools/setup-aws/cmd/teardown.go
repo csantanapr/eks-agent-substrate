@@ -66,6 +66,9 @@ func init() {
 var (
 	tdPoll    = 15 * time.Second
 	tdTimeout = 40 * time.Minute
+	// dbSnapshotTimeout bounds the wait for RDS to remove a deleted
+	// instance's automated snapshots (waitAutomatedSnapshots).
+	dbSnapshotTimeout = 10 * time.Minute
 )
 
 // tdTarget is one delete. A nil del means AWS is already deleting it; wait,
@@ -404,10 +407,16 @@ func (e *tdEnv) stepDBInstance(ctx context.Context) ([]tdTarget, []string, error
 	if aws.ToBool(db.DeletionProtection) {
 		return nil, []string{fmt.Sprintf("RDS instance %s has deletion protection on; teardown never turns it off: turn it off yourself if you mean to delete the database", id)}, nil
 	}
-	t := tdTarget{kind: "RDS instance", id: id + " (no final snapshot)", wait: gone(func(ctx context.Context) (bool, error) {
+	instanceGone := gone(func(ctx context.Context) (bool, error) {
 		db, err := e.dbInstance(ctx)
 		return db != nil, err
-	})}
+	})
+	t := tdTarget{kind: "RDS instance", id: id + " (no final snapshot)", wait: func(ctx context.Context) error {
+		if err := instanceGone(ctx); err != nil {
+			return err
+		}
+		return e.waitAutomatedSnapshots(ctx, id)
+	}}
 	if aws.ToString(db.DBInstanceStatus) != "deleting" {
 		t.del = func(ctx context.Context) error {
 			// A busy instance (backing up, modifying) refuses the delete for a while.
@@ -419,6 +428,54 @@ func (e *tdEnv) stepDBInstance(ctx context.Context) ([]tdTarget, []string, error
 		}
 	}
 	return []tdTarget{t}, nil, nil
+}
+
+// waitAutomatedSnapshots waits, up to dbSnapshotTimeout, for RDS to remove
+// the automated snapshots of the deleted instance id. DeleteAutomatedBackups
+// has RDS remove them itself, but not at once: on sub-r17 one was still
+// "available" 2.5 minutes after the instance was gone, so a keep-cluster
+// teardown's final check, 30 seconds later, listed it and failed.
+func (e *tdEnv) waitAutomatedSnapshots(ctx context.Context, id string) error {
+	// One page: an instance keeps at most 35 days of automated snapshots.
+	left := func(ctx context.Context) ([]string, error) {
+		out, err := e.c.RDS.DescribeDBSnapshots(ctx, &rds.DescribeDBSnapshotsInput{
+			DBInstanceIdentifier: aws.String(id), SnapshotType: aws.String("automated")})
+		if hasCode(err, "DBInstanceNotFound", "DBInstanceNotFoundFault") {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, fmt.Errorf("list the automated snapshots of RDS instance %s: %w", id, err)
+		}
+		var ids []string
+		for _, s := range out.DBSnapshots {
+			ids = append(ids, aws.ToString(s.DBSnapshotIdentifier))
+		}
+		return ids, nil
+	}
+	ids, err := left(ctx)
+	if err != nil || len(ids) == 0 {
+		return err
+	}
+	e.say("waiting for RDS to remove the automated snapshots of %s", id)
+	deadline := time.Now().Add(dbSnapshotTimeout)
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(tdPoll):
+		}
+		if ids, err = left(ctx); err != nil {
+			return err
+		}
+		if len(ids) == 0 {
+			e.say("RDS removed the automated snapshots of %s", id)
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("RDS still lists the automated snapshots %s of the deleted instance %s after %s",
+				strings.Join(ids, ", "), id, dbSnapshotTimeout)
+		}
+	}
 }
 
 // stepDBNetwork deletes the subnet group and the security group, which stay

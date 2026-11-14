@@ -31,9 +31,10 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/rds"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
+
+	"github.com/csantanapr/eks-agent-substrate/native/tools/setup-aws/awsload"
 )
 
 // Lines the RDS path prints for the progress checklist.
@@ -77,11 +78,7 @@ var (
 	httpClient     = &http.Client{Timeout: time.Minute}
 	dbWaitTimeout  = 20 * time.Minute
 	newDBClients   = func(ctx context.Context, profile, region string) (RDSAPI, SecretsAPI, error) {
-		opts := []func(*awsconfig.LoadOptions) error{awsconfig.WithRegion(region)}
-		if profile != "" {
-			opts = append(opts, awsconfig.WithSharedConfigProfile(profile))
-		}
-		cfg, err := awsconfig.LoadDefaultConfig(ctx, opts...)
+		cfg, err := awsload.Config(ctx, region, profile)
 		if err != nil {
 			return nil, nil, err
 		}
