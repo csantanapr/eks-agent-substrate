@@ -12,6 +12,10 @@
 //   - Kubernetes objects and checks, made by Deploy and Verify here, run by Run
 //     as `substrate-eks --plugins <id> --plugin-action deploy|verify|remove`.
 //
+// A plugin's manifests live in its own package directory and are compiled in
+// with //go:embed, so the installer binary carries them and no path is
+// searched at run time.
+//
 // What a plugin needs from the control plane install (a preview gate, a
 // credential provider, ingress clients, another Substrate build) is declared
 // in Needs and merged into the one `ate-setup deploy ate-system` the install
@@ -63,9 +67,6 @@ type Options struct {
 	// SetupAWS is native/tools/setup-aws; Run runs `setup-aws plugin <id>`
 	// from it for a plugin with SetupAWS set.
 	SetupAWS string
-	// Overlay is native/deploy/eks, where plugin manifests live
-	// (deploy/eks/plugins/<id>/).
-	Overlay string
 	// Tags is TAGS: space-separated key=value pairs every AWS resource gets
 	// besides the owner tag (OwnerTags adds it).
 	Tags string

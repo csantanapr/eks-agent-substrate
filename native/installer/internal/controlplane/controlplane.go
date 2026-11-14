@@ -311,9 +311,6 @@ func (o Options) pluginOptions(kc string, autoMode bool) plugin.Options {
 	po := o.Plugin
 	po.Cluster, po.Region, po.Profile = o.Cluster, o.Region, o.Profile
 	po.Tag, po.TreeRoot, po.Kubeconfig, po.AutoMode = o.Tag, o.TreeRoot, kc, autoMode
-	if po.Overlay == "" {
-		po.Overlay = o.Overlay
-	}
 	return po
 }
 

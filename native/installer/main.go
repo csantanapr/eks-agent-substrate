@@ -87,7 +87,7 @@ func main() {
 			tags = controlplane.DefaultTags
 		}
 		b := builder{setupAWS: *setupAWS, cwd: cwd, exeDir: exeDir}
-		return plugin.Options{SetupAWS: absPath(b.findSetupAWS()), Overlay: findOverlay(), Tags: tags}
+		return plugin.Options{SetupAWS: absPath(b.findSetupAWS()), Tags: tags}
 	}
 	cpOptions := func() controlplane.Options {
 		return controlplane.Options{
