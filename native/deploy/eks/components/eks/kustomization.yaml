@@ -1,0 +1,71 @@
+# EKS's changes to agent-substrate/substrate's control plane manifests
+# (manifests/ate-install), the counterpart of substrate-gke's
+# deploy/gke/components/gke. Each patch targets its object by name.
+#
+# Patches only, like deploy/gke: ate-setup's deploy --component
+# (agent-substrate/substrate PR 3179) rejects components that add resources.
+#
+# ${AWS_REGION} is filled in by the installer's eksoverlay when it copies this
+# Component into the Substrate tree.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+patches:
+  # The objectstore-plugin sidecars store snapshots in S3. They get AWS
+  # credentials from EKS Pod Identity (setup-aws create iam): the AWS SDK's
+  # default chain reads the Pod Identity endpoint, so no static keys exist.
+  #   https://docs.aws.amazon.com/eks/latest/userguide/pod-identities.html
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: ate-api-server
+        namespace: ate-system
+      spec:
+        template:
+          spec:
+            initContainers:
+            - name: objectstore-plugin
+              env:
+              - name: ATE_STORAGE_BACKEND
+                value: s3
+              - name: AWS_REGION
+                value: ${AWS_REGION}
+  # atelet: the same S3 backend, and the EKS AL2023 kubelet's image credential
+  # provider (ecr-credential-provider) for private ECR pulls.
+  #   https://docs.aws.amazon.com/eks/latest/userguide/eks-optimized-ami.html
+  - patch: |-
+      apiVersion: apps/v1
+      kind: DaemonSet
+      metadata:
+        name: atelet
+        namespace: ate-system
+      spec:
+        template:
+          spec:
+            # Worker pods run only on the gvisor and microvm node groups, which
+            # are labeled ate.dev/pool, so atelet does too.
+            affinity:
+              nodeAffinity:
+                requiredDuringSchedulingIgnoredDuringExecution:
+                  nodeSelectorTerms:
+                  - matchExpressions:
+                    - key: ate.dev/pool
+                      operator: In
+                      values: [gvisor, microvm]
+            initContainers:
+            - name: objectstore-plugin
+              env:
+              - name: ATE_STORAGE_BACKEND
+                value: s3
+              - name: AWS_REGION
+                value: ${AWS_REGION}
+            volumes:
+            - name: image-credential-provider-bin
+              hostPath:
+                path: /etc/eks/image-credential-provider
+                type: Directory
+            - name: image-credential-provider-config
+              hostPath:
+                path: /etc/eks/image-credential-provider/config.json
+                type: File

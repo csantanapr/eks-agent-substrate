@@ -131,7 +131,7 @@ index 765aaf93..a53b6e16 100644
 +        template:
 +          spec:
 +            # Worker pods run only on the gvisor and microvm node groups
-+            # (create-cluster.sh labels them ate.dev/pool), so atelet does too.
++            # (setup-aws labels them ate.dev/pool), so atelet does too.
 +            affinity:
 +              nodeAffinity:
 +                requiredDuringSchedulingIgnoredDuringExecution:

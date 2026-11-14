@@ -1,0 +1,97 @@
+package state
+
+import (
+	"slices"
+	"testing"
+
+	"github.com/charmbracelet/lipgloss"
+
+	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/awsx"
+)
+
+func TestInstallOrderAddsTheOptionalSteps(t *testing.T) {
+	choose := []Step{Welcome, CheckSetup, Account, Cluster, Database, Settings, Plugins, Review}
+	for _, tc := range []struct {
+		s    Setup
+		want []Step
+	}{
+		{Setup{Database: DatabaseRDS}, Order},
+		{Setup{Database: DatabaseBundled}, append(slices.Clone(choose), Provision, ControlPlane, Complete)},
+		{Setup{Database: DatabaseRDS, ClusterIsNew: true, DemoMode: true},
+			append(slices.Clone(choose), CreateCluster, Provision, RDS, ControlPlane, Demo, Complete)},
+		// A chosen plugin adds its step last, after the demo (efs builds on
+		// the counter demo's templates); an empty choice adds none.
+		{Setup{Database: DatabaseBundled, Plugins: []string{"efs"}, DemoMode: true},
+			append(slices.Clone(choose), Provision, ControlPlane, Demo, InstallPlugins, Complete)},
+		{Setup{Database: DatabaseBundled, Plugins: []string{"efs"}},
+			append(slices.Clone(choose), Provision, ControlPlane, InstallPlugins, Complete)},
+		{Setup{Database: DatabaseBundled, Plugins: []string{}}, append(slices.Clone(choose), Provision, ControlPlane, Complete)},
+	} {
+		if got := InstallOrder(&tc.s); !slices.Equal(got, tc.want) {
+			t.Errorf("%+v: %v, want %v", tc.s, got, tc.want)
+		}
+	}
+}
+
+// The rail is 30 columns and a two-digit step's prefix takes seven.
+func TestStepTitlesFitTheRail(t *testing.T) {
+	for s := Welcome; s <= TeardownAWS; s++ {
+		if w := lipgloss.Width(s.Title()); s.Title() == "?" || w > 23 {
+			t.Errorf("step %d title %q (%d columns)", s, s.Title(), w)
+		}
+	}
+}
+
+func TestClusterConfigFromEnv(t *testing.T) {
+	env := map[string]string{"KUBERNETES_VERSION": "1.38", "AUTO_MODE": "", "MICROVM_NODES": "3"}
+	c := ClusterConfigFromEnv(func(k string) (string, bool) { v, ok := env[k]; return v, ok })
+	if c.KubernetesVersion != "1.38" || c.AutoMode != "" || c.MicroVMNodes != "3" || c.SystemInstanceType != "m8i.xlarge" {
+		t.Errorf("config %+v", c)
+	}
+	if !slices.Contains(c.Env(), "AUTO_MODE=") || !slices.Contains(c.Env(), "EKS_PUBLIC_ACCESS_CIDRS=auto") {
+		t.Errorf("env %v", c.Env())
+	}
+}
+
+// The release, its image repository and TAGS come from the lookup (config.env
+// under the environment); an empty TAGS stays empty, an empty release does
+// not.
+func TestNewSetupFromReadsTheReleaseAndTags(t *testing.T) {
+	env := map[string]string{"SUBSTRATE_TAG": "v1.0.1", "SUBSTRATE_IMAGE_REPO": "registry.example.com/substrate", "TAGS": ""}
+	s := NewSetupFrom(func(k string) (string, bool) { v, ok := env[k]; return v, ok })
+	if s.SubstrateTag != "v1.0.1" || s.ImageRepo != "registry.example.com/substrate" || s.Tags != "" || s.SandboxClasses != AllSandboxClasses {
+		t.Errorf("setup %+v", s)
+	}
+	s = NewSetupFrom(func(k string) (string, bool) { return "", k == "SUBSTRATE_TAG" })
+	if s.SubstrateTag != DefaultTag || s.ImageRepo != DefaultImageRepo || s.Tags != DefaultTags {
+		t.Errorf("defaults %+v", s)
+	}
+}
+
+func TestValidSandboxClasses(t *testing.T) {
+	for _, ok := range []string{"gvisor", "microvm", "gvisor,microvm", "microvm,gvisor"} {
+		if err := ValidSandboxClasses(ok); err != nil {
+			t.Errorf("%q refused: %v", ok, err)
+		}
+	}
+	for _, bad := range []string{"", "kata", "gvisor,gvisor", "gvisor,", "gvisor microvm"} {
+		if ValidSandboxClasses(bad) == nil {
+			t.Errorf("%q accepted", bad)
+		}
+	}
+}
+
+// SelectCluster and NewCluster write every Cluster* field, so an abandoned
+// choice cannot leak into the other path.
+func TestSelectAndNewClusterOverwriteEachOther(t *testing.T) {
+	s := &Setup{Region: "us-west-2", NewClusterConfig: ClusterConfig{KubernetesVersion: "1.37", AutoMode: "on"}}
+	s.NewCluster("made")
+	s.SelectCluster(awsx.Cluster{Name: "brought", Version: "1.38"})
+	if s.ClusterIsNew || s.ClusterOwned || s.AutoMode || s.ClusterVersion != "1.38" {
+		t.Errorf("after SelectCluster: %+v", s)
+	}
+	s.NewCluster("made")
+	if !s.ClusterIsNew || !s.ClusterOwned || !s.AutoMode || s.ClusterName != "made" {
+		t.Errorf("after NewCluster: %+v", s)
+	}
+}

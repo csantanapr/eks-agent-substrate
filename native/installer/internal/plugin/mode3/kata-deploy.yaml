@@ -1,0 +1,230 @@
+# Kata Containers 3.32.0 for mode 3: kata-deploy, Kata's own installer, on
+# the microvm node group only (ate.dev/pool=microvm), which already has
+# /dev/kvm through nested virtualization. Only the clh shim: Kata's Go runtime
+# with Cloud Hypervisor, the VMM ateworker-microvm uses too. A RuntimeClass
+# names the container runtime handler a Pod runs under; RuntimeClass kata
+# (and kata-clh) boots each Pod as a lightweight VM on the nodes kata-deploy
+# has labeled katacontainers.io/kata-runtime=true.
+#
+# These are the kata-deploy chart's objects, rendered once from the chart
+# (kata-deploy-3.32.0.tgz, sha256
+# 901c3895d972d0f87df72f06277504acd81c48042631d3677e989db8c4c70aa6):
+#
+#   helm template kata-deploy kata-deploy-3.32.0.tgz -n kube-system -f values.yaml
+#
+# with the values below, and every document carrying a helm.sh/hook
+# annotation dropped. Those hooks only delete the RBAC below once an uninstall
+# is done; the plugin's Remove does that itself. The installer applies this
+# file with kubectl: nothing runs helm.
+#
+#   image: { reference: <kata-deploy image below> }
+#   kubectlImage: { reference: quay.io/kata-containers/kubectl@sha256:623ab96ae28523ae72dea49d0e7a3909afab71d49a552c26f57c62950fe4bbda }
+#   imagePullPolicy: IfNotPresent
+#   nodeSelector: { ate.dev/pool: microvm }
+#   tolerations: [{ key: ate.dev/sandboxClass, operator: Equal, value: microvm, effect: NoSchedule }]
+#   snapshotter: { setup: [] }
+#   shims: { disableAll: true, clh: { enabled: true, runtimeClass: { nodeSelector: { ate.dev/pool: microvm } } } }
+#   defaultShim: { amd64: clh }
+#   runtimeClasses: { createDefault: true, defaultName: kata }
+#
+# Deleting the DaemonSet makes each of its Pods undo the install on its node
+# when it gets SIGTERM (terminationGracePeriodSeconds 600), with the RBAC
+# below; Remove waits for those Pods to be gone before it deletes the RBAC.
+#
+# Learn more:
+#   https://github.com/kata-containers/kata-containers/tree/3.32.0/tools/packaging/kata-deploy
+#   https://kubernetes.io/docs/concepts/containers/runtime-class/
+# Source: kata-deploy/templates/kata-rbac.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kata-deploy-sa
+  namespace: kube-system
+  annotations:
+    # Keep so DaemonSet pods retain API access during uninstall (SIGTERM cleanup).
+    helm.sh/resource-policy: keep
+---
+# Source: kata-deploy/templates/kata-rbac.yaml
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: kata-deploy-role
+  annotations:
+    helm.sh/resource-policy: keep
+rules:
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "patch"]
+- apiGroups: ["node.k8s.io"]
+  resources: ["runtimeclasses"]
+  verbs: ["get", "list", "patch"]
+- apiGroups: ["apiextensions.k8s.io"]
+  resources: ["customresourcedefinitions"]
+  verbs: ["get", "list"]
+- apiGroups: ["nfd.k8s-sigs.io"]
+  resources: ["nodefeaturerules"]
+  verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+- apiGroups: ["apps"]
+  resources: ["daemonsets"]
+  verbs: ["get", "list", "watch"]
+---
+# Source: kata-deploy/templates/kata-rbac.yaml
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: kata-deploy-rb
+  annotations:
+    helm.sh/resource-policy: keep
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kata-deploy-role
+subjects:
+- kind: ServiceAccount
+  name: kata-deploy-sa
+  namespace: kube-system
+---
+# Source: kata-deploy/templates/kata-deploy.yaml
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: kata-deploy
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      name: kata-deploy
+  template:
+    metadata:
+      labels:
+        name: kata-deploy
+    spec:
+      serviceAccountName: kata-deploy-sa
+      nodeSelector:
+        ate.dev/pool: microvm
+      tolerations:
+        - effect: NoSchedule
+          key: ate.dev/sandboxClass
+          operator: Equal
+          value: microvm
+      priorityClassName: "system-node-critical"
+      hostPID: true
+      # Allow SIGTERM cleanup (uninstall) to complete before force-kill.
+      # Cleanup restarts the CRI runtime and waits for the node to become
+      # ready again, which can take several minutes on k3s/rke2.
+      terminationGracePeriodSeconds: 600
+      containers:
+      - name: kube-kata
+        image: quay.io/kata-containers/kata-deploy@sha256:47c4cf29c9e8cf9bb7debab58761b672e1d4c93ee5e92db7b442ee00e7d561cc
+        imagePullPolicy: IfNotPresent
+        command:
+        - /usr/bin/kata-deploy
+        - install
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: DAEMONSET_NAME
+          value: "kata-deploy"
+        - name: DEBUG
+          value: "false"
+        - name: SHIMS_X86_64
+          value: "clh"
+        - name: DEFAULT_SHIM_X86_64
+          value: "clh"
+        - name: INSTALLATION_PREFIX
+          value: ""
+        - name: MULTI_INSTALL_SUFFIX
+          value: ""
+        - name: HEALTH_PORT
+          value: "8090"
+        securityContext:
+          privileged: true
+        startupProbe:
+          httpGet:
+            path: /readyz
+            port: 8090
+          initialDelaySeconds: 1
+          periodSeconds: 10
+          failureThreshold: 60
+          timeoutSeconds: 3
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8090
+          periodSeconds: 30
+          failureThreshold: 3
+          timeoutSeconds: 3
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8090
+          periodSeconds: 10
+          failureThreshold: 3
+          timeoutSeconds: 3
+        resources:
+          requests:
+            cpu: 25m
+            memory: 16Mi
+        volumeMounts:
+        - name: crio-conf
+          mountPath: /etc/crio/
+        - name: containerd-conf
+          mountPath: /etc/containerd/
+        - name: host
+          mountPath: /host/
+      volumes:
+      - name: crio-conf
+        hostPath:
+          path: /etc/crio/
+      - name: containerd-conf
+        hostPath:
+          path: '/etc/containerd/'
+      - name: host
+        hostPath:
+          path: /
+  updateStrategy:
+    rollingUpdate:
+      maxUnavailable: 1
+    type: RollingUpdate
+---
+# Source: kata-deploy/templates/runtimeclasses.yaml
+kind: RuntimeClass
+apiVersion: node.k8s.io/v1
+metadata:
+  name: kata-clh
+  labels:
+    app.kubernetes.io/managed-by: kata-deploy
+    kata-deploy/instance: "default"
+  annotations:
+    katacontainers.io/kata-version: "3.32.0"
+handler: kata-clh
+overhead:
+  podFixed:
+    memory: "130Mi"
+    cpu: "250m"
+scheduling:
+  nodeSelector:
+    katacontainers.io/kata-runtime: "true"
+    ate.dev/pool: "microvm"
+---
+# Source: kata-deploy/templates/runtimeclasses.yaml
+kind: RuntimeClass
+apiVersion: node.k8s.io/v1
+metadata:
+  name: kata
+  labels:
+    app.kubernetes.io/managed-by: kata-deploy
+    kata-deploy/instance: "default"
+  annotations:
+    katacontainers.io/kata-version: "3.32.0"
+handler: kata-clh
+overhead:
+  podFixed:
+    memory: "130Mi"
+    cpu: "250m"
+scheduling:
+  nodeSelector:
+    katacontainers.io/kata-runtime: "true"
+    ate.dev/pool: "microvm"

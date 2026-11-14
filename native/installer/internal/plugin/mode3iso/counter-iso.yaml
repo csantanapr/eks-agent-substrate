@@ -1,0 +1,57 @@
+# The counter demo's gVisor Namespace and WorkerPool under new names, with
+# the network transport and RuntimeClass isolated-sandbox, on the
+# ate-isolated NodePool: each worker Pod is an EKS Auto Mode isolated sandbox
+# with its own guest kernel, and runs gVisor actors inside, as in mode 3.
+#
+# ${WORKER_IMAGE} is the fork's ateworker-gvisor, pinned by digest.
+#
+# Learn more:
+#   https://docs.aws.amazon.com/eks/latest/userguide/automode.html
+#   https://kubernetes.io/docs/concepts/containers/runtime-class/
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ate-demo-counter-iso
+---
+apiVersion: ate.dev/v1
+kind: WorkerPool
+metadata:
+  name: counter-iso
+  namespace: ate-demo-counter-iso
+  labels:
+    workload: counter-iso
+spec:
+  replicas: 2
+  workerImage: ${WORKER_IMAGE}
+  sandboxClasses:
+  - name: gvisor
+  networkTransport:
+    runtimeClassName: isolated-sandbox
+  template:
+    # The guest is sized from the memory request; the worker keeps runtime
+    # assets, image layers and actor state on a tmpfs in it.
+    resources:
+      limits:
+        cpu: "1"
+        memory: 2Gi
+      requests:
+        cpu: 250m
+        memory: 2Gi
+    nodeSelector:
+      ate.dev/pool: isolated
+    tolerations:
+    - key: ate.dev/sandboxClass
+      operator: Equal
+      value: isolated
+      effect: NoSchedule
+    # Every activation pushes the actor's image layers, runtime and state
+    # into the worker's guest, so the guest's default network and disk
+    # throttles are off: with them on, a resume can take longer than the
+    # request that wakes the actor.
+    annotations:
+      sandbox.amazonaws.com/ingress-bandwidth: disabled
+      sandbox.amazonaws.com/egress-bandwidth: disabled
+      sandbox.amazonaws.com/ingress-packets-per-second: disabled
+      sandbox.amazonaws.com/egress-packets-per-second: disabled
+      sandbox.amazonaws.com/overlay-disk-bandwidth: disabled
+      sandbox.amazonaws.com/overlay-disk-iops: disabled

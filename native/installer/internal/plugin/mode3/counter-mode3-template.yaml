@@ -1,0 +1,39 @@
+# The counter demo's ActorTemplate (demos/counter/counter-template.yaml.tmpl
+# at the fork's commit, without its external-volume placeholders) for the
+# mode 3 pool: it selects the counter-mode3 workers. Created with
+# `kubectl ate create actor-template -f`; it is not a Kubernetes object.
+#
+# ${COUNTER_IMAGE} is the counter image the plugin builds and pushes to the
+# deployment's ECR repository, pinned by digest.
+metadata:
+  atespace: ate-demo-counter-mode3
+  name: counter-mode3
+workerSelector:
+  matchLabels:
+    workload: counter-mode3
+containers:
+- name: counter
+  image: ${COUNTER_IMAGE}
+  command:
+  - /ko-app/counter
+  - --extra-port=9090
+  - --tcp-port=9091
+  wakeupProbe:
+    httpGet:
+      path: /readyz
+      port: 80
+  volumeMounts:
+  - name: data
+    mountPath: /home/counter
+# An actor occupies its whole worker; it is sized below the worker's limits.
+resources:
+  limits:
+    cpuMillicores: 1000
+    memoryBytes: 536870912 # 512Mi
+snapshotConfig:
+  # MEMORY: a suspend captures process memory as well as the durable volume,
+  # so the in-memory counter continues across suspend and resume.
+  preferredFidelity: SNAPSHOT_FIDELITY_MEMORY
+volumes:
+- name: data
+  durableDir: {}

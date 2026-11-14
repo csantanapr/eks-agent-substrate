@@ -1,0 +1,42 @@
+# substrate-gke files this tree follows, and the commit they were last synced at.
+# `make upstream-check SUBSTRATE_GKE=<checkout>` (installer's TestUpstreamSync):
+#   verbatim  must equal the upstream file at `commit`, byte for byte;
+#   adapted   is an EKS version of the upstream file: the check lists upstream
+#             commits since `commit` that touch it, which are the changes to
+#             read and carry over.
+# After carrying changes over, bump `commit` to the upstream commit you read.
+#
+# kind      upstream path (substrate-gke)                      local path (native/)
+commit 0de82014290a31321a9c9f1f6cde48b1d7f48b66
+verbatim  installer/internal/execx/execx.go                     installer/internal/execx/execx.go
+verbatim  installer/internal/execx/execx_test.go                installer/internal/execx/execx_test.go
+verbatim  installer/internal/execx/log.go                       installer/internal/execx/log.go
+verbatim  installer/internal/execx/log_test.go                  installer/internal/execx/log_test.go
+verbatim  installer/internal/theme/theme.go                     installer/internal/theme/theme.go
+adapted   installer/internal/state/state.go                     installer/internal/state/state.go
+adapted   installer/internal/steps/steps.go                     installer/internal/steps/steps.go
+adapted   installer/internal/doctor/doctor.go                   installer/internal/doctor/doctor.go
+adapted   installer/internal/gcp/gcp.go                         installer/internal/awsx/awsx.go
+adapted   installer/internal/gkeoverlay/gkeoverlay.go           installer/internal/eksoverlay/eksoverlay.go
+adapted   installer/internal/snapshot/snapshot.go               installer/internal/controlplane/controlplane.go
+adapted   installer/internal/ui/app.go                          installer/internal/ui/ui.go
+adapted   installer/internal/ui/screens_install.go              installer/internal/ui/ui.go
+adapted   installer/main.go                                     installer/main.go
+adapted   tools/setup-gcp/cmd/bootstrap.go                      tools/setup-aws/cmd/bootstrap.go
+adapted   tools/setup-gcp/cmd/bucket.go                         tools/setup-aws/cmd/bucket.go
+adapted   tools/setup-gcp/cmd/iam.go                            tools/setup-aws/cmd/iam.go
+adapted   tools/setup-gcp/cmd/cluster.go                        tools/setup-aws/cmd/cluster.go
+adapted   tools/setup-gcp/cmd/common.go                         tools/setup-aws/cmd/common.go
+adapted   tools/setup-gcp/cmd/repository.go                     tools/setup-aws/cmd/ecr.go
+adapted   tools/setup-gcp/cmd/cloudsql.go                       tools/setup-aws/cmd/rds.go
+adapted   tools/setup-gcp/cmd/cluster.go                        tools/setup-aws/cmd/cluster_create.go
+adapted   tools/setup-gcp/cmd/nodeaccount.go                    tools/setup-aws/cmd/clusteriam.go
+adapted   tools/setup-gcp/cmd/systempools.go                    tools/setup-aws/cmd/nodegroups.go
+adapted   tools/setup-gcp/teardown.sh                           tools/setup-aws/cmd/teardown.go
+adapted   installer/internal/snapshot/probe.go                  installer/internal/probe/probe.go
+adapted   installer/internal/snapshot/snapshot.go               installer/internal/controlplane/delete.go
+adapted   installer/internal/snapshot/snapshot.go               installer/internal/demo/demo.go
+adapted   installer/internal/ui/screens_gcp.go                  installer/internal/ui/cluster.go
+adapted   install.sh                                            install.sh
+adapted   Makefile                                              Makefile
+adapted   deploy/gke/components/gke/kustomization.yaml          deploy/eks/components/eks/kustomization.yaml

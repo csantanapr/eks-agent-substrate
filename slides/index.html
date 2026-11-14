@@ -561,36 +561,37 @@
 
 <!-- installer -->
 <section class="slide">
-  <h2>An interactive installer on top of the same scripts</h2>
+  <h2>An interactive installer in Go</h2>
   <div class="installer">
-    <div class="term"><img src="installer-tour.gif" alt="A loop through the installer's six screens: Welcome, Check your setup, Settings with the demos and plugins checked, Review with the config file and the commands in order, Provision with its live checklist and log at three points in the run, and Done with what was created and the step times"></div>
+    <div class="term"><img src="installer-tour.gif" alt="A loop through the installer's screens: Connect your cluster with each cluster's badges, Settings for the node groups, tags and release, Choose plugins, Review with each step's command, time and cost an hour, Install the plugins with its live checklist, Complete, the teardown choice, and Delete AWS resources ending with the inventory"></div>
     <div class="card"><h3 class="accent">What it adds</h3><ul>
-      <li><b>Checks first:</b> tools, account, Region, vCPU quota, nested virtualization</li>
-      <li><b>Pick</b> the cluster name, Region, node groups, demos and plugins</li>
-      <li><b>Live checklist</b> from the scripts' own steps</li>
+      <li><b>Checks first:</b> tools and account; before a cluster is made, nested virtualization and the VPC and Elastic IP quotas</li>
+      <li><b>Pick</b> or create the cluster, the database, node groups and plugins</li>
+      <li><b>Review</b> every command with its time and cost an hour</li>
+      <li><b>Live checklist</b> from each step's own output</li>
       <li><b>Teardown</b> from the Done screen</li>
-      <li>Same <code>create-cluster.sh</code> and <code>deploy.sh</code> underneath</li>
+      <li><code>setup-aws</code> (AWS SDK) and <code>ate-setup</code> underneath, no shell scripts</li>
     </ul></div>
   </div>
   <aside class="notes">
     <p>An <b>interactive installer</b>, the same idea as the <b>interactive installer for GKE</b>.</p>
     <ul>
-      <li>A small <b>terminal UI in Go</b> with <b>no install logic of its own</b>: it runs <code>create-cluster.sh</code> and <code>deploy.sh</code>, and reads their step lines.</li>
+      <li>A <b>terminal UI in Go</b> over Go provisioning code: <code>setup-aws</code> creates the AWS resources with the AWS SDK, and upstream's <code>ate-setup</code> installs Substrate. No step runs a shell script.</li>
       <li>First it <b>checks your setup</b>:
         <ul>
           <li>the tool versions</li>
           <li>which account and role you are signed in as, and the Region</li>
           <li>whether the cluster name is free</li>
-          <li>that the instance type supports nested virtualization, and the EC2 vCPU quota</li>
+          <li>before it creates a cluster: that the instance type supports nested virtualization, and the VPC and Elastic IP quotas</li>
         </ul>
       </li>
-      <li>On <b>Settings</b> you pick the <b>cluster name</b>, Region, profile and node groups, then the <b>demos and plugins</b>: EFS, S3 Files, login rotation, <b>Mode 3</b> and the credential provider. <i>point at the checked boxes</i></li>
-      <li>Then it shows a <b>review of the settings</b> and the commands it will run.</li>
-      <li>While it installs, it turns the scripts' steps into a <b>live checklist with times</b>, next to the log.</li>
-      <li>The <b>Done screen</b> prints how to reach the cluster, and has a Teardown action that runs <code>clean.sh</code> and <code>delete-cluster.sh</code>.</li>
-      <li>The default choices take <b>about 30 minutes</b>; this run, with every demo and plugin, took about an hour. It lives in the <code>installer</code> folder of the talk repo.</li>
+      <li>You <b>pick or create the cluster</b> and the <b>database</b>, then on <b>Settings</b> the node groups, tags and release, then the <b>plugins</b>: the LLM gateway, EFS, S3 Files, login rotation, the credential provider, OpenClaw and <b>Mode 3</b>. <i>point at the plugin list</i></li>
+      <li>Then it shows a <b>review</b> of every command it will run, with each step's time and the <b>cost an hour</b>.</li>
+      <li>While it installs, it turns each step's output into a <b>live checklist with times</b>, next to the log.</li>
+      <li>The <b>Done screen</b> prints how to reach the cluster, and has a Teardown action: the plugins and Substrate first, then every AWS resource with the deployment's owner tag.</li>
+      <li>The default choices take <b>about 30 minutes</b>; this run, with every demo and plugin, took about an hour. It lives in the <code>native</code> folder of the talk repo.</li>
       <li><i>The loop walks the six screens in order, about 40 seconds; talk through each step as it comes up.</i></li>
-      <li>It is the <b>fastest way to deploy</b>; the same scripts still run on their own.</li>
+      <li>It is the <b>fastest way to deploy</b>; each step also runs on its own, as one command.</li>
     </ul>
     <p><i>Next:</i> the third mode, on AWS Nitro Sandbox.</p>
   </aside>
@@ -799,7 +800,7 @@ kernel 6.18.56-125.164.amzn2023.x86_64</code></pre>
       <li><b>Recent Intel families</b> support it, plus their flex and <code>d</code> variants. This demo uses <b>m8i.2xlarge</b>.</li>
       <li>You turn it on per instance with <code>CpuOptions</code> in the launch template, so the <code>microvm</code> node group has <b>its own template</b>.</li>
       <li>The same template keeps <b>IMDSv2 with a hop limit of 1</b> and an <b>encrypted 200 GB</b> volume.</li>
-      <li><code>create-cluster.sh</code> checks the instance type with the <code>describe-instance-types</code> filter shown here, <b>before it creates anything</b>.</li>
+      <li><code>setup-aws create cluster</code> checks the instance type for nested virtualization, the filter shown here, <b>before it creates anything</b>.</li>
       <li>On a node, <code>/dev/kvm</code> exists and the CPU exposes <code>vmx</code>. <i>point at the bottom of the code</i></li>
       <li><i>Only if anyone asks:</i> on Windows instances, it disables Credential Guard's Virtual Secure Mode. No effect on AL2023 nodes.</li>
     </ul>
@@ -1316,7 +1317,7 @@ ate-setup deploy ate-system \
       <li>On EKS, the provider gets its role through <b>Pod Identity</b>, and ships a <code>NetworkPolicy</code> that only lets the egress gateway in.</li>
       <li>It is registered with the gateway <b>next to the bundled Kubernetes Secrets provider</b> (<code>k8s.io</code>), so both work at once.</li>
       <li><b>Rotation:</b> <code>AWSCURRENT</code> is cached for 30s. Rotate in Secrets Manager, and actors pick it up with <b>no redeploy</b>.</li>
-      <li>The full example policy is <code>demos/credprovider-aws/egress-policy.example.yaml</code>. The plugin is <code>github.com/csantanapr/credprovider-aws-secret-manager</code>.</li>
+      <li>The full example policy is <code>native/installer/docs/egress-policy.example.yaml</code>. The plugin is <code>github.com/csantanapr/credprovider-aws-secret-manager</code>.</li>
     </ul>
     <p><i>Next:</i> Bedrock, where a header swap is not enough.</p>
   </aside>
@@ -1842,7 +1843,7 @@ curl localhost:8001     <span class="c"># resumes</span></code></pre>
   <aside class="notes">
     <p><b>Agent Substrate runs on EKS today.</b></p>
     <ul>
-      <li><i>point at the QR code</i> Scan it for the <b>scripts, both demos and these slides</b>.</li>
+      <li><i>point at the QR code</i> Scan it for the <b>installer, both demos and these slides</b>.</li>
       <li><b>Two commands</b> create the cluster and deploy everything, and <b>two more</b> tear it down.</li>
       <li>If you want to help <b>make it boring</b>, the places to start:
         <ul>
