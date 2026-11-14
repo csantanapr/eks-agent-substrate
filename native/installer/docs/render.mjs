@@ -1,7 +1,9 @@
-// Render the installer's snapshot pages (NAME.html, written when
-// INSTALLER_SNAPSHOT_DIR is set) to 1920x1080 PNGs with headless Chromium.
+// Render the installer's snapshot pages to 1920x1080 PNGs with headless
+// Chromium. The wizard writes NAME.html (with NAME.ansi and NAME.txt) each
+// time you press s, into --snapshot-dir; docs/splash-gif.sh writes one per
+// splash frame.
 //
-//   node docs/render.mjs SNAPSHOT_DIR OUT_DIR [NAME=OUT ...]
+//   node native/installer/docs/render.mjs SNAPSHOT_DIR OUT_DIR [NAME=OUT ...]
 //
 // With no NAME=OUT pairs it renders every NAME.html to OUT_DIR/NAME.png.
 // Uses Playwright from the talk-video-record skill (TALK_VIDEO_LIB, default
@@ -17,7 +19,7 @@ const R = await import(lib);
 
 const [src, out, ...pairs] = process.argv.slice(2);
 if (!src || !out) {
-  console.error('usage: node docs/render.mjs SNAPSHOT_DIR OUT_DIR [NAME=OUT ...]');
+  console.error('usage: node native/installer/docs/render.mjs SNAPSHOT_DIR OUT_DIR [NAME=OUT ...]');
   process.exit(2);
 }
 let jobs = pairs.map((p) => p.split('='));
