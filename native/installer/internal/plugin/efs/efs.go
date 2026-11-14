@@ -69,7 +69,9 @@ func init() {
 		Order:    30,
 		Minutes:  15,
 		SetupAWS: true,
-		Needs:    plugin.Needs{Preview: []string{"ExternalVolumes"}},
+		// Its templates and Verify's actors are the counter demo's.
+		NeedsDemo: true,
+		Needs:     plugin.Needs{Preview: []string{"ExternalVolumes"}},
 		// EFS bills stored data and throughput, not hours: a few test
 		// volumes cost cents a month.
 		HourlyUSD: 0.01,

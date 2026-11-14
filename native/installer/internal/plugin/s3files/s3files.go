@@ -27,7 +27,9 @@ func init() {
 		Minutes:  10,
 		Requires: []string{efs.ID},
 		SetupAWS: true,
-		Needs:    plugin.Needs{Preview: []string{"ExternalVolumes"}},
+		// Its templates and Verify's actors are the counter demo's.
+		NeedsDemo: true,
+		Needs:     plugin.Needs{Preview: []string{"ExternalVolumes"}},
 		// S3 Files bills stored data and requests, not hours.
 		HourlyUSD: 0.01,
 		Deploy:    deploy,
