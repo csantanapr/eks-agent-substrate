@@ -899,11 +899,20 @@ func (e *tdEnv) stepIGWs(ctx context.Context) ([]tdTarget, []string, error) {
 	return ts, rs, nil
 }
 
-// stepENIs deletes the detached network interfaces in owned VPCs that carry
-// the owner tag or this cluster's tag (the VPC CNI's, Auto Mode's). Others
-// (EKS releases its own) are left to their owner.
+// stepENIs removes the network interfaces in owned VPCs that carry the owner
+// tag or this cluster's tag (the VPC CNI's, Auto Mode's):
+//
+//   - an available one this account manages is deleted;
+//   - one an AWS service manages goes with what it belongs to, which an
+//     earlier step deleted, so teardown waits for it (up to tdTimeout) and
+//     never deletes it: a requester-managed one (the EKS control plane's, a
+//     NAT gateway's, RDS's, a mount target's), and a Lambda function's while
+//     in use (Lambda removes those minutes after the function is gone);
+//   - one in use by this account (a node's) goes with its node.
+//
+// Others are left to their owner.
 func (e *tdEnv) stepENIs(ctx context.Context) ([]tdTarget, []string, error) {
-	enis, err := e.inVPCs(ctx, kENI, "vpc-id", flt("status", "available"))
+	enis, err := e.inVPCs(ctx, kENI, "vpc-id")
 	if err != nil {
 		return nil, nil, err
 	}
@@ -913,10 +922,18 @@ func (e *tdEnv) stepENIs(ctx context.Context) ([]tdTarget, []string, error) {
 			continue
 		}
 		id := n.id
-		ts = append(ts, tdTarget{kind: kENI, id: id, del: func(ctx context.Context) error {
-			_, err := e.c.EC2.DeleteNetworkInterface(ctx, &ec2.DeleteNetworkInterfaceInput{NetworkInterfaceId: aws.String(id)})
-			return err
-		}})
+		switch {
+		case n.state == "available" && !n.requester:
+			ts = append(ts, tdTarget{kind: kENI, id: id, del: func(ctx context.Context) error {
+				_, err := e.c.EC2.DeleteNetworkInterface(ctx, &ec2.DeleteNetworkInterfaceInput{NetworkInterfaceId: aws.String(id)})
+				return err
+			}})
+		case n.requester || n.ifType == lambdaENI:
+			ts = append(ts, tdTarget{kind: kENI, id: id + " (" + dash(n.desc) + ")", wait: gone(func(ctx context.Context) (bool, error) {
+				left, err := e.ec2List(ctx, kENI, flt("network-interface-id", id))
+				return len(left) > 0, err
+			})})
+		}
 	}
 	return ts, nil, nil
 }

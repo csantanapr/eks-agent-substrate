@@ -41,6 +41,11 @@ type tdObj struct {
 	inline, attached, profiles []string
 	objects                    int
 	tags                       map[string]string
+	// A network interface's type, description and requester-managed flag;
+	// group is the security group it holds, and parent ("kind|id") what AWS
+	// deletes it with, pending reads after the parent is gone.
+	ifType, desc, group, parent string
+	requester                   bool
 }
 
 // tdFake is one in-memory account. It enforces the dependencies AWS
@@ -88,6 +93,11 @@ func (f *tdFake) settle(o *tdObj) bool {
 // remove deletes o and what AWS deletes with it.
 func (f *tdFake) remove(o *tdObj) {
 	delete(f.objs, o.kind+"|"+o.id)
+	for _, x := range f.objs {
+		if x.parent == o.kind+"|"+o.id {
+			x.deleting = true // gone after its pending reads
+		}
+	}
 	switch o.kind {
 	case "nodegroup":
 		for _, x := range f.objs {
@@ -761,7 +771,7 @@ func (t *tfEC2) find(kind string, filters []ec2types.Filter) []*tdObj {
 				v = o.name
 			case name == "status":
 				v = o.state
-			case name == "nat-gateway-id", name == "instance-id":
+			case name == "nat-gateway-id", name == "instance-id", name == "network-interface-id":
 				v = o.id
 			case strings.HasPrefix(name, "tag:"):
 				v = o.tags[strings.TrimPrefix(name, "tag:")]
@@ -866,7 +876,8 @@ func (t *tfEC2) DescribeNetworkInterfaces(_ context.Context, in *ec2.DescribeNet
 	out := &ec2.DescribeNetworkInterfacesOutput{}
 	for _, o := range t.find(kENI, in.Filters) {
 		out.NetworkInterfaces = append(out.NetworkInterfaces, ec2types.NetworkInterface{NetworkInterfaceId: aws.String(o.id), VpcId: aws.String(o.vpc),
-			Status: ec2types.NetworkInterfaceStatus(o.state), TagSet: tagsOf(o.tags)})
+			Status: ec2types.NetworkInterfaceStatus(o.state), TagSet: tagsOf(o.tags),
+			InterfaceType: ec2types.NetworkInterfaceType(o.ifType), Description: aws.String(o.desc), RequesterManaged: aws.Bool(o.requester)})
 	}
 	return out, nil
 }
@@ -964,6 +975,13 @@ func (t *tfEC2) DeleteSecurityGroup(_ context.Context, in *ec2.DeleteSecurityGro
 		// The RDS instance's network interface uses its security group.
 		if o.name == "demo-pg" && t.any("db", func(*tdObj) bool { return true }) {
 			return "DependencyViolation"
+		}
+		// So does any network interface left in it, as long as AWS lists it
+		// (list settles one read of each).
+		for _, n := range t.f().list(kENI) {
+			if n.group == id {
+				return "DependencyViolation"
+			}
 		}
 		return ""
 	})
