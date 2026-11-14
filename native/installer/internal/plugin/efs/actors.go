@@ -361,9 +361,17 @@ func RoundTrip(ctx context.Context, w io.Writer, o plugin.Options, k Ate, s Stor
 			return err
 		}
 	}
+	// Resume through readyz first, as the first request did: the proxy dials
+	// the router again for each connection, and a dial can fail once (its
+	// cached cluster token can expire while the actor sleeps, and client-go
+	// refreshes it only after a refused call). readyz does not touch the
+	// counter, so the one read after it still counts exactly one.
+	if !Poll(ctx, 90, func() bool { _, err := Get(ctx, base+"readyz", 10*time.Second); return err == nil }) {
+		return fmt.Errorf("actor %s did not answer through kubectl ate proxy after the resume: %s", name, logs())
+	}
 	after, err := readCounter(ctx, base, 180*time.Second)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w (kubectl ate proxy: %s)", err, logs())
 	}
 	if a, err = getActor(ctx, k, name, c.Atespace); err != nil || a.Status.State != "ACTOR_STATE_RUNNING" {
 		return fmt.Errorf("actor %s did not resume (%s, %v)", name, a.Status.State, err)

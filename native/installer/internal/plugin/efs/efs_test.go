@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -298,6 +299,13 @@ func TestDeployNeedsTheCounterDemo(t *testing.T) {
 // fsap-9. lose makes its file counter restart on resume; keep makes the
 // access point outlive the actor.
 func roundTripKube(t *testing.T, lose, keep bool) (*fakeKube, plugin.Options, Storage) {
+	return roundTripKubeDial(t, lose, keep, 0)
+}
+
+// roundTripKubeDial is roundTripKube whose proxy fails the first resets
+// requests after the suspend, as a dial with an expired cluster token does.
+// Any request resumes the actor, readyz included, as on a real cluster.
+func roundTripKubeDial(t *testing.T, lose, keep bool, resets int) (*fakeKube, plugin.Options, Storage) {
 	bin := KubectlAtePath("v1.0.0")
 	f := &fakeKube{answers: map[string]string{
 		bin + " get actor-template counter-efs": "{}",
@@ -310,14 +318,18 @@ func roundTripKube(t *testing.T, lose, keep bool) (*fakeKube, plugin.Options, St
 	FreePort = func() (int, error) { return 18080, nil }
 	n := 0
 	Get = func(_ context.Context, url string, _ time.Duration) (string, error) {
-		if strings.HasSuffix(url, "readyz") {
-			return "ok", nil
-		}
 		if state == "ACTOR_STATE_SUSPENDED" {
+			if resets > 0 {
+				resets--
+				return "", errors.New("read tcp 127.0.0.1:58104->127.0.0.1:18080: read: connection reset by peer")
+			}
 			state = "ACTOR_STATE_RUNNING"
 			if lose {
 				n = 0
 			}
+		}
+		if strings.HasSuffix(url, "readyz") {
+			return "ok", nil
 		}
 		n++
 		return fmt.Sprintf("preserved file counter: %d", n), nil
@@ -356,6 +368,27 @@ func TestRoundTrip(t *testing.T) {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("output lacks %q:\n%s", want, out.String())
 		}
+	}
+}
+
+// Measured live on sub-e2e: after the actor slept, the proxy's first dial
+// failed with a connection reset (its cached cluster token had expired with
+// the AWS session) and the check failed though the volume was fine. A reset
+// after the suspend is now retried through readyz; the counter still has to
+// go up by exactly one.
+func TestRoundTripSurvivesAFailedDialAfterTheSuspend(t *testing.T) {
+	_, o, s := roundTripKubeDial(t, false, false, 2)
+	var out bytes.Buffer
+	if err := RoundTrip(context.Background(), &out, o, Ate{Bin: KubectlAtePath("v1.0.0"), Kubeconfig: "/kc"}, s, Classes[0], false); err != nil {
+		t.Fatalf("two resets after the suspend: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "PASS: the file counter on efs continued") {
+		t.Errorf("no PASS line:\n%s", out.String())
+	}
+	// A lost counter is still caught through the retry.
+	_, o, s = roundTripKubeDial(t, true, false, 2)
+	if err := RoundTrip(context.Background(), io.Discard, o, Ate{Bin: KubectlAtePath("v1.0.0"), Kubeconfig: "/kc"}, s, Classes[0], false); err == nil || !strings.Contains(err.Error(), "lost its file counter") {
+		t.Errorf("lost counter behind resets: %v", err)
 	}
 }
 
