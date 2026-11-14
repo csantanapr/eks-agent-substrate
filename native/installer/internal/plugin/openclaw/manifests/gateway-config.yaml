@@ -11,12 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# The gateway's openclaw.json on EKS. demo/eks/deploy-demo.sh fills in four
-# placeholders, each with a JSON value:
+# The gateway's openclaw.json on EKS. The openclaw plugin (openclaw.go) fills
+# in four placeholders, each with a JSON value:
 #   PLUGINS_ALLOW_JSON   ["substrate"], plus "whatsapp" when WHATSAPP_PEER is set
 #   BINDINGS_JSON        the WhatsApp ACP binding, or [] when WHATSAPP_PEER is unset
 #   CHANNELS_JSON        the WhatsApp channel, or {} when WHATSAPP_PEER is unset
-#   EGRESS_POLICY_JSON   manifests/eks/egress-policy.json, compacted
+#   EGRESS_POLICY_JSON   egress-policy.json beside this file, compacted
 #
 # Differences from the GKE config (demo/openclaw-demo-config.yaml):
 #   - ateapi is dialed directly (the openclaw namespace carries

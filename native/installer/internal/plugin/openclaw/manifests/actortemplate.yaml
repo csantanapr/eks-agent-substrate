@@ -16,9 +16,9 @@
 #
 #     kubectl ate create actor-template -f -
 #
-# after demo/eks/deploy-demo.sh substitutes the actor image digest and the
-# gateway token. Templates are immutable, so the script deletes and recreates
-# this one when either changes.
+# after the openclaw plugin (openclaw.go) substitutes the actor image digest
+# and the gateway token. Templates are immutable, so the plugin deletes and
+# recreates this one when either changes.
 #
 # What changed from the release-0.1 shape in ../actortemplate.yaml:
 #   - snapshotsConfig became snapshotConfig, and the per-event scopes became a
@@ -29,19 +29,19 @@
 #   - sandboxConfig is gone. The sandbox class comes from the WorkerPool the
 #     workerSelector matches, and that pool follows the gvisor class default.
 #   - resources.limits is required: it sizes the sandbox and is booked against
-#     worker capacity (manifests/eks/workerpool.yaml).
+#     worker capacity (workerpool.yaml beside this file).
 #   - wakeupProbe gates every wakeup on OpenClaw's /readyz. It also replaces the
 #     controller's fixed 20s golden warmup: the golden snapshot is taken as soon
 #     as the probe answers 200. /readyz stays red until startup sidecars settle,
 #     so it is later than /healthz, which answers before plugin pre-warm.
 #
 # No LLM credential is anywhere in this template. Model calls go to the
-# in-cluster LLM gateway with a placeholder bearer token (build/actor/
-# openclaw.eks.json), and the actor's egress policy (manifests/eks/
-# egress-policy.json) has the Substrate egress gateway replace it with an actor
+# in-cluster LLM gateway with a placeholder bearer token (set in the actor
+# image's OpenClaw config), and the actor's egress policy (egress-policy.json
+# beside this file) has the Substrate egress gateway replace it with an actor
 # JWT. That policy cannot live here: goldenEgressPolicy (preview gate
 # GoldenEgressPolicy) applies to the golden actor only, so each actor gets its
-# own, created by the gateway plugin and, for oc-agent, by the deploy script.
+# own, created by the gateway plugin and, for oc-agent, by the plugin's deploy.
 metadata:
   # Must be the atespace the actors live in: `kubectl ate create actor
   # --template <name>` resolves a bare template name in the actor's atespace.
@@ -52,8 +52,8 @@ workerSelector:
     workload: openclaw
 containers:
   - name: agent
-    # The actor image (stock OpenClaw + build/actor/openclaw.eks.json), pinned
-    # by digest. Changing it invalidates the golden snapshot.
+    # The actor image (stock OpenClaw plus its EKS OpenClaw config, prebuilt),
+    # pinned by digest. Changing it invalidates the golden snapshot.
     image: REPLACE_WITH_ACTOR_IMAGE@REPLACE_WITH_ACTOR_DIGEST
     # forwarded-header-proxy.mjs serves port 80 and runs OpenClaw on loopback
     # (build/actor.Dockerfile). atenet-router's Envoy adds forwarded headers
