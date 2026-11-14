@@ -16,6 +16,7 @@ import (
 	ekstypes "github.com/aws/aws-sdk-go-v2/service/eks/types"
 
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/awsx"
+	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin"
 )
 
 type deleteCall struct {
@@ -40,7 +41,17 @@ func deleteEnv(t *testing.T, describeErr error, runErr func(argv []string) error
 	}
 	kc = awsx.KubeconfigPath(o.Cluster, o.Region)
 	prevDescribe, prevRun := describeCluster, deleteRun
-	t.Cleanup(func() { describeCluster, deleteRun = prevDescribe, prevRun })
+	prevRead, prevRemove, prevOverlay := readRecord, removePlugins, applyOverlay
+	t.Cleanup(func() {
+		describeCluster, deleteRun = prevDescribe, prevRun
+		readRecord, removePlugins, applyOverlay = prevRead, prevRemove, prevOverlay
+	})
+	readRecord = func(context.Context, io.Writer, plugin.Options) ([]string, error) { return nil, nil }
+	removePlugins = func(_ context.Context, _ io.Writer, action string, ids []string, _ plugin.Options) error {
+		*calls = append(*calls, deleteCall{argv: append([]string{"plugins", action}, ids...)})
+		return nil
+	}
+	applyOverlay = func(io.Writer, string, string, string) error { return nil }
 	describeCluster = func(context.Context, string, string, string) (awsx.Cluster, error) {
 		if describeErr != nil {
 			return awsx.Cluster{}, describeErr
@@ -69,10 +80,14 @@ func TestDeleteRunsAteSetupWaitsAndRemovesTheKubeconfig(t *testing.T) {
 	if err := Delete(context.Background(), &out, o); err != nil {
 		t.Fatal(err)
 	}
-	if len(*calls) != 2 {
-		t.Fatalf("want ate-setup then kubectl wait, got %v", *calls)
+	if len(*calls) != 3 {
+		t.Fatalf("want the plugin removal, ate-setup, then kubectl wait, got %v", *calls)
 	}
-	del, wait := (*calls)[0], (*calls)[1]
+	// Every recorded plugin is removed (no IDs: all of them) before ate-system.
+	if want := []string{"plugins", plugin.ActionRemove}; !slices.Equal((*calls)[0].argv, want) {
+		t.Errorf("first call = %v, want %v", (*calls)[0].argv, want)
+	}
+	del, wait := (*calls)[1], (*calls)[2]
 	if want := []string{"go", "run", "./cmd/ate-setup", "delete", "ate-system", "--context", "demo"}; !slices.Equal(del.argv, want) {
 		t.Errorf("delete argv = %v, want %v", del.argv, want)
 	}
@@ -115,8 +130,8 @@ func TestDeleteFailureStopsBeforeTheWait(t *testing.T) {
 	if err := Delete(context.Background(), &out, o); err == nil {
 		t.Fatal("want the ate-setup error")
 	}
-	if len(*calls) != 1 {
-		t.Errorf("ran after the failed delete: %v", *calls)
+	if len(*calls) != 2 {
+		t.Errorf("want the plugin removal then the failed delete only, got %v", *calls)
 	}
 	if _, err := os.Stat(kc); err != nil {
 		t.Errorf("kubeconfig removed after a failed delete: %v", err)

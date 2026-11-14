@@ -273,6 +273,10 @@ type Setup struct {
 	Database string
 	// DemoMode is a demo run (--demo): the flow ends with the Demo step.
 	DemoMode bool
+	// Plugins are the chosen plugin IDs (plugin.Resolve adds what they
+	// require): the control plane deploy carries their needs, then the
+	// Plugins step deploys them.
+	Plugins []string
 
 	// Teardown is the teardown flow (TeardownOrder); KeepCluster is its
 	// answer: remove Substrate and its AWS data but keep the cluster.

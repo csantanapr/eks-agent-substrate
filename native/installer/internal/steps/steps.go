@@ -13,6 +13,7 @@ import (
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/controlplane"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/demo"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/eksoverlay"
+	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin"
 )
 
 // ChecklistItem is one row of a step's progress checklist.
@@ -24,6 +25,11 @@ type ChecklistItem struct {
 
 func contains(sub string) func(string) bool {
 	return func(line string) bool { return strings.Contains(line, sub) }
+}
+
+// exactly matches the whole line, so plugin "efs" is not lit by "efs-x".
+func exactly(want string) func(string) bool {
+	return func(line string) bool { return strings.TrimSpace(line) == want }
 }
 
 func containsAny(subs ...string) func(string) bool {
@@ -88,9 +94,11 @@ func Demo(classes []string) []ChecklistItem {
 // checklist keys off.
 func ControlPlane() []ChecklistItem {
 	return []ChecklistItem{
+		// The kubeconfig first: Deploy reads the plugin record off the
+		// cluster before it fetches the release (a plugin may replace it).
+		{"Write the installer's kubeconfig", contains(controlplane.KubeconfLine)},
 		{"Fetch the pinned Substrate release", containsAny(controlplane.FetchLine, controlplane.CachedLine)},
 		{"Add the EKS manifests (deploy/eks)", contains(eksoverlay.LinePrefix)},
-		{"Write the installer's kubeconfig", contains(controlplane.KubeconfLine)},
 		// One row for whichever database path runs: the StorageClass the
 		// bundled PostgreSQL uses (also a default class with RDS on a cluster
 		// the installer made), then the RDS bootstrap.
@@ -104,6 +112,18 @@ func ControlPlane() []ChecklistItem {
 		{"Generate CAs, JWT pools, and API server config", contains("ensure_apiserver_prerequisites")},
 		{"Wait for components: postgres, api-server, controller, atenet, atelet", contains("Waiting for ATE system components")},
 	}
+}
+
+// Plugins tracks --plugin-action deploy (plugin.Run): two rows per plugin, in
+// install order, lit by its deploy and check lines.
+func Plugins(ps []plugin.Plugin) []ChecklistItem {
+	var items []ChecklistItem
+	for _, p := range ps {
+		items = append(items,
+			ChecklistItem{"Deploy " + p.Title, exactly(plugin.DeployLine + p.ID)},
+			ChecklistItem{"Check " + p.Title, exactly(plugin.VerifyLine + p.ID)})
+	}
+	return items
 }
 
 // Progress applies one output line to a checklist, returning the updated

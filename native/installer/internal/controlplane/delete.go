@@ -12,7 +12,7 @@ import (
 	ekstypes "github.com/aws/aws-sdk-go-v2/service/eks/types"
 
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/awsx"
-	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/eksoverlay"
+	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin"
 )
 
 // RemovedLine is what Delete prints once ate-system is gone.
@@ -64,22 +64,34 @@ func Delete(ctx context.Context, w io.Writer, o Options) error {
 		return err
 	}
 
+	fmt.Fprintln(w, KubeconfLine+kc)
+	if err := writeKubeconfig(kc, cl, o.Region, o.Profile); err != nil {
+		return err
+	}
+	// The release the install ran (a recorded plugin may have replaced it),
+	// read before the plugins are removed and their record with them.
+	po := o.pluginOptions(kc, cl.AutoMode)
+	o.Plugins = nil
+	if _, err := resolvePlugins(ctx, w, &o, po); err != nil {
+		return err
+	}
+	// Every recorded plugin goes first, Kubernetes objects then AWS
+	// resources: their objects run on Substrate, and a volume they hold
+	// would keep the VPC's subnets.
+	if err := removePlugins(ctx, w, plugin.ActionRemove, nil, po); err != nil {
+		return err
+	}
+
 	// The tree the install ran from, fetched again if the cache is gone.
 	repo := o.Repo
 	if repo == "" {
 		repo = DefaultRepo
 	}
 	tree := TreeDir(o.TreeRoot, o.Tag)
-	if err := FetchTree(ctx, w, tree, repo, o.Tag); err != nil {
+	if err := fetchTree(ctx, w, tree, repo, o.Tag); err != nil {
 		return err
 	}
-	if o.Overlay != "" {
-		if err := eksoverlay.Apply(w, tree, o.Overlay, o.Region); err != nil {
-			return err
-		}
-	}
-	fmt.Fprintln(w, KubeconfLine+kc)
-	if err := awsx.WriteKubeconfig(kc, cl, o.Region, o.Profile); err != nil {
+	if err := applyOverlay(w, tree, o.Overlay, o.Region); err != nil {
 		return err
 	}
 

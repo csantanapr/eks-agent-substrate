@@ -9,8 +9,8 @@
 // A plugin has two halves:
 //   - AWS resources, made by `setup-aws plugin <id>` (tools/setup-aws), which
 //     also teardown and inventory know; Plugin.SetupAWS says it has one.
-//   - Kubernetes objects and checks, made by Deploy and Verify here, run by the
-//     wizard as `substrate-eks --plugin <id> --plugin-action deploy|verify`.
+//   - Kubernetes objects and checks, made by Deploy and Verify here, run by Run
+//     as `substrate-eks --plugins <id> --plugin-action deploy|verify|remove`.
 //
 // What a plugin needs from the control plane install (a preview gate, a
 // credential provider, ingress clients, another Substrate build) is declared
@@ -27,6 +27,8 @@ import (
 	"slices"
 	"sort"
 	"strings"
+
+	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/awsx"
 )
 
 // Source replaces the Substrate release the control plane installs (mode 3
@@ -55,23 +57,28 @@ type Options struct {
 	// Tag is the Substrate release; TreeRoot holds its cached tree.
 	Tag, TreeRoot string
 	// Kubeconfig is the installer's own kubeconfig for the cluster
-	// (awsx.KubeconfigPath), already written by the caller.
+	// (awsx.KubeconfigPath), already written by the caller; its current
+	// context is the cluster. Use Kubectl, which passes it.
 	Kubeconfig string
-	// SetupAWS is native/tools/setup-aws, for plugins that run
-	// `go -C <SetupAWS> run . plugin <id>` themselves.
+	// SetupAWS is native/tools/setup-aws; Run runs `setup-aws plugin <id>`
+	// from it for a plugin with SetupAWS set.
 	SetupAWS string
 	// Overlay is native/deploy/eks, where plugin manifests live
 	// (deploy/eks/plugins/<id>/).
 	Overlay string
-	// Tags are the owner tag and TAGS, as key=value pairs.
-	Tags map[string]string
+	// Tags is TAGS: space-separated key=value pairs every AWS resource gets
+	// besides the owner tag (OwnerTags adds it).
+	Tags string
+	// AutoMode is the cluster's EKS Auto Mode, read off the cluster.
+	AutoMode bool
 }
 
 // Plugin is one optional part of an install.
 type Plugin struct {
 	// ID is the --plugin value and the setup-aws subcommand name.
 	ID, Title, Summary string
-	// Order places it in lists and in the install (lower first).
+	// Order places it in lists and in the install (lower first). It must be
+	// higher than the Order of every plugin it Requires (Check).
 	Order int
 	// Minutes is the rough time Deploy plus Verify take, for the Review screen.
 	Minutes int
@@ -84,15 +91,15 @@ type Plugin struct {
 	// SetupAWS reports that `setup-aws plugin <ID>` makes AWS resources.
 	SetupAWS bool
 	Needs    Needs
+	// HourlyUSD is the rough on-demand cost the plugin adds, for the Review
+	// screen (0 when it is only Kubernetes objects).
+	HourlyUSD float64
 	// Deploy makes the plugin's Kubernetes objects, Verify checks it works
 	// (a quick check fit for the install), Remove deletes its Kubernetes
-	// objects (setup-aws teardown deletes its AWS resources). All must be
-	// idempotent and print no secret.
+	// objects (Run then deletes its AWS resources with `setup-aws plugin <id>
+	// --delete`). All must be idempotent, start every child from an argv
+	// (Exec), and print no secret.
 	Deploy, Verify, Remove func(ctx context.Context, w io.Writer, o Options) error
-	// Lines are the output lines Deploy prints in order, for the wizard's
-	// checklist and its dry-run replay: one row per line, lit when the line
-	// appears.
-	Lines []string
 }
 
 var registry = map[string]Plugin{}
@@ -122,6 +129,39 @@ func All() []Plugin {
 		return out[i].ID < out[j].ID
 	})
 	return out
+}
+
+// Check reports a registry mistake: a required plugin that is not registered,
+// or one whose Order is not below the plugin requiring it (Run removes in
+// reverse Order, so a plugin must go before what it requires). A test that
+// imports every plugin calls it.
+func Check() error {
+	for _, p := range All() {
+		for _, r := range p.Requires {
+			q, ok := registry[r]
+			if !ok {
+				return fmt.Errorf("plugin %s requires unknown plugin %q", p.ID, r)
+			}
+			if q.Order >= p.Order {
+				return fmt.Errorf("plugin %s (order %d) requires %s (order %d): its Order must be higher", p.ID, p.Order, r, q.Order)
+			}
+		}
+	}
+	return nil
+}
+
+// OwnerTags is the owner tag plus Tags, for a plugin that tags what it makes
+// through Kubernetes (a StorageClass's tagSpecification).
+func (o Options) OwnerTags() (map[string]string, error) {
+	m := map[string]string{awsx.OwnerTagKey: o.Cluster + "." + o.Region}
+	for _, kv := range strings.Fields(o.Tags) {
+		k, v, ok := strings.Cut(kv, "=")
+		if !ok || k == "" {
+			return nil, fmt.Errorf("TAGS: %q is not key=value", kv)
+		}
+		m[k] = v
+	}
+	return m, nil
 }
 
 // Get returns the plugin with id.
@@ -190,8 +230,9 @@ func Merge(ps []Plugin) (Needs, error) {
 
 // RecordNamespace/RecordName are the ConfigMap that records which plugins are
 // installed, in kube-system so that removing ate-system keeps it, and its data
-// key holds a comma-separated, sorted list of IDs. Deploy adds its ID after it
-// succeeds; Remove drops it.
+// key holds a comma-separated, sorted list of IDs. The control plane deploy
+// adds the plugins whose needs it now carries, Run's deploy adds a plugin once
+// it is deployed and checked, and Run's remove drops it.
 const (
 	RecordNamespace = "kube-system"
 	RecordName      = "substrate-eks-plugins"

@@ -7,6 +7,7 @@ import (
 
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/controlplane"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/demo"
+	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin"
 )
 
 // Every setup-aws command's checklist lights each row, in order, on the exact
@@ -42,14 +43,16 @@ func TestPhaseRowsMatchOnlyTheirOwnStepLine(t *testing.T) {
 }
 
 // The marker lines of a real install on sub-native (us-west-2, v1.0.0), in
-// the order they came. Each must light exactly the next row: a row lit out of
-// order ticks the rows it skipped, which is how the first live run showed
-// CRDs done while the assets were still uploading.
+// the order Deploy prints them since it reads the plugin record before the
+// fetch (kubeconfig first). Each must light exactly the next row: a row lit
+// out of order ticks the rows it skipped, which is how the first live run
+// showed CRDs done while the assets were still uploading.
 func TestControlPlaneChecklistFollowsRealMarkerOrder(t *testing.T) {
 	real := []string{
+		"Writing kubeconfig /home/u/.cache/substrate-eks/kubeconfig/sub-native.us-west-2.yaml",
+		"Control plane carries plugins: efs",
 		"Fetching substrate v1.0.0 from https://github.com/agent-substrate/substrate.git",
 		"substrate-eks EKS overlay: added deploy/eks to manifests/ate-install/base/kustomization.yaml",
-		"Writing kubeconfig /home/u/.cache/substrate-eks/kubeconfig/sub-native.us-west-2.yaml",
 		"Applying cluster prerequisites: StorageClass substrate-eks-auto-ebs (ebs.csi.eks.amazonaws.com, encrypted gp3, 3 volume tags)",
 		"[step]: prepare_microvm_deps",
 		"Uploading assets to s3://sub-native-assets-111122223333-us-west-2/microvm-assets/ ...",
@@ -57,7 +60,7 @@ func TestControlPlaneChecklistFollowsRealMarkerOrder(t *testing.T) {
 		"[step]: ensure_apiserver_prerequisites",
 		"[step]: Waiting for ATE system components to be ready...",
 	}
-	want := []int{0, 1, 2, 3, 4, 4, 5, 6, 7}
+	want := []int{0, 0, 1, 2, 3, 4, 4, 5, 6, 7}
 	items, active := ControlPlane(), -1
 	for i, line := range real {
 		active = Progress(items, active, line)
@@ -122,5 +125,32 @@ func TestRemoveControlPlaneChecklist(t *testing.T) {
 	}
 	if got := Progress(items, 0, controlplane.RemovedLine); got != 1 {
 		t.Errorf("RemovedLine lit row %d, want 1", got)
+	}
+}
+
+// Each plugin's rows light on its own lines only: "efs" is not lit by a
+// plugin whose ID starts with it.
+func TestPluginsChecklist(t *testing.T) {
+	items := Plugins([]plugin.Plugin{{ID: "efs", Title: "EFS"}, {ID: "efs-x", Title: "EFS X"}})
+	if len(items) != 4 || items[0].Label != "Deploy EFS" || items[3].Label != "Check EFS X" {
+		t.Fatalf("items = %+v", items)
+	}
+	steps := []struct {
+		line string
+		want int
+	}{
+		{plugin.DeployLine + "efs-x", 2},
+		{plugin.DeployLine + "efs", 2},
+		{plugin.VerifyLine + "efs-x", 3},
+	}
+	active := -1
+	for _, s := range steps {
+		active = Progress(items, active, s.line)
+		if active != s.want {
+			t.Fatalf("%q lit row %d, want %d", s.line, active, s.want)
+		}
+	}
+	if got := Progress(items, -1, plugin.DeployLine+"efs"); got != 0 {
+		t.Errorf("efs deploy line lit row %d, want 0", got)
 	}
 }

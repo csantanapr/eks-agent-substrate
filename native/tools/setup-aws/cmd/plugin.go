@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 
@@ -60,17 +61,90 @@ func registerPlugin(d pluginDef) {
 	if d.Create == nil {
 		return
 	}
-	pluginCmd.AddCommand(&cobra.Command{
+	var del bool
+	c := &cobra.Command{
 		Use:   d.ID,
 		Short: d.Short,
+		Long: d.Short + `.
+
+With --delete it deletes them instead, as teardown's plugin phase does: only
+what carries this deployment's owner tag, every refusal found before the first
+delete. --plan reads only.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if del {
+				e, err := newTDEnv(cmd.Context(), cmd.OutOrStdout())
+				if err != nil {
+					return err
+				}
+				if err := e.deletePlugin(cmd.Context(), d); err != nil {
+					return errors.New(e.mask(err.Error()))
+				}
+				return nil
+			}
 			e, err := newEnv(cmd.Context())
 			if err != nil {
 				return err
 			}
 			return d.Create(cmd.Context(), e)
 		},
-	})
+	}
+	c.Flags().BoolVar(&del, "delete", false, "delete the plugin's AWS resources instead of creating them")
+	pluginCmd.AddCommand(c)
+}
+
+// deletePlugin runs one plugin's teardown steps on their own (`setup-aws
+// plugin <id> --delete`), with teardown's rules: every refusal is found before
+// the first delete, and the plugin's inventory must be empty after.
+func (e *tdEnv) deletePlugin(ctx context.Context, d pluginDef) error {
+	if d.Teardown == nil {
+		e.say("plugin %s has no AWS resources to delete", d.ID)
+		return nil
+	}
+	var steps []tdStep
+	for _, s := range d.Teardown(e) {
+		steps = append(steps, s.Step)
+	}
+	var refusals []string
+	for _, s := range steps {
+		_, r, err := s(ctx)
+		if err != nil {
+			return err
+		}
+		refusals = append(refusals, r...)
+	}
+	if len(refusals) > 0 {
+		return refusalError(refusals)
+	}
+	n := 0
+	for _, s := range steps {
+		ts, r, err := s(ctx)
+		if err != nil {
+			return err
+		}
+		if len(r) > 0 {
+			return refusalError(r)
+		}
+		if err := e.run(ctx, ts); err != nil {
+			return err
+		}
+		n += len(ts)
+	}
+	if n == 0 {
+		e.say("nothing to delete")
+	}
+	if e.plan || d.Inventory == nil {
+		return nil
+	}
+	left, err := d.Inventory(ctx, e)
+	if err != nil {
+		return err
+	}
+	if len(left) > 0 {
+		e.printRows(left)
+		return fmt.Errorf("%d resources of plugin %s are left (listed above)", len(left), d.ID)
+	}
+	e.say("Plugin %s deleted: nothing of it is left for %s", d.ID, e.n.OwnerValue)
+	return nil
 }
 
 var pluginCmd = &cobra.Command{

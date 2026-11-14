@@ -23,6 +23,7 @@ import (
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/doctor"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/eksoverlay"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/execx"
+	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/probe"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/state"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/ui"
@@ -55,6 +56,8 @@ func main() {
 		deployDemo = flag.Bool("deploy-demo", false, "deploy the counter demo on --cluster, then exit (with --verify: check it after)")
 		verify     = flag.Bool("verify", false, "check that suspend and resume continue the counter demo on every sandbox class, then exit")
 		probeInst  = flag.Bool("probe-installed", false, "print whether --cluster already runs Substrate (the wizard's reinstall guard), then exit")
+		plugins    = flag.String("plugins", "", "comma-separated plugin IDs: the wizard preselects them, --deploy-control-plane carries their needs, --plugin-action acts on them")
+		pluginAct  = flag.String("plugin-action", "", "deploy, verify or remove the --plugins on --cluster (remove with no --plugins: every recorded plugin), then exit")
 	)
 	flag.Parse()
 
@@ -72,12 +75,27 @@ func main() {
 		exitOn(err)
 		return dir
 	}
+	pluginIDs := plugin.ParseRecord(*plugins)
+	for _, id := range pluginIDs {
+		if _, ok := plugin.Get(id); !ok {
+			exitOn(fmt.Errorf("--plugins: unknown plugin %q", id))
+		}
+	}
+	pluginOptions := func() plugin.Options {
+		tags, ok := os.LookupEnv("TAGS")
+		if !ok {
+			tags = controlplane.DefaultTags
+		}
+		b := builder{setupAWS: *setupAWS, cwd: cwd, exeDir: exeDir}
+		return plugin.Options{SetupAWS: absPath(b.findSetupAWS()), Overlay: findOverlay(), Tags: tags}
+	}
 	cpOptions := func() controlplane.Options {
 		return controlplane.Options{
 			Cluster: *cluster, Region: *region, Profile: *profile,
 			Tag: *tag, Repo: controlplane.DefaultRepo, ImageRepo: "ghcr.io/agent-substrate/substrate",
 			SnapBucket: *snapBucket, AssetBucket: *assetBkt, SandboxClasses: "gvisor,microvm",
 			Database: *database, TreeRoot: *treeRoot, Overlay: findOverlay(),
+			Plugins: pluginIDs, Plugin: pluginOptions(),
 		}
 	}
 	demoOptions := demo.Options{
@@ -102,6 +120,9 @@ func main() {
 		if *verify {
 			exitOn(demo.Verify(context.Background(), os.Stdout, demoOptions))
 		}
+		return
+	case *pluginAct != "":
+		exitOn(runPlugins(context.Background(), *pluginAct, pluginIDs, cpOptions()))
 		return
 	case *probeInst:
 		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
@@ -129,6 +150,7 @@ func main() {
 	s.Profile, s.Region, s.ClusterName, s.SubstrateTag = *profile, *region, *cluster, *tag
 	s.Database, s.DemoMode, s.Teardown = *database, *demoMode, *teardown
 	s.KeepClusterOnly = *keepClust
+	s.Plugins = pluginIDs
 
 	if *logPath == "" {
 		dir, _ := os.UserCacheDir()
@@ -223,6 +245,33 @@ func simChecks() []doctor.Check {
 		ok("kubectl", "Client Version: v1.37.0"),
 		ok("aws", "aws-cli/2.31.0"),
 	}
+}
+
+// runPlugins is --plugin-action: it writes the installer's own kubeconfig for
+// the cluster, as the control plane deploy does, then runs the plugins.
+func runPlugins(ctx context.Context, action string, ids []string, o controlplane.Options) error {
+	if o.Cluster == "" || o.Region == "" {
+		return fmt.Errorf("--plugin-action needs --cluster and --region")
+	}
+	if action != plugin.ActionRemove && len(ids) == 0 {
+		return fmt.Errorf("--plugin-action %s needs --plugins", action)
+	}
+	c, err := awsx.New(ctx, o.Profile, o.Region)
+	if err != nil {
+		return err
+	}
+	cl, err := c.Describe(ctx, o.Cluster)
+	if err != nil {
+		return err
+	}
+	po := o.Plugin
+	po.Cluster, po.Region, po.Profile, po.Tag, po.TreeRoot = o.Cluster, o.Region, o.Profile, o.Tag, o.TreeRoot
+	po.AutoMode, po.Kubeconfig = cl.AutoMode, awsx.KubeconfigPath(o.Cluster, o.Region)
+	fmt.Println(controlplane.KubeconfLine + po.Kubeconfig)
+	if err := awsx.WriteKubeconfig(po.Kubeconfig, cl, o.Region, o.Profile); err != nil {
+		return err
+	}
+	return plugin.Run(ctx, os.Stdout, action, ids, po)
 }
 
 func absPath(p string) string {

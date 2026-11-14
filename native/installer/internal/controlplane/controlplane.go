@@ -21,6 +21,7 @@ import (
 
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/awsx"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/eksoverlay"
+	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin"
 )
 
 // Lines the deploy prints for the progress checklist (steps.ControlPlane).
@@ -34,6 +35,13 @@ const (
 
 // DefaultRepo is upstream's repository.
 const DefaultRepo = "https://github.com/agent-substrate/substrate.git"
+
+// AtenetClientID is the ingress client every install admits: `kubectl ate
+// proxy`'s ServiceAccount.
+const AtenetClientID = "spiffe://cluster.local/ns/ate-system/sa/atenet-client"
+
+// PluginsLine is printed when Deploy has resolved the plugins it carries.
+const PluginsLine = "Control plane carries plugins: "
 
 // completeMarker records a finished fetch, as substrate-gke's CompleteMarker.
 const completeMarker = ".substrate-eks-fetched"
@@ -53,8 +61,16 @@ type Options struct {
 	Database string
 	// TreeRoot is where the pinned tree is cached; Overlay is deploy/eks.
 	TreeRoot, Overlay string
-	// IngressIDs are the SPIFFE IDs the ingress router admits.
-	IngressIDs []string
+	// Plugins are the plugins (--plugins) whose needs this install must
+	// carry, besides those the cluster records as installed. Deploy resolves
+	// both into Needs and records them once the install is ready.
+	Plugins []string
+	// Needs are the merged plugin needs AteSetupArgs adds: preview gates,
+	// credential providers, ingress clients. Deploy sets it.
+	Needs plugin.Needs
+	// Plugin carries the paths and tags a plugin's removal needs; Delete
+	// removes every recorded plugin before ate-system.
+	Plugin plugin.Options
 
 	// caFile is the RDS CA bundle Deploy downloaded, for ate-setup.
 	caFile string
@@ -154,12 +170,20 @@ func FetchTree(ctx context.Context, w io.Writer, dir, repo, tag string) error {
 // AteSetupArgs are the `ate-setup deploy ate-system` flags for EKS, the same
 // ones eks-talk's substrate/install.sh passes. The connection strings are not
 // among them: they carry passwords, so they go in the environment.
+//
+// Plugin needs (o.Needs) add to them as install.sh's did: more ingress
+// clients, more credential providers after the bundled k8s.io one (one
+// object, or a JSON array of several), and --preview gates.
 func AteSetupArgs(o Options, kubeContext string) []string {
-	ids := o.IngressIDs
-	if len(ids) == 0 {
-		ids = []string{"spiffe://cluster.local/ns/ate-system/sa/atenet-client"}
+	ids := append([]string{AtenetClientID}, o.Needs.IngressIDs...)
+	providers := `{"name":"k8s.io"}`
+	if len(o.Needs.CredentialProviders) > 0 {
+		providers = "[" + strings.Join(append([]string{providers}, o.Needs.CredentialProviders...), ",") + "]"
 	}
 	var extra []string
+	if len(o.Needs.Preview) > 0 {
+		extra = append(extra, "--preview="+strings.Join(o.Needs.Preview, ","))
+	}
 	switch {
 	case o.db() == DatabaseRDS:
 		extra = append(extra, "--ateapi-postgres-server-ca-file", o.caFile)
@@ -182,7 +206,7 @@ func AteSetupArgs(o Options, kubeContext string) []string {
 		"--image-repo", o.ImageRepo, "--image-tag", o.Tag,
 		"--storage-bucket-name", o.SnapBucket,
 		"--snapshot-location", "s3://" + o.SnapBucket + "/",
-		"--credential-provider", `{"name":"k8s.io"}`,
+		"--credential-provider", providers,
 		"--ingress-allowed-spiffe-ids", strings.Join(ids, ","),
 		"--sandbox-classes", o.SandboxClasses,
 		"--rollout-timeout", "5m",
@@ -224,18 +248,7 @@ func Deploy(ctx context.Context, w io.Writer, o Options) error {
 	if db := o.db(); db != DatabaseRDS && db != DatabaseBundled {
 		return fmt.Errorf("database %q is not %s or %s", db, DatabaseRDS, DatabaseBundled)
 	}
-	tree := TreeDir(o.TreeRoot, o.Tag)
-	if err := FetchTree(ctx, w, tree, o.Repo, o.Tag); err != nil {
-		return err
-	}
-	if err := eksoverlay.Apply(w, tree, o.Overlay, o.Region); err != nil {
-		return err
-	}
-	c, err := awsx.New(ctx, o.Profile, o.Region)
-	if err != nil {
-		return err
-	}
-	cl, err := c.Describe(ctx, o.Cluster)
+	cl, err := describeCluster(ctx, o.Profile, o.Region, o.Cluster)
 	if err != nil {
 		return err
 	}
@@ -250,12 +263,107 @@ func Deploy(ctx context.Context, w io.Writer, o Options) error {
 	if o.volumeTags, err = volumeTags(o.Cluster, o.Region, tags); err != nil {
 		return err
 	}
+	// The kubeconfig first: the plugin record is read off the cluster, and
+	// a plugin may replace the release the tree is fetched from (mode 3).
 	kc := awsx.KubeconfigPath(o.Cluster, o.Region)
 	fmt.Fprintln(w, KubeconfLine+kc)
-	if err := awsx.WriteKubeconfig(kc, cl, o.Region, o.Profile); err != nil {
+	if err := writeKubeconfig(kc, cl, o.Region, o.Profile); err != nil {
 		return err
 	}
-	return install(ctx, w, o, cl.Name, kc, tree)
+	po := o.pluginOptions(kc, cl.AutoMode)
+	ids, err := resolvePlugins(ctx, w, &o, po)
+	if err != nil {
+		return err
+	}
+	tree := TreeDir(o.TreeRoot, o.Tag)
+	if err := fetchTree(ctx, w, tree, o.Repo, o.Tag); err != nil {
+		return err
+	}
+	if o.Needs.Source != nil && o.Needs.Source.Commit != "" {
+		if err := checkCommit(ctx, tree, o.Needs.Source.Commit); err != nil {
+			return err
+		}
+	}
+	if err := applyOverlay(w, tree, o.Overlay, o.Region); err != nil {
+		return err
+	}
+	if err := install(ctx, w, o, cl.Name, kc, tree); err != nil {
+		return err
+	}
+	if len(ids) > 0 {
+		return recordPlugins(ctx, w, po, ids...)
+	}
+	return nil
+}
+
+// Seams replaced in tests (with describeCluster and deleteRun in delete.go).
+var (
+	writeKubeconfig = awsx.WriteKubeconfig
+	fetchTree       = FetchTree
+	applyOverlay    = eksoverlay.Apply
+	readRecord      = plugin.ReadRecord
+	recordPlugins   = plugin.AddToRecord
+	removePlugins   = plugin.Run
+)
+
+// pluginOptions is what plugin code gets for this install.
+func (o Options) pluginOptions(kc string, autoMode bool) plugin.Options {
+	po := o.Plugin
+	po.Cluster, po.Region, po.Profile = o.Cluster, o.Region, o.Profile
+	po.Tag, po.TreeRoot, po.Kubeconfig, po.AutoMode = o.Tag, o.TreeRoot, kc, autoMode
+	if po.Overlay == "" {
+		po.Overlay = o.Overlay
+	}
+	return po
+}
+
+// resolvePlugins sets o.Needs from the recorded plugins plus o.Plugins, and
+// applies a plugin's Source to the release. It returns every plugin ID the
+// install now carries, in install order.
+func resolvePlugins(ctx context.Context, w io.Writer, o *Options, po plugin.Options) ([]string, error) {
+	rec, err := readRecord(ctx, w, po)
+	if err != nil {
+		return nil, err
+	}
+	ps, err := plugin.Resolve(append(rec, o.Plugins...))
+	if err != nil {
+		return nil, err
+	}
+	if o.Needs, err = plugin.Merge(ps); err != nil {
+		return nil, err
+	}
+	var ids []string
+	for _, p := range ps {
+		ids = append(ids, p.ID)
+	}
+	if len(ids) > 0 {
+		fmt.Fprintln(w, PluginsLine+strings.Join(ids, ", "))
+	}
+	if s := o.Needs.Source; s != nil {
+		if s.Repo != "" {
+			o.Repo = s.Repo
+		}
+		if s.Tag != "" {
+			o.Tag = s.Tag
+		}
+		if s.ImageRepo != "" {
+			o.ImageRepo = s.ImageRepo
+		}
+	}
+	return ids, nil
+}
+
+// checkCommit fails unless tree is checked out at commit: a Source pins the
+// commit its tag must name, so a moved tag is caught.
+var checkCommit = func(ctx context.Context, tree, commit string) error {
+	var out bytes.Buffer
+	if err := runCommand(ctx, io.Discard, command{Dir: tree, Stdout: &out, Argv: []string{"git", "rev-parse", "HEAD"}}); err != nil {
+		return err
+	}
+	if got := strings.TrimSpace(out.String()); got != commit {
+		return fmt.Errorf("the tree at %s is commit %s, not the pinned %s", tree, got, commit)
+	}
+	return nil
 }
 
 // install is the deploy after the kubeconfig: the StorageClass, the

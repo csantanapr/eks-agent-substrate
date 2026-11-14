@@ -13,6 +13,7 @@ import (
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/demo"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/eksoverlay"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/execx"
+	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/probe"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/state"
 )
@@ -175,11 +176,16 @@ func (b builder) selfSpec(s *state.Setup, cluster, label string, sim []string, f
 // controlPlane re-executes the installer with --deploy-control-plane.
 func (b builder) controlPlane(s *state.Setup) execx.Spec {
 	sim := []string{
-		controlplane.CachedLine + s.SubstrateTag,
-		eksoverlay.LinePrefix + "added deploy/eks to " + eksoverlay.BaseKustomization,
-		eksoverlay.LinePrefix + "applied code patch ate-setup-s3-assets-v1.0.0.patch",
 		controlplane.KubeconfLine + "~/.cache/substrate-eks/kubeconfig/" + s.ClusterName + "." + s.Region + ".yaml",
 	}
+	if len(s.Plugins) > 0 {
+		sim = append(sim, controlplane.PluginsLine+strings.Join(resolvedIDs(s.Plugins), ", "))
+	}
+	sim = append(sim,
+		controlplane.CachedLine+s.SubstrateTag,
+		eksoverlay.LinePrefix+"added deploy/eks to "+eksoverlay.BaseKustomization,
+		eksoverlay.LinePrefix+"applied code patch ate-setup-s3-assets-v1.0.0.patch",
+	)
 	// The StorageClass prerequisite, as applyStorageClass prints it: always
 	// for the bundled database, and on a cluster this installer created.
 	if s.Database == state.DatabaseBundled || s.ClusterOwned {
@@ -199,12 +205,40 @@ func (b builder) controlPlane(s *state.Setup) execx.Spec {
 		`daemon set "atelet" successfully rolled out`,
 		controlplane.ReadyLine,
 	)
-	spec := b.selfSpec(s, s.ClusterName, "ate-setup deploy ate-system", sim,
-		"--deploy-control-plane", "--database", s.Database, "--tag", s.SubstrateTag,
-		"--snap-bucket", s.SnapBucket(), "--asset-bucket", s.AssetBucket())
+	flags := []string{"--deploy-control-plane", "--database", s.Database, "--tag", s.SubstrateTag,
+		"--snap-bucket", s.SnapBucket(), "--asset-bucket", s.AssetBucket()}
+	if len(s.Plugins) > 0 {
+		flags = append(flags, "--plugins", plugin.FormatRecord(s.Plugins))
+	}
+	spec := b.selfSpec(s, s.ClusterName, "ate-setup deploy ate-system", sim, flags...)
 	spec.Display = "go run ./cmd/ate-setup deploy ate-system  (substrate " + s.SubstrateTag + " + deploy/eks, database " + s.Database + ")"
 	spec.DisplayIsSummary = true
 	return spec
+}
+
+// resolvedIDs is ids plus what they require, in install order (ids as given
+// when one is unknown: main has already refused that).
+func resolvedIDs(ids []string) []string {
+	ps, err := plugin.Resolve(ids)
+	if err != nil {
+		return ids
+	}
+	out := make([]string, len(ps))
+	for i, p := range ps {
+		out[i] = p.ID
+	}
+	return out
+}
+
+// plugins re-executes the installer with --plugin-action deploy for the
+// chosen plugins, after the control plane carries their needs.
+func (b builder) plugins(s *state.Setup) execx.Spec {
+	var sim []string
+	for _, id := range resolvedIDs(s.Plugins) {
+		sim = append(sim, plugin.DeployLine+id, plugin.VerifyLine+id, plugin.ReadyLine+id)
+	}
+	return b.selfSpec(s, s.ClusterName, "plugins", sim,
+		"--plugin-action", plugin.ActionDeploy, "--plugins", plugin.FormatRecord(s.Plugins), "--tag", s.SubstrateTag)
 }
 
 // demoStep re-executes the installer with --deploy-demo --verify: the counter
