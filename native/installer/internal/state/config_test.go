@@ -179,4 +179,12 @@ func TestValidateConfigBothWays(t *testing.T) {
 	if bad := ValidateConfig(good); len(bad) != 0 {
 		t.Errorf("valid edits refused: %v", bad)
 	}
+	// Both ways for setup-aws's default: "auto" alone is accepted; "auto"
+	// mixed with a range, or another word, is refused.
+	for value, ok := range map[string]bool{"auto": true, "auto 203.0.113.0/24": false, "Auto": false, "any": false} {
+		good["EKS_PUBLIC_ACCESS_CIDRS"] = value
+		if bad := ValidateConfig(good); (len(bad) == 0) != ok {
+			t.Errorf("EKS_PUBLIC_ACCESS_CIDRS=%q: findings %v, want accepted=%v", value, bad, ok)
+		}
+	}
 }

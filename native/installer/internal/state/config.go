@@ -354,10 +354,14 @@ func ValidateConfig(values map[string]string) map[string]string {
 	for _, kv := range strings.Fields(values["TAGS"]) {
 		check("TAGS", tagRe.MatchString(kv), "space-separated key=value pairs (letters, digits and _ . : / + @ -)")
 	}
+	// "auto" alone is setup-aws's default (this machine's address as a /32);
+	// otherwise every field is a CIDR.
 	cidrs := strings.Fields(values["EKS_PUBLIC_ACCESS_CIDRS"])
-	check("EKS_PUBLIC_ACCESS_CIDRS", len(cidrs) > 0, "at least one CIDR (0.0.0.0/0 is any address)")
-	for _, c := range cidrs {
-		check("EKS_PUBLIC_ACCESS_CIDRS", cidrRe.MatchString(c), "space-separated IPv4 CIDRs such as 203.0.113.0/24")
+	check("EKS_PUBLIC_ACCESS_CIDRS", len(cidrs) > 0, `"auto" (this machine's address) or at least one CIDR (0.0.0.0/0 is any address)`)
+	if !(len(cidrs) == 1 && cidrs[0] == "auto") {
+		for _, c := range cidrs {
+			check("EKS_PUBLIC_ACCESS_CIDRS", cidrRe.MatchString(c), `"auto", or space-separated IPv4 CIDRs such as 203.0.113.0/24`)
+		}
 	}
 	check("SUBSTRATE_TAG", releaseRe.MatchString(values["SUBSTRATE_TAG"]), "a release tag such as v1.0.0")
 	check("SUBSTRATE_IMAGE_REPO", imageRe.MatchString(values["SUBSTRATE_IMAGE_REPO"]), "an image repository such as ghcr.io/agent-substrate/substrate")
