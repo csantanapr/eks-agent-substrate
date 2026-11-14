@@ -255,8 +255,9 @@ func signedGet(ctx context.Context, ac aws.Config, service, u string, v any) err
 // ---- teardown and inventory of a ServiceAccount's Pod Identity --------------
 
 // podIdentitySteps delete what roleForSA made for ns/sa: its associations,
-// then its role <IAMPrefix>-<sa>. Either one without this deployment's owner
-// tag is a refusal.
+// then its role <IAMPrefix>-<sa>. An association without this deployment's
+// owner tag is left alone, a fixed name (stepAddon); the role, a derived
+// name, is a refusal.
 func (e *tdEnv) podIdentitySteps(ns, sa string) []pluginStep {
 	role := e.n.IAMPrefix + "-" + sa
 	return []pluginStep{
@@ -268,6 +269,9 @@ func (e *tdEnv) podIdentitySteps(ns, sa string) []pluginStep {
 			var ts []tdTarget
 			var rs []string
 			for _, a := range as {
+				if !e.owned(a.Tags) {
+					continue
+				}
 				label := assocLabel(a)
 				if r := e.refuse("Pod Identity association", label, a.Tags); r != "" {
 					rs = append(rs, r)

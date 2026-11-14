@@ -647,6 +647,8 @@ func (r *rotTD) rotating(ctx context.Context, name string) (*secretsmanager.Desc
 	return s, nil
 }
 
+// esoAssociations are this deployment's associations of
+// external-secrets/external-secrets.
 func (r *rotTD) esoAssociations(ctx context.Context) ([]esoAssoc, error) {
 	cl, err := r.e.cluster(ctx)
 	if err != nil || cl == nil {
@@ -658,7 +660,9 @@ func (r *rotTD) esoAssociations(ctx context.Context) ([]esoAssoc, error) {
 	}
 	var out []esoAssoc
 	for _, a := range as {
-		if aws.ToString(a.Namespace) == esoNamespace && aws.ToString(a.ServiceAccount) == esoServiceAccount {
+		// A fixed name: one without the owner tag is the cluster owner's
+		// own External Secrets, left alone and not listed (stepAddon).
+		if aws.ToString(a.Namespace) == esoNamespace && aws.ToString(a.ServiceAccount) == esoServiceAccount && r.e.owned(a.Tags) {
 			out = append(out, esoAssoc{id: a.AssociationId, label: assocLabel(a), tags: a.Tags})
 		}
 	}

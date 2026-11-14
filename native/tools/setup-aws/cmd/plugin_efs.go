@@ -558,6 +558,15 @@ func efsTeardown(e *tdEnv) []pluginStep {
 }
 
 // stepAddon deletes an owned add-on of the cluster and waits until it is gone.
+//
+// An add-on has a fixed name, as does a Pod Identity association of a fixed
+// namespace and ServiceAccount, so one without this deployment's owner tag is
+// the cluster owner's own (EKS users often install aws-efs-csi-driver
+// themselves). Teardown leaves it alone and inventory does not list it, as
+// roleTargets(..., strict=false) does a role the cluster points at; refusing
+// it would stop every teardown of a cluster the user brought, plugin or not.
+// A derived name (a role, a bucket, a security group, a file system's token)
+// still refuses one of another owner.
 func (e *tdEnv) stepAddon(name string) tdStep {
 	return func(ctx context.Context) ([]tdTarget, []string, error) {
 		cl, err := e.cluster(ctx)
@@ -569,7 +578,7 @@ func (e *tdEnv) stepAddon(name string) tdStep {
 			return nil, nil, err
 		}
 		a, err := describeAddon(ctx, c.EKS, e.n.Cluster, name)
-		if err != nil || a == nil {
+		if err != nil || a == nil || !e.owned(a.Tags) {
 			return nil, nil, err
 		}
 		if r := e.refuse("EKS add-on", name, a.Tags); r != "" {
@@ -589,7 +598,8 @@ func (e *tdEnv) stepAddon(name string) tdStep {
 	}
 }
 
-// csiAssociations are the Pod Identity associations of kube-system/sa.
+// csiAssociations are this deployment's Pod Identity associations of
+// kube-system/sa; one without its owner tag is left alone (stepAddon).
 func (e *tdEnv) csiAssociations(ctx context.Context, sa string) ([]*ekstypes.PodIdentityAssociation, error) {
 	as, err := e.associations(ctx)
 	if err != nil {
@@ -597,15 +607,15 @@ func (e *tdEnv) csiAssociations(ctx context.Context, sa string) ([]*ekstypes.Pod
 	}
 	var out []*ekstypes.PodIdentityAssociation
 	for _, a := range as {
-		if aws.ToString(a.Namespace) == csiNamespace && aws.ToString(a.ServiceAccount) == sa {
+		if aws.ToString(a.Namespace) == csiNamespace && aws.ToString(a.ServiceAccount) == sa && e.owned(a.Tags) {
 			out = append(out, a)
 		}
 	}
 	return out, nil
 }
 
-// stepCSIAssociation deletes the Pod Identity associations of kube-system/sa
-// (core teardown leaves kube-system's to the cluster).
+// stepCSIAssociation deletes this deployment's Pod Identity associations of
+// kube-system/sa (core teardown leaves kube-system's to the cluster).
 func (e *tdEnv) stepCSIAssociation(sa string) tdStep {
 	return func(ctx context.Context) ([]tdTarget, []string, error) {
 		as, err := e.csiAssociations(ctx, sa)
@@ -800,8 +810,8 @@ func (e *tdEnv) roleRow(ctx context.Context, name string) ([]tdRow, error) {
 	return []tdRow{{Kind: "IAM role", ID: name, Tags: kvMap(r.Role.Tags, iamKV)}}, nil
 }
 
-// addonRows are the add-on's and kube-system/sa's association rows, while the
-// cluster exists.
+// addonRows are the rows of the add-on and kube-system/sa's associations
+// that carry this deployment's owner tag, while the cluster exists (stepAddon).
 func (e *tdEnv) addonRows(ctx context.Context, addon string, sas ...string) ([]tdRow, error) {
 	cl, err := e.cluster(ctx)
 	if err != nil || cl == nil {
@@ -817,7 +827,7 @@ func (e *tdEnv) addonRows(ctx context.Context, addon string, sas ...string) ([]t
 		if err != nil {
 			return nil, err
 		}
-		if a != nil {
+		if a != nil && e.owned(a.Tags) {
 			rows = append(rows, tdRow{Kind: "EKS add-on", ID: addon, Tags: a.Tags})
 		}
 	}
@@ -846,9 +856,10 @@ func (e *tdEnv) sgRows(ctx context.Context, name string) ([]tdRow, error) {
 	return rows, nil
 }
 
-// efsInventory lists what is left of the efs plugin, whatever its tags: the
-// add-on, the association and role, the file system with its access points
-// and mount targets, and the security group.
+// efsInventory lists what is left of the efs plugin: the add-on and the
+// association when they carry the owner tag (stepAddon), and whatever its
+// tags the role, the file system with its access points and mount targets,
+// and the security group.
 func efsInventory(ctx context.Context, e *tdEnv) ([]tdRow, error) {
 	rows, err := e.addonRows(ctx, efsAddon, efsControllerSA)
 	if err != nil {

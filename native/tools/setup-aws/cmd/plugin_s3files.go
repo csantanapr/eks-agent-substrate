@@ -633,10 +633,11 @@ func (e *tdEnv) hasInlinePolicy(ctx context.Context, role, name string) (bool, e
 	return false, nil
 }
 
-// s3filesInventory lists what is left of the s3files plugin, whatever its
-// tags: the node association, the bucket, the file systems with their access
-// points and mount targets, the roles, the controller role's s3files policy
-// and the security group.
+// s3filesInventory lists what is left of the s3files plugin: the node
+// association when it carries the owner tag (stepAddon), and whatever its
+// tags the bucket, the file systems with their access points and mount
+// targets, the roles, the controller role's s3files policy and the security
+// group.
 func s3filesInventory(ctx context.Context, e *tdEnv) ([]tdRow, error) {
 	rows, err := e.addonRows(ctx, "", efsNodeSA)
 	if err != nil {
