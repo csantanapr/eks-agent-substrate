@@ -1,9 +1,7 @@
 # The Job that creates Substrate's database roles, schema and login users on
 # the private RDS instance. The installer (internal/controlplane, database.go)
 # fills in the placeholders, applies it through kubectl's stdin, waits for it
-# to complete, then deletes the namespace that held the credentials. It is
-# eks-talk's aws/db-bootstrap-job.yaml with the same placeholders, so the two
-# can be compared with diff.
+# to complete, then deletes the namespace that held the credentials.
 #
 # Placeholders, filled in by the installer:
 #   NS     the throwaway namespace, ate-db-bootstrap

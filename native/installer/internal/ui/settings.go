@@ -13,9 +13,8 @@ import (
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/theme"
 )
 
-// settingsScreen edits what config.env controls for the run, as eks-talk's
-// first installer's Settings screen did: the new cluster's knobs (only when
-// the run creates the cluster), TAGS, the release and its image repository,
+// settingsScreen edits what config.env controls for the run: the new
+// cluster's knobs (only when the run creates the cluster), TAGS, the release and its image repository,
 // the sandbox classes and the database. Values are checked with
 // state.ValidateConfig; n applies them to the Setup and moves on, and the
 // install writes them to config.local.env when it starts (Review).

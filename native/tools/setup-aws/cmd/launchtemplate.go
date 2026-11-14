@@ -26,8 +26,9 @@ type ltRef struct {
 	version int64
 }
 
-// launchTemplateName is lib/common.sh's LT_NAME for microvm; the system and
-// gvisor groups, whose templates eksctl used to make, follow the same form.
+// launchTemplateName is the node group's launch template:
+// <cluster>-microvm-nested-virt for microvm, <cluster>-<group>-nodes for the
+// system and gvisor groups.
 func (r *clusterRun) launchTemplateName(g nodeGroupSpec) string {
 	if g.NestedVirt {
 		return r.e.names.Cluster + "-microvm-nested-virt"
@@ -64,8 +65,8 @@ func (r *clusterRun) launchTemplateData(g nodeGroupSpec) *ec2types.RequestLaunch
 	return d
 }
 
-// ltSettings is create-cluster.sh's lt_digest: the settings of a template
-// version that matter for isolation, as one comparable value.
+// ltSettings are the settings of a template version that matter for
+// isolation, as one comparable value.
 type ltSettings struct {
 	NestedVirt, Tokens, Endpoint, VolumeType string
 	HopLimit, VolumeSize                     int32

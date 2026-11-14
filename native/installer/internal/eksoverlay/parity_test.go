@@ -15,11 +15,11 @@ import (
 )
 
 // Render parity (issue #5, AC4.2): on a pristine tree, deploy/eks must
-// produce what eks-talk's script path produces from the same release, so the
-// native installer and the scripts install the same control plane.
+// produce what the reference patch, patches/substrate-<tag>-eks.patch,
+// produces from the same release.
 //
-//	script path: git apply patches/substrate-<tag>-eks.patch, then write the
-//	             Region over REPLACE_WITH_AWS_REGION (substrate/fetch.sh)
+//	patch path:  git apply patches/substrate-<tag>-eks.patch, then write the
+//	             Region over REPLACE_WITH_AWS_REGION
 //	native path: eksoverlay.Apply
 //
 // Both trees render manifests/ate-install/base with kustomize, and the
@@ -30,8 +30,8 @@ import (
 const (
 	parityTag    = "v1.0.0"
 	parityRegion = "us-west-2"
-	// scriptPatch is the script path's patch, from this package's directory.
-	scriptPatch  = "../../../../patches/substrate-" + parityTag + "-eks.patch"
+	// refPatch is the reference patch, from this package's directory.
+	refPatch     = "../../../../patches/substrate-" + parityTag + "-eks.patch"
 	regionMarker = "value: REPLACE_WITH_AWS_REGION"
 )
 
@@ -68,10 +68,10 @@ func pristine(t *testing.T, dir string) string {
 	return dir
 }
 
-// scriptPath applies the patch as substrate/fetch.sh does.
-func scriptPath(t *testing.T, dir string) {
+// patchPath applies the reference patch and writes the Region.
+func patchPath(t *testing.T, dir string) {
 	t.Helper()
-	patch, err := filepath.Abs(scriptPatch)
+	patch, err := filepath.Abs(refPatch)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,10 +147,10 @@ func goChanges(t *testing.T, dir string) string {
 }
 
 // differences lists how a tree's render and Go changes differ from the
-// script path's.
-func differences(t *testing.T, script, tree string) []string {
+// patch path's.
+func differences(t *testing.T, patched, tree string) []string {
 	t.Helper()
-	w, g := render(t, script), render(t, tree)
+	w, g := render(t, patched), render(t, tree)
 	var out []string
 	keys := slices.Sorted(func(yield func(string) bool) {
 		for k := range w {
@@ -169,15 +169,15 @@ func differences(t *testing.T, script, tree string) []string {
 		b, inG := g[k]
 		switch {
 		case !inG:
-			out = append(out, "only in the script render: "+k)
+			out = append(out, "only in the patched render: "+k)
 		case !inW:
 			out = append(out, "only in the tree's render: "+k)
 		case a != b:
-			out = append(out, fmt.Sprintf("%s differs:\n  script: %s\n  tree:   %s", k, clip(a), clip(b)))
+			out = append(out, fmt.Sprintf("%s differs:\n  patched: %s\n  tree:    %s", k, clip(a), clip(b)))
 		}
 	}
-	if gw, gg := goChanges(t, script), goChanges(t, tree); gw != gg {
-		out = append(out, fmt.Sprintf("the Go changes under cmd/ differ:\n--- script\n%s\n--- tree\n%s", clip(gw), clip(gg)))
+	if gw, gg := goChanges(t, patched), goChanges(t, tree); gw != gg {
+		out = append(out, fmt.Sprintf("the Go changes under cmd/ differ:\n--- patched\n%s\n--- tree\n%s", clip(gw), clip(gg)))
 	}
 	return out
 }
@@ -198,20 +198,20 @@ func TestRenderParity(t *testing.T) {
 		t.Fatal(err)
 	}
 	tmp := t.TempDir()
-	script := pristine(t, filepath.Join(tmp, "script"))
-	scriptPath(t, script)
+	patched := pristine(t, filepath.Join(tmp, "patched"))
+	patchPath(t, patched)
 	native := pristine(t, filepath.Join(tmp, "native"))
 	if err := Apply(io.Discard, native, overlay, parityRegion); err != nil {
 		t.Fatal(err)
 	}
-	if d := differences(t, script, native); len(d) > 0 {
-		t.Fatalf("deploy/eks does not render what %s does:\n%s", filepath.Base(scriptPatch), strings.Join(d, "\n"))
+	if d := differences(t, patched, native); len(d) > 0 {
+		t.Fatalf("deploy/eks does not render what %s does:\n%s", filepath.Base(refPatch), strings.Join(d, "\n"))
 	}
 
 	// Both ways: the comparison must see a tree without the EKS changes,
 	// and an overlay that gets one value wrong.
 	other := pristine(t, filepath.Join(tmp, "other"))
-	d := differences(t, script, other)
+	d := differences(t, patched, other)
 	for _, s := range d {
 		t.Log("unpatched tree: " + strings.SplitN(s, "\n", 2)[0])
 	}
@@ -237,7 +237,7 @@ func TestRenderParity(t *testing.T) {
 	if err := Apply(io.Discard, other, broken, parityRegion); err != nil {
 		t.Fatal(err)
 	}
-	d = differences(t, script, other)
+	d = differences(t, patched, other)
 	for _, s := range d {
 		t.Log("broken overlay: " + strings.SplitN(s, "\n", 2)[0])
 	}

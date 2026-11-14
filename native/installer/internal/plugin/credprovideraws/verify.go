@@ -21,9 +21,8 @@ import (
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin"
 )
 
-// Verify is demos/credprovider-aws/verify.sh. It proves egress credential
-// injection end to end without printing the secret (values are compared by
-// SHA-256):
+// Verify proves egress credential injection end to end without printing the
+// secret (values are compared by SHA-256):
 //  1. an actor's HTTPS request with a placeholder header reaches a
 //     header-echo endpoint with the Secrets Manager value in that header;
 //  2. the actor holds only the placeholder: the value is in neither its

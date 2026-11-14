@@ -15,9 +15,9 @@ import (
 	smtypes "github.com/aws/aws-sdk-go-v2/service/secretsmanager/types"
 )
 
-// The credprovider-aws plugin's AWS half, demos/credprovider-aws/deploy.sh's
-// AWS part and clean.sh: the provider's Pod Identity role, which may read only
-// this deployment's secrets under ate/ tagged ate.dev/injectable=true; the
+// The credprovider-aws plugin's AWS half, made and deleted here: the
+// provider's Pod Identity role, which may read only this deployment's
+// secrets under ate/ tagged ate.dev/injectable=true; the
 // two probe secrets, one injectable and one not; and the ECR repositories the
 // installer pushes the provider and probe images to. The installer's
 // credprovideraws package uses the same names.

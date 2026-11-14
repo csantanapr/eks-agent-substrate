@@ -21,8 +21,7 @@ import (
 
 // OwnerTagKey marks every resource this tool creates. A resource with a
 // global name (bucket, IAM role) is reused or changed only when it carries
-// this tag with this deployment's value. It matches lib/common.sh, so the
-// scripts and this tool recognise each other's resources.
+// this tag with this deployment's value.
 const OwnerTagKey = "agent-substrate-on-eks/deployment"
 
 // Config holds the settings every subcommand reads. Each has a flag, and the
@@ -45,7 +44,7 @@ type Config struct {
 var cfg Config
 
 // Names are the resource names derived from the config and the caller's
-// account. They match lib/common.sh.
+// account. The installer reads the same names.
 type Names struct {
 	Partition, Account, Region, Cluster string
 	SnapBucket, AssetBucket             string

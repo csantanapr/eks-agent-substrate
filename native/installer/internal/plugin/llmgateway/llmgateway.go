@@ -24,7 +24,7 @@ const (
 	// DefaultProfile is BEDROCK_INFERENCE_PROFILE's default (config.env), the
 	// model "claude"; setup-aws reads the same variable.
 	DefaultProfile = "us.anthropic.claude-haiku-5-5"
-	// smokeImage is the throwaway client of the smoke test (deploy.sh's).
+	// smokeImage is the throwaway client of the smoke test.
 	smokeImage = "public.ecr.aws/docker/library/busybox:1.37@sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec"
 )
 
@@ -87,7 +87,7 @@ func render(region string, models map[string]string) (string, error) {
 	return out, nil
 }
 
-// Deploy is llm-gateway/deploy.sh after its IAM part: it picks the profiles,
+// Deploy makes the gateway after its IAM part: it picks the profiles,
 // applies the gateway (ClusterIP only), restarts it so a changed model list
 // takes effect, and makes sure its pods carry Pod Identity credentials.
 func Deploy(ctx context.Context, w io.Writer, o plugin.Options) error {
@@ -118,9 +118,9 @@ func Deploy(ctx context.Context, w io.Writer, o plugin.Options) error {
 	return EnsurePodIdentity(ctx, w, o, namespace, deploy, selector)
 }
 
-// EnsurePodIdentity is lib/common.sh's ensure_pod_identity: EKS adds the Pod
-// Identity credentials to a pod only when it is created, and a new
-// association takes a few seconds to apply. It restarts the workload until
+// EnsurePodIdentity makes sure a workload's pods carry Pod Identity: EKS
+// adds the Pod Identity credentials to a pod only when it is created, and a
+// new association takes a few seconds to apply. It restarts the workload until
 // every one of its pods has them.
 func EnsurePodIdentity(ctx context.Context, w io.Writer, o plugin.Options, ns, obj, sel string) error {
 	for attempt := 1; ; attempt++ {
@@ -201,14 +201,13 @@ func lacksPodIdentity(podsJSON []byte) ([]string, error) {
 	return missing, nil
 }
 
-// smokeTries and smokeWait give IAM about two minutes to settle, as
-// deploy.sh's smoke test did.
+// smokeTries and smokeWait give IAM about two minutes to settle.
 const (
 	smokeTries = 12
 	smokeWait  = 10 * time.Second
 )
 
-// Verify is deploy.sh's smoke test: a throwaway pod in the llm-gateway
+// Verify is the smoke test: a throwaway pod in the llm-gateway
 // namespace (which the NetworkPolicy admits) asks the gateway for each model
 // name, and each must come back as a Bedrock message.
 func Verify(ctx context.Context, w io.Writer, o plugin.Options) error {

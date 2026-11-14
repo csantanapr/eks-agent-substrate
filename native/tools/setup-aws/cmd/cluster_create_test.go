@@ -528,7 +528,7 @@ func TestCreateClusterTurnsOnNetworkPolicy(t *testing.T) {
 	}
 }
 
-// A cluster create-cluster.sh (eksctl) made, missing its microvm node group:
+// A cluster eksctl made, missing its microvm node group:
 // the run uses the cluster's private subnets, creates only the missing
 // group with what it needs, and puts the created-by tag only on that.
 func TestCreateClusterCompletesAnEksctlCluster(t *testing.T) {

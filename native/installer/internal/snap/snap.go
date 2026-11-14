@@ -1,8 +1,7 @@
 // Package snap writes the wizard's rendered screen to files when the user
 // presses s: the ANSI text as the terminal gets it, the same screen as plain
 // text, and an HTML page that draws it in a terminal window at 1920x1080,
-// ready for a headless browser screenshot. It is eks-talk's first
-// installer's snapshot package (installer/internal/snap), ported.
+// ready for a headless browser screenshot (installer/docs/render.mjs).
 package snap
 
 import (

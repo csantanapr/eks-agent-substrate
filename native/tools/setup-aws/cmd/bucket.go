@@ -25,7 +25,7 @@ var bucketCmd = &cobra.Command{
 
 // createBuckets makes both buckets and reconciles their settings: Block
 // Public Access, BucketOwnerEnforced, SSE-S3, a TLS-only bucket policy and a
-// lifecycle rule for incomplete multipart uploads. It ports aws/infra.sh.
+// lifecycle rule for incomplete multipart uploads.
 func (e *env) createBuckets(ctx context.Context) error {
 	for _, b := range []string{e.names.SnapBucket, e.names.AssetBucket} {
 		if err := e.ensureBucket(ctx, b); err != nil {

@@ -32,7 +32,7 @@ type Profile struct {
 
 // version reads the version after "<prefix>.anthropic.claude-<family>-": the
 // minor version has at most two digits, so a date such as
-// claude-sonnet-4-20250514 reads as 4.0 (deploy.sh's jq).
+// claude-sonnet-4-20250514 reads as 4.0.
 var version = regexp.MustCompile(`^([0-9]+)(?:-([0-9]{1,2}))?(?:-|$)`)
 
 // Newest is the ACTIVE profile with id prefix p and the highest version; a

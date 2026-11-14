@@ -1,7 +1,6 @@
 // Package llmgateway is the llm-gateway plugin: the in-cluster LLM gateway,
-// agentgateway with an Amazon Bedrock backend and EKS Pod Identity, the
-// native form of llm-gateway/deploy.sh (which eks-talk's deploy.sh always
-// ran, so the wizard preselects it).
+// agentgateway with an Amazon Bedrock backend and EKS Pod Identity. Every
+// install has one, so the wizard preselects it.
 //
 // Actors ask for "claude" (BEDROCK_INFERENCE_PROFILE, default
 // us.anthropic.claude-haiku-5-5) or the newest "claude-haiku",

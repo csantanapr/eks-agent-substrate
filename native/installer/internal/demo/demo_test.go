@@ -611,8 +611,8 @@ func TestVerifyPassesOnBothClasses(t *testing.T) {
 }
 
 // The S3 copy of a snapshot took 4.5 to 6 minutes on sub-nt6, at the edge
-// of a 120-read wait; the check waits as long as verify.sh (10 minutes, 300
-// reads at the 2s interval), so an upload done after 200 reads passes.
+// of a 120-read wait; the check waits 10 minutes (300 reads at the 2s
+// interval), so an upload done after 200 reads passes.
 func TestVerifyWaitsForASlowSnapshotUpload(t *testing.T) {
 	root, _ := testTree(t)
 	f := newFake(t)

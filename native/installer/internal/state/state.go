@@ -208,7 +208,7 @@ const (
 	DatabaseBundled = controlplane.DatabaseBundled
 )
 
-// ClusterConfig shapes a cluster the run creates: config.env's create-cluster
+// ClusterConfig shapes a cluster the run creates: config.env's cluster
 // knobs, which `setup-aws create cluster` reads from its environment. They are
 // ignored for a cluster the run connects to.
 type ClusterConfig struct {
@@ -239,7 +239,7 @@ var clusterKnobs = []struct {
 
 // ClusterConfigFromEnv reads the knobs with lookup (os.LookupEnv), falling
 // back to config.env's defaults. A variable set to empty stays empty: an
-// exported AUTO_MODE= turns Auto Mode off, as it does for create-cluster.sh.
+// exported AUTO_MODE= turns Auto Mode off.
 func ClusterConfigFromEnv(lookup func(string) (string, bool)) ClusterConfig {
 	var c ClusterConfig
 	for _, k := range clusterKnobs {
@@ -261,7 +261,7 @@ func (c ClusterConfig) Env() []string {
 	return out
 }
 
-// Summary is the review line the create-cluster panel and step show.
+// Summary is the review line the Create the cluster panel and step show.
 func (c ClusterConfig) Summary() string {
 	auto := "Auto Mode off"
 	if c.AutoMode == "on" {
@@ -335,7 +335,7 @@ const (
 // from any lookup, such as Config.Lookup over config.env.
 func NewSetup() *Setup { return NewSetupFrom(os.LookupEnv) }
 
-// NewSetupFrom returns the defaults: the release eks-talk pins, RDS, and
+// NewSetupFrom returns the defaults: the pinned release, RDS, and
 // config.env's cluster knobs, tags and release unless lookup sets them.
 func NewSetupFrom(lookup func(string) (string, bool)) *Setup {
 	get := func(key, def string) string {

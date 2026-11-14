@@ -15,7 +15,7 @@ import (
 	ekstypes "github.com/aws/aws-sdk-go-v2/service/eks/types"
 )
 
-// nodeGroupSpec is one managed node group of cluster.yaml.
+// nodeGroupSpec is one managed node group of the cluster.
 type nodeGroupSpec struct {
 	Name              string
 	InstanceType      string
