@@ -25,6 +25,13 @@ func testClusterConfig() clusterConfig {
 func clusterTestRun(t *testing.T, f *clusterFake, plan bool, edit ...func(*clusterConfig)) *clusterRun {
 	t.Helper()
 	pollEvery = 0
+	// The fake cluster has no endpoint; testProbe stands in for the probe.
+	probeCluster = func(_ context.Context, c *ekstypes.Cluster) error {
+		if testProbe != nil {
+			return testProbe(c)
+		}
+		return nil
+	}
 	cfg = Config{Region: "us-west-2", ClusterName: "demo", Tags: "project=agent-substrate auto-delete=no",
 		MinKubernetesMinor: 37, Plan: plan}
 	newClients = func(context.Context, Config) (*Clients, error) { return &Clients{STS: fsts{}, IAM: (*fcIAM)(f)}, nil }

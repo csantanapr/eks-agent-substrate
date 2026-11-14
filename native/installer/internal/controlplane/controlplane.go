@@ -133,15 +133,18 @@ func run(ctx context.Context, w io.Writer, dir string, env []string, argv ...str
 	return runCommand(ctx, w, command{Dir: dir, Env: env, Argv: argv})
 }
 
-// FetchTree clones repo at tag into dir unless a finished fetch is there. It
-// clones into a staging directory and renames it, so an interrupted fetch is
-// never mistaken for a finished one.
-func FetchTree(ctx context.Context, w io.Writer, dir, repo, tag string) error {
+// FetchTree checks repo out at ref into dir unless a finished fetch is there.
+// A ref is a tag or branch (a shallow `git clone --branch`), or a full commit
+// id (`git init`, then a shallow fetch of that commit and a detached
+// checkout): a fork can pin a commit it never tagged, which `clone --branch`
+// cannot fetch. It works in a staging directory and renames it, so an
+// interrupted fetch is never mistaken for a finished one.
+func FetchTree(ctx context.Context, w io.Writer, dir, repo, ref string) error {
 	if _, err := os.Stat(filepath.Join(dir, completeMarker)); err == nil {
-		fmt.Fprintln(w, CachedLine+tag+" at "+dir)
+		fmt.Fprintln(w, CachedLine+ref+" at "+dir)
 		return nil
 	}
-	fmt.Fprintln(w, FetchLine+tag+" from "+repo)
+	fmt.Fprintln(w, FetchLine+ref+" from "+repo)
 	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
 		return err
 	}
@@ -150,7 +153,17 @@ func FetchTree(ctx context.Context, w io.Writer, dir, repo, tag string) error {
 		return err
 	}
 	defer os.RemoveAll(stage)
-	if err := run(ctx, w, "", nil, "git", "clone", "--quiet", "--depth", "1", "--branch", tag, repo, stage); err != nil {
+	if isCommitID(ref) {
+		for _, argv := range [][]string{
+			{"git", "init", "--quiet", "--initial-branch=substrate", stage},
+			{"git", "-C", stage, "fetch", "--quiet", "--depth", "1", repo, ref},
+			{"git", "-C", stage, "checkout", "--quiet", "--detach", "FETCH_HEAD"},
+		} {
+			if err := run(ctx, w, "", nil, argv...); err != nil {
+				return err
+			}
+		}
+	} else if err := run(ctx, w, "", nil, "git", "clone", "--quiet", "--depth", "1", "--branch", ref, repo, stage); err != nil {
 		return err
 	}
 	// Keep the marker out of git status, so builds are not stamped -dirty.
@@ -158,13 +171,35 @@ func FetchTree(ctx context.Context, w io.Writer, dir, repo, tag string) error {
 		fmt.Fprintln(f, "/"+completeMarker)
 		f.Close()
 	}
-	if err := os.WriteFile(filepath.Join(stage, completeMarker), []byte(tag+"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(stage, completeMarker), []byte(ref+"\n"), 0o644); err != nil {
 		return err
 	}
 	if err := os.RemoveAll(dir); err != nil {
 		return err
 	}
 	return os.Rename(stage, dir)
+}
+
+// isCommitID reports a full 40-character hexadecimal commit id.
+func isCommitID(ref string) bool {
+	if len(ref) != 40 {
+		return false
+	}
+	for _, c := range ref {
+		if !strings.ContainsRune("0123456789abcdef", c) {
+			return false
+		}
+	}
+	return true
+}
+
+// treeRef is what FetchTree checks out for o: the Source's pinned commit when
+// a plugin replaced the release, else the release tag.
+func (o Options) treeRef() string {
+	if s := o.Needs.Source; s != nil && s.Commit != "" {
+		return s.Commit
+	}
+	return o.Tag
 }
 
 // AteSetupArgs are the `ate-setup deploy ate-system` flags for EKS, the same
@@ -242,8 +277,10 @@ func AteSetupEnv(o Options, kubeconfig string) []string {
 // kubeconfig and runs ate-setup, on RDS (bootstrapped first) or the bundled
 // PostgreSQL.
 func Deploy(ctx context.Context, w io.Writer, o Options) error {
-	if o.Cluster == "" || o.Region == "" || o.SnapBucket == "" || o.Overlay == "" {
-		return errors.New("cluster, region, snapshot bucket and overlay are required")
+	// ate-setup stages the microVM assets in AssetBucket (AteSetupEnv); an
+	// empty one fails only minutes into the run.
+	if o.Cluster == "" || o.Region == "" || o.SnapBucket == "" || o.AssetBucket == "" || o.Overlay == "" {
+		return errors.New("cluster, region, snapshot bucket, asset bucket and overlay are required")
 	}
 	if db := o.db(); db != DatabaseRDS && db != DatabaseBundled {
 		return fmt.Errorf("database %q is not %s or %s", db, DatabaseRDS, DatabaseBundled)
@@ -276,7 +313,7 @@ func Deploy(ctx context.Context, w io.Writer, o Options) error {
 		return err
 	}
 	tree := TreeDir(o.TreeRoot, o.Tag)
-	if err := fetchTree(ctx, w, tree, o.Repo, o.Tag); err != nil {
+	if err := fetchTree(ctx, w, tree, o.Repo, o.treeRef()); err != nil {
 		return err
 	}
 	if o.Needs.Source != nil && o.Needs.Source.Commit != "" {

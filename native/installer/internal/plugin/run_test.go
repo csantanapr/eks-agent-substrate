@@ -216,3 +216,26 @@ func TestOwnerTags(t *testing.T) {
 		t.Error("a tag without = passed")
 	}
 }
+
+// Both ways: a plugin that needs EKS Auto Mode is refused, before anything
+// runs, on a cluster without it, and deployed on one with it.
+func TestRunDeployNeedsAutoMode(t *testing.T) {
+	f := &fakeCluster{}
+	o := runFixture(t, f, nil)
+	Register(Plugin{ID: "iso", Order: 4, NeedsAutoMode: "needs EKS Auto Mode",
+		Deploy: hook(f, "deploy iso", nil), Verify: hook(f, "verify iso", nil)})
+	err := Run(context.Background(), io.Discard, ActionDeploy, []string{"iso"}, o)
+	if err == nil || !strings.Contains(err.Error(), "Auto Mode off") {
+		t.Fatalf("want the Auto Mode refusal, got %v", err)
+	}
+	if len(f.log) != 0 {
+		t.Errorf("ran after the refusal: %q", f.log)
+	}
+	o.AutoMode = true
+	if err := Run(context.Background(), io.Discard, ActionDeploy, []string{"iso"}, o); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(f.log, "deploy iso") {
+		t.Errorf("not deployed on Auto Mode: %q", f.log)
+	}
+}

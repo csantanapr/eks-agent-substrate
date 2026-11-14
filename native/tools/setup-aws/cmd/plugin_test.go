@@ -2,8 +2,12 @@ package cmd
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	rgttypes "github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi/types"
 
 	"github.com/csantanapr/eks-agent-substrate/native/tools/setup-aws/phases"
 )
@@ -106,5 +110,30 @@ func TestDeletePlugin(t *testing.T) {
 	}
 	if len(order) != 0 {
 		t.Errorf("deleted after a refusal: %v", order)
+	}
+}
+
+// Both ways: an owner-tagged type a registered plugin reads itself is left to
+// that plugin's Inventory; with no plugin registered the same tagging-API
+// entry is an inventory row. The core tests stay independent of which plugins
+// are compiled in.
+func TestInventoryLeavesPluginTypesToThePlugin(t *testing.T) {
+	fsARN := "arn:aws:elasticfilesystem:us-west-2:111122223333:file-system/fs-9"
+	for _, withPlugin := range []bool{false, true} {
+		f := fullDeployment()
+		f.tagged = append(f.tagged, rgttypes.ResourceTagMapping{ResourceARN: aws.String(fsARN),
+			Tags: []rgttypes.Tag{{Key: aws.String(OwnerTagKey), Value: aws.String(tdOwner)}}})
+		e, _, _ := tdTestEnv(t, f, false, false)
+		if withPlugin {
+			pluginDefs["fs"] = pluginDef{ID: "fs", TaggingTypes: []string{"elasticfilesystem:file-system"}}
+		}
+		rows, err := e.inventory(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		listed := slices.ContainsFunc(rows, func(r tdRow) bool { return strings.Contains(r.ID, "fs-9") })
+		if listed == withPlugin {
+			t.Errorf("plugin registered=%v: fs-9 listed=%v", withPlugin, listed)
+		}
 	}
 }
