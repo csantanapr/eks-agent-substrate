@@ -563,10 +563,11 @@
 <section class="slide">
   <h2>An interactive installer in Go</h2>
   <div class="installer">
-    <div class="term"><img src="installer-tour.gif" alt="A loop through the installer's six screens: Welcome, Check your setup, Settings with the demos and plugins checked, Review with the config file and the commands in order, Provision with its live checklist and log at three points in the run, and Done with what was created and the step times"></div>
+    <div class="term"><img src="installer-tour.gif" alt="A loop through the installer's screens: Connect your cluster with each cluster's badges, Settings for the node groups, tags and release, Choose plugins, Review with each step's command, time and cost an hour, Install the plugins with its live checklist, Complete, the teardown choice, and Delete AWS resources ending with the inventory"></div>
     <div class="card"><h3 class="accent">What it adds</h3><ul>
-      <li><b>Checks first:</b> tools, account, Region, vCPU quota, nested virtualization</li>
-      <li><b>Pick</b> the cluster name, Region, node groups, demos and plugins</li>
+      <li><b>Checks first:</b> tools and account; before a cluster is made, nested virtualization and the VPC and Elastic IP quotas</li>
+      <li><b>Pick</b> or create the cluster, the database, node groups and plugins</li>
+      <li><b>Review</b> every command with its time and cost an hour</li>
       <li><b>Live checklist</b> from each step's own output</li>
       <li><b>Teardown</b> from the Done screen</li>
       <li><code>setup-aws</code> (AWS SDK) and <code>ate-setup</code> underneath, no shell scripts</li>
@@ -581,11 +582,11 @@
           <li>the tool versions</li>
           <li>which account and role you are signed in as, and the Region</li>
           <li>whether the cluster name is free</li>
-          <li>that the instance type supports nested virtualization, and the EC2 vCPU quota</li>
+          <li>before it creates a cluster: that the instance type supports nested virtualization, and the VPC and Elastic IP quotas</li>
         </ul>
       </li>
-      <li>On <b>Settings</b> you pick the <b>cluster name</b>, Region, profile and node groups, then the <b>demos and plugins</b>: EFS, S3 Files, login rotation, <b>Mode 3</b> and the credential provider. <i>point at the checked boxes</i></li>
-      <li>Then it shows a <b>review of the settings</b> and the commands it will run.</li>
+      <li>You <b>pick or create the cluster</b> and the <b>database</b>, then on <b>Settings</b> the node groups, tags and release, then the <b>plugins</b>: the LLM gateway, EFS, S3 Files, login rotation, the credential provider, OpenClaw and <b>Mode 3</b>. <i>point at the plugin list</i></li>
+      <li>Then it shows a <b>review</b> of every command it will run, with each step's time and the <b>cost an hour</b>.</li>
       <li>While it installs, it turns each step's output into a <b>live checklist with times</b>, next to the log.</li>
       <li>The <b>Done screen</b> prints how to reach the cluster, and has a Teardown action: the plugins and Substrate first, then every AWS resource with the deployment's owner tag.</li>
       <li>The default choices take <b>about 30 minutes</b>; this run, with every demo and plugin, took about an hour. It lives in the <code>native</code> folder of the talk repo.</li>
