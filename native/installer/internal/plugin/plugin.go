@@ -143,6 +143,18 @@ func ReleaseFix(id string) string {
 	return "run --remove-control-plane, then install again with or without --plugins " + id
 }
 
+// ReinstallFix is ReleaseFix for a control plane that runs release have
+// where the install's release is want: with or without the plugin whose
+// Source is one of the two, else at want's tag.
+func ReinstallFix(have, want string) string {
+	for _, tag := range []string{have, want} {
+		if id := SourceOf(tag); id != "" {
+			return ReleaseFix(id)
+		}
+	}
+	return "run --remove-control-plane, then install again with --tag " + want
+}
+
 // Needs is what a plugin adds to `ate-setup deploy ate-system`.
 type Needs struct {
 	// Preview gates (ate-setup --preview), e.g. "ExternalVolumes".
@@ -171,6 +183,11 @@ type Options struct {
 	// OverlayDigest is eksoverlay.Digest of deploy/eks, which Locate keys
 	// the tree by.
 	OverlayDigest string
+	// Running is the release tag the installed control plane runs, as
+	// --probe-installed reads it ("" when unknown). Remove compares it with
+	// Tag: a control plane still on another release (its plugin removed) is
+	// left only by a reinstall.
+	Running string
 	// Kubeconfig is the installer's own kubeconfig for the cluster
 	// (awsx.KubeconfigPath), already written by the caller; its current
 	// context is the cluster. Use Kubectl, which passes it.

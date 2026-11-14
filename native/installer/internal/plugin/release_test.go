@@ -149,3 +149,47 @@ func TestLocateKeysTheTreeByOverlayAndRegion(t *testing.T) {
 		t.Errorf("ReadRelease tree %q, %v; want %s", got.Tree, err, base.Tree)
 	}
 }
+
+// Both ways: with the control plane still on a fork whose plugin is no
+// longer recorded, removing a plugin with needs gives the reinstall, the
+// fix the refusal gives, since a control plane deploy would be refused; on
+// the install's own release, or with the running release unknown, it still
+// says a control plane deploy drops the needs.
+func TestRunRemoveOnAnotherRunningReleaseGivesTheReinstall(t *testing.T) {
+	for _, tc := range []struct {
+		running   string
+		reinstall bool
+	}{{"v1.0.0-fork", true}, {"v1.0.0", false}, {"", false}} {
+		f := &fakeCluster{record: "base,top"}
+		o := releaseFixture(t, f)
+		o.Running = tc.running
+		var out bytes.Buffer
+		if err := Run(context.Background(), &out, ActionRemove, []string{"top"}, o); err != nil {
+			t.Fatal(err)
+		}
+		s := out.String()
+		fix := strings.Contains(s, NeedsKeptLine+"top; it runs Substrate v1.0.0-fork, not the install's v1.0.0, so a control plane deploy is refused: "+
+			"to drop them, run --remove-control-plane, then install again with or without --plugins fork")
+		deploy := strings.Contains(s, "run --deploy-control-plane again")
+		if fix != tc.reinstall || deploy == tc.reinstall {
+			t.Errorf("running %q: reinstall %v, deploy advice %v:\n%s", tc.running, fix, deploy, s)
+		}
+	}
+}
+
+// ReinstallFix names the plugin whose Source is either release, else the
+// tag to install.
+func TestReinstallFix(t *testing.T) {
+	releaseFixture(t, &fakeCluster{})
+	for have, want := range map[string]string{
+		"v1.0.0-fork": "with or without --plugins fork",
+		"v0.9.0":      "with --tag v1.0.0",
+	} {
+		if got := ReinstallFix(have, "v1.0.0"); !strings.HasPrefix(got, "run --remove-control-plane, then install again ") || !strings.HasSuffix(got, want) {
+			t.Errorf("%s: %q", have, got)
+		}
+	}
+	if got := ReinstallFix("v1.0.0", "v1.0.0-fork"); !strings.HasSuffix(got, "--plugins fork") {
+		t.Errorf("to the fork: %q", got)
+	}
+}

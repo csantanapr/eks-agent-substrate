@@ -134,3 +134,23 @@ func TestDeploysAreRefusedOnAnotherRelease(t *testing.T) {
 		t.Errorf("--verify: %v\n%s", err, out)
 	}
 }
+
+// Both ways, through main(): --plugin-action remove reads what the control
+// plane runs, so removing a plugin with needs (openclaw's ingress clients)
+// while the fork still runs with mode3 no longer recorded gives the
+// reinstall, the refusal's fix; on v1.0.0 it says a control plane deploy
+// drops the needs.
+func TestPluginRemovalOnAnotherReleaseGivesTheReinstall(t *testing.T) {
+	for _, tc := range []struct {
+		installed, want, not string
+	}{
+		{mode3.Tag, "so a control plane deploy is refused: to drop them, run --remove-control-plane, then install again with or without --plugins mode3",
+			"run --deploy-control-plane again"},
+		{"v1.0.0", "run --deploy-control-plane again to drop them", "run --remove-control-plane"},
+	} {
+		err, out := runMain(t, cluster("openclaw", tc.installed), "--plugin-action", "remove", "--plugins", "openclaw")
+		if err != nil || !strings.Contains(out, "Plugin removed: openclaw") || !strings.Contains(out, tc.want) || strings.Contains(out, tc.not) {
+			t.Errorf("installed %s: %v\n%s", tc.installed, err, out)
+		}
+	}
+}

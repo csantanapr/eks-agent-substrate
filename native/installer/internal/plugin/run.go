@@ -325,6 +325,12 @@ func remove(ctx context.Context, w io.Writer, ids []string, o Options) error {
 			// it, so the fix is a reinstall.
 			fmt.Fprintf(w, NeedsKeptLine+"%s, its Substrate release %s among them, and so does every worker pool; to leave that release, %s (the record no longer lists %s)\n",
 				p.ID, p.Needs.Source.Tag, ReleaseFix(p.ID), p.ID)
+		case hasNeeds(p) && o.Running != "" && o.Running != o.Tag:
+			// The control plane still runs another release (a plugin that
+			// replaced it was removed), so a control plane deploy, which
+			// would drop these needs, is refused: the fix is the reinstall.
+			fmt.Fprintf(w, NeedsKeptLine+"%s; it runs Substrate %s, not the install's %s, so a control plane deploy is refused: to drop them, %s (the record no longer lists %s)\n",
+				p.ID, o.Running, o.Tag, ReinstallFix(o.Running, o.Tag), p.ID)
 		case hasNeeds(p):
 			// Run has no buckets or database to reinstall the control plane
 			// with, so it says what still runs and how to drop it.

@@ -363,8 +363,13 @@ func clusterRelease(ctx context.Context, o plugin.Options, chosen []string, depl
 		return o, err
 	}
 	fmt.Println(ReleaseLine + o.Tag + " (" + o.ImageRepo + ")")
+	// What the control plane runs: a plugin removal on another release
+	// gives the reinstall as the fix, and a deploy there is refused.
+	if o.Running, err = controlplane.InstalledRelease(ctx, o.Kubeconfig); err != nil {
+		return o, fmt.Errorf("read the release %s runs: %w", o.Cluster, err)
+	}
 	if deploying {
-		if err := controlplane.SameRelease(ctx, o.Kubeconfig, o.Cluster, o.Release); err != nil {
+		if err := controlplane.CheckRelease(o.Cluster, o.Running, o.Release); err != nil {
 			return o, err
 		}
 	}
