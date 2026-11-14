@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ecr"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
@@ -133,6 +134,7 @@ type Clients struct {
 	S3  S3API
 	IAM IAMAPI
 	ECR ECRAPI
+	EC2 eniAPI // bootstrap's network interface pass
 }
 
 var newClients = func(ctx context.Context, c Config) (*Clients, error) {
@@ -146,6 +148,7 @@ var newClients = func(ctx context.Context, c Config) (*Clients, error) {
 		S3:  s3.NewFromConfig(ac),
 		IAM: iam.NewFromConfig(ac),
 		ECR: ecr.NewFromConfig(ac),
+		EC2: ec2.NewFromConfig(ac),
 	}, nil
 }
 

@@ -481,7 +481,24 @@ type ec2Item struct {
 	id, vpc, name, state string
 	main, isDefault      bool
 	tags                 map[string]string
+	// A network interface's type, description, and whether an AWS service
+	// manages it (requester-managed).
+	ifType, desc string
+	requester    bool
 }
+
+// dataENI reports a network interface an AWS service made for Substrate's
+// data rather than for the cluster, as EC2 describes them (seen on sub-e2e):
+// an RDS instance's, an EFS or S3 Files mount target's (type efs), a
+// rotation function's (type lambda). Teardown deletes their parents with the
+// data, so --keep-cluster must not count one as the cluster's.
+func dataENI(it ec2Item) bool {
+	return it.ifType == "efs" || it.ifType == lambdaENI || it.desc == "RDSNetworkInterface"
+}
+
+// lambdaENI is a Lambda function's interface type. EC2 reports these as not
+// requester-managed (seen on sub-e2e), though Lambda deletes them.
+const lambdaENI = "lambda"
 
 // EC2 kinds, also the TYPE column of the inventory.
 const (
@@ -599,7 +616,8 @@ func (e *tdEnv) ec2List(ctx context.Context, kind string, f ...ec2types.Filter) 
 			var pg *ec2.DescribeNetworkInterfacesOutput
 			if pg, err = p.NextPage(ctx); err == nil {
 				for _, v := range pg.NetworkInterfaces {
-					out = append(out, ec2Item{id: aws.ToString(v.NetworkInterfaceId), vpc: aws.ToString(v.VpcId), state: string(v.Status), tags: kvMap(v.TagSet, ec2KV)})
+					out = append(out, ec2Item{id: aws.ToString(v.NetworkInterfaceId), vpc: aws.ToString(v.VpcId), state: string(v.Status), tags: kvMap(v.TagSet, ec2KV),
+						ifType: string(v.InterfaceType), desc: aws.ToString(v.Description), requester: aws.ToBool(v.RequesterManaged)})
 				}
 			}
 		}
@@ -935,8 +953,9 @@ func (e *tdEnv) inventory(ctx context.Context) ([]tdRow, error) {
 			if it.name != "" {
 				id = it.name + " (" + it.id + ")"
 			}
-			// The RDS security group is Substrate data; the rest is the cluster's.
-			add(tdRow{kind, id, it.tags, !(kind == kSG && it.name == e.dbID())})
+			// The RDS security group and the data's network interfaces are
+			// Substrate data; the rest is the cluster's.
+			add(tdRow{kind, id, it.tags, !(kind == kSG && it.name == e.dbID()) && !(kind == kENI && dataENI(it))})
 		}
 	}
 	// Volumes: the owner-tagged ones, and the ate-system claims' volumes

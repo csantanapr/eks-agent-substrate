@@ -146,6 +146,12 @@ func (e *env) createDBRotation(ctx context.Context, rc *rotClients) error {
 	if err := e.rotationStack(ctx, rc, t, rotSG); err != nil {
 		return err
 	}
+	// The functions' network interfaces, which Lambda makes before the
+	// stack completes: CloudFormation waits for a function in a VPC to be
+	// Active, and it is Active once its interfaces exist (eni_tags.go).
+	if err := e.tagVPCInterfaces(ctx, rc.EC2, t.vpc); err != nil {
+		return err
+	}
 	for _, who := range dbLogins {
 		s, err := rc.SM.DescribeSecret(ctx, &secretsmanager.DescribeSecretInput{SecretId: aws.String(e.names.DBSecret(who))})
 		if err != nil {

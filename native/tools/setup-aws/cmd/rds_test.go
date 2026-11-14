@@ -44,12 +44,16 @@ type fakeDB struct {
 	createCalls   int
 	deny          string // the read that returns AccessDenied
 	writes        []string
+	// vpcOwner is fakeVPC's owner tag ("" untagged), and enis the network
+	// interfaces in it, for the interface pass (eni_tags.go).
+	vpcOwner string
+	enis     map[string]*ec2types.NetworkInterface
 }
 
 func newFakeDB() *fakeDB {
 	return &fakeDB{sgs: map[string]*ec2types.SecurityGroup{}, subnetGroups: map[string]map[string]string{},
 		instances: map[string]*rdstypes.DBInstance{}, secrets: map[string]*secretsmanager.DescribeSecretOutput{},
-		values: map[string]string{}}
+		values: map[string]string{}, enis: map[string]*ec2types.NetworkInterface{}}
 }
 
 func (f *fakeDB) denied(op string) error {
@@ -132,10 +136,34 @@ func (f *fec2) DescribeSecurityGroupRules(_ context.Context, in *ec2.DescribeSec
 	}
 	return out, nil
 }
+func (f *fec2) DescribeVpcs(_ context.Context, in *ec2.DescribeVpcsInput, _ ...func(*ec2.Options)) (*ec2.DescribeVpcsOutput, error) {
+	if filterValue(in.Filters, "vpc-id") != fakeVPC {
+		return &ec2.DescribeVpcsOutput{}, nil
+	}
+	v := ec2types.Vpc{VpcId: aws.String(fakeVPC)}
+	if f.vpcOwner != "" {
+		v.Tags = []ec2types.Tag{{Key: aws.String(OwnerTagKey), Value: aws.String(f.vpcOwner)}}
+	}
+	return &ec2.DescribeVpcsOutput{Vpcs: []ec2types.Vpc{v}}, nil
+}
+func (f *fec2) DescribeNetworkInterfaces(_ context.Context, in *ec2.DescribeNetworkInterfacesInput, _ ...func(*ec2.Options)) (*ec2.DescribeNetworkInterfacesOutput, error) {
+	out := &ec2.DescribeNetworkInterfacesOutput{}
+	for _, id := range sortedKeysOf(f.enis) {
+		if aws.ToString(f.enis[id].VpcId) == filterValue(in.Filters, "vpc-id") {
+			out.NetworkInterfaces = append(out.NetworkInterfaces, *f.enis[id])
+		}
+	}
+	return out, nil
+}
 func (f *fec2) CreateTags(_ context.Context, in *ec2.CreateTagsInput, _ ...func(*ec2.Options)) (*ec2.CreateTagsOutput, error) {
 	for i := range f.rules {
 		if slices.Contains(in.Resources, aws.ToString(f.rules[i].SecurityGroupRuleId)) {
 			f.rules[i].Tags = in.Tags
+		}
+	}
+	for _, id := range in.Resources {
+		if n := f.enis[id]; n != nil {
+			n.TagSet = append(n.TagSet, in.Tags...)
 		}
 	}
 	(*fakeDB)(f).writes = append(f.writes, "CreateTags "+strings.Join(in.Resources, ","))

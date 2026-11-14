@@ -17,7 +17,8 @@ import (
 type ClusterInfo struct {
 	Version     string
 	AutoMode    bool
-	PodIdentity bool // the EKS Pod Identity Agent runs (an add-on, or built into Auto Mode)
+	PodIdentity bool   // the EKS Pod Identity Agent runs (an add-on, or built into Auto Mode)
+	VPC         string // the cluster's VPC
 }
 
 var clusterCmd = &cobra.Command{
@@ -48,6 +49,9 @@ func (e *env) checkCluster(ctx context.Context) (ClusterInfo, error) {
 		return ClusterInfo{}, fmt.Errorf("cluster %s is %s; wait for ACTIVE", e.names.Cluster, c.Status)
 	}
 	info := ClusterInfo{Version: aws.ToString(c.Version)}
+	if c.ResourcesVpcConfig != nil {
+		info.VPC = aws.ToString(c.ResourcesVpcConfig.VpcId)
+	}
 	if err := versionAtLeast(info.Version, e.cfg.MinKubernetesMinor); err != nil {
 		return info, fmt.Errorf("cluster %s: %w", e.names.Cluster, err)
 	}
