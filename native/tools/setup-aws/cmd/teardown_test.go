@@ -249,8 +249,8 @@ func TestTeardownSecondRunDeletesNothing(t *testing.T) {
 	if len(f.calls) != 0 {
 		t.Errorf("second run wrote: %v", f.calls)
 	}
-	if n := strings.Count(logs.String(), "nothing to delete"); n != 7 {
-		t.Errorf("want 'nothing to delete' for each of the 7 delete phases, got %d", n)
+	if n := strings.Count(logs.String(), "nothing to delete"); n != 8 {
+		t.Errorf("want 'nothing to delete' for each of the 8 delete phases (plugins first), got %d", n)
 	}
 	phaseOrder(t, logs.String())
 }

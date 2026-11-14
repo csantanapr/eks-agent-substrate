@@ -45,6 +45,7 @@ var RDS = []string{
 // cluster and network phases still log their line and delete nothing.
 var Teardown = []string{
 	"Listing this deployment's resources...",
+	"Deleting plugin resources...",
 	"Deleting Pod Identity associations and IAM roles...",
 	"Deleting the RDS instance and its logins...",
 	"Emptying and deleting the S3 buckets...",

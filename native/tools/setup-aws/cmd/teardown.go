@@ -85,10 +85,13 @@ type tdPhase struct {
 	steps   []tdStep
 }
 
-// teardownPhases are phases.Teardown[1:8], in order. Within a phase the
-// steps run in order, each after the one before is gone.
+// teardownPhases are phases.Teardown[1:9], in order. Within a phase the
+// steps run in order, each after the one before is gone. Plugins go first:
+// their resources (an EFS file system's mount targets, a rotation stack's
+// security group) hold the VPC and the RDS security group.
 func (e *tdEnv) teardownPhases() []tdPhase {
 	return []tdPhase{
+		e.pluginPhase(),
 		{steps: []tdStep{e.stepAssociations, e.stepSubstrateRoles}},
 		{steps: []tdStep{e.stepDBInstance, e.stepDBNetwork, e.stepSecrets}},
 		{steps: []tdStep{e.stepBuckets}},

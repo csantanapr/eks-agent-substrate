@@ -947,6 +947,14 @@ func (e *tdEnv) inventory(ctx context.Context) ([]tdRow, error) {
 	for _, v := range vols {
 		add(tdRow{kVolume, v.id, v.tags, true})
 	}
+	// Plugins list their own resources (plugin.go).
+	prows, err := e.pluginInventory(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range prows {
+		add(r)
+	}
 
 	// Every other type that carries the owner tag (a plugin's EFS file
 	// system, a CloudFormation stack).
