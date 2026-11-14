@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/netip"
 	"slices"
 	"strings"
 	"time"
@@ -101,11 +102,10 @@ func (r *clusterRun) ensureCluster(ctx context.Context) error {
 			return err
 		}
 	}
-	vc := r.cluster.ResourcesVpcConfig
-	if vc != nil && !slices.Equal(sortedCopy(vc.PublicAccessCidrs), sortedCopy(strings.Fields(r.cfg.PublicAccessCIDRs))) {
-		slog.Warn("the cluster's public endpoint allows other address ranges than EKS_PUBLIC_ACCESS_CIDRS; change them with aws eks update-cluster-config --resources-vpc-config publicAccessCidrs=...",
-			"cluster", strings.Join(vc.PublicAccessCidrs, " "), "configured", r.cfg.PublicAccessCIDRs)
+	if err := r.ensurePublicAccess(ctx); err != nil {
+		return err
 	}
+	vc := r.cluster.ResourcesVpcConfig
 	// EKS makes the cluster security group, which every node uses, and
 	// cannot tag it at create time. Only a cluster this tool created gets
 	// the created-by tag on it; eksctl's keeps its own tags.
@@ -128,6 +128,81 @@ func sortedCopy(s []string) []string {
 	c := slices.Clone(s)
 	slices.Sort(c)
 	return c
+}
+
+// ensurePublicAccess makes an existing cluster's public endpoint accept
+// EKS_PUBLIC_ACCESS_CIDRS, so rerunning `create cluster` is how to change
+// the ranges. With "auto" it adds this machine's /32 next to the ranges the
+// cluster has, unless one of them already covers it: a rerun from a new
+// address (see resolvePublicAccess) restores this machine's access without
+// cutting off anyone else's. An explicit EKS_PUBLIC_ACCESS_CIDRS replaces
+// the ranges with exactly that list, which is also how to drop an old
+// address. The endpoint's public and private switches are sent as they are.
+func (r *clusterRun) ensurePublicAccess(ctx context.Context) error {
+	vc := r.cluster.ResourcesVpcConfig
+	if vc == nil || !vc.EndpointPublicAccess {
+		return nil // no public endpoint, so no ranges to keep
+	}
+	have := vc.PublicAccessCidrs
+	want := strings.Fields(r.cfg.PublicAccessCIDRs)
+	if r.callerCIDR != "" {
+		if cidrsCover(have, r.callerCIDR) {
+			return nil
+		}
+		want = append(slices.Clone(have), r.callerCIDR)
+	}
+	if slices.Equal(sortedCopy(have), sortedCopy(want)) {
+		return nil
+	}
+	name := r.e.names.Cluster
+	var id string
+	what := fmt.Sprintf("let %s reach the Kubernetes API of cluster %s (it allows %s)", strings.Join(want, " "), name, strings.Join(have, " "))
+	if err := r.change(what, func() error {
+		out, err := r.c.EKS.UpdateClusterConfig(ctx, &eks.UpdateClusterConfigInput{Name: aws.String(name),
+			ResourcesVpcConfig: &ekstypes.VpcConfigRequest{PublicAccessCidrs: want,
+				EndpointPublicAccess: aws.Bool(vc.EndpointPublicAccess), EndpointPrivateAccess: aws.Bool(vc.EndpointPrivateAccess)}})
+		if err == nil && out.Update != nil {
+			id = aws.ToString(out.Update.Id)
+		}
+		return err
+	}); err != nil {
+		return fmt.Errorf("update the API access ranges of cluster %s: %w", name, err)
+	}
+	if r.plan() {
+		return nil
+	}
+	return waitFor(ctx, "the API access update of cluster "+name+" (a few minutes)", 20*time.Minute, func() (bool, error) {
+		out, err := r.c.EKS.DescribeUpdate(ctx, &eks.DescribeUpdateInput{Name: aws.String(name), UpdateId: aws.String(id)})
+		if err != nil {
+			return false, fmt.Errorf("describe update %s of cluster %s: %w", id, name, err)
+		}
+		switch out.Update.Status {
+		case ekstypes.UpdateStatusSuccessful:
+			return true, nil
+		case ekstypes.UpdateStatusInProgress:
+			return false, nil
+		}
+		var why []string
+		for _, e := range out.Update.Errors {
+			why = append(why, string(e.ErrorCode)+": "+aws.ToString(e.ErrorMessage))
+		}
+		return false, fmt.Errorf("the API access update of cluster %s is %s: %s", name, out.Update.Status, strings.Join(why, "; "))
+	})
+}
+
+// cidrsCover reports whether a valid range in cidrs contains the address
+// of the /32 cidr.
+func cidrsCover(cidrs []string, cidr string) bool {
+	p, err := netip.ParsePrefix(cidr)
+	if err != nil {
+		return false
+	}
+	for _, c := range cidrs {
+		if q, err := netip.ParsePrefix(c); err == nil && q.Contains(p.Addr()) {
+			return true
+		}
+	}
+	return false
 }
 
 // clusterAdminPolicy is the EKS access policy the caller gets.

@@ -209,7 +209,7 @@ var clusterKnobs = []struct {
 	{"SYSTEM_NODES", "2", func(c *ClusterConfig) *string { return &c.SystemNodes }},
 	{"GVISOR_NODES", "2", func(c *ClusterConfig) *string { return &c.GVisorNodes }},
 	{"MICROVM_NODES", "2", func(c *ClusterConfig) *string { return &c.MicroVMNodes }},
-	{"EKS_PUBLIC_ACCESS_CIDRS", "0.0.0.0/0", func(c *ClusterConfig) *string { return &c.PublicAccessCIDRs }},
+	{"EKS_PUBLIC_ACCESS_CIDRS", "auto", func(c *ClusterConfig) *string { return &c.PublicAccessCIDRs }}, // auto: setup-aws allows this machine's address, a /32
 }
 
 // ClusterConfigFromEnv reads the knobs with lookup (os.LookupEnv), falling
