@@ -71,7 +71,8 @@ type (
 		CreateSecurityGroup(context.Context, *ec2.CreateSecurityGroupInput, ...func(*ec2.Options)) (*ec2.CreateSecurityGroupOutput, error)
 		AuthorizeSecurityGroupIngress(context.Context, *ec2.AuthorizeSecurityGroupIngressInput, ...func(*ec2.Options)) (*ec2.AuthorizeSecurityGroupIngressOutput, error)
 		DescribeSecurityGroupRules(context.Context, *ec2.DescribeSecurityGroupRulesInput, ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupRulesOutput, error)
-		CreateTags(context.Context, *ec2.CreateTagsInput, ...func(*ec2.Options)) (*ec2.CreateTagsOutput, error)
+		// CreateTags and the reads of tagVPCInterfaces.
+		eniAPI
 	}
 	RDSAPI interface {
 		DescribeDBSubnetGroups(context.Context, *rds.DescribeDBSubnetGroupsInput, ...func(*rds.Options)) (*rds.DescribeDBSubnetGroupsOutput, error)
@@ -168,6 +169,10 @@ func (e *env) createRDS(ctx context.Context, rc *rdsClients) error {
 		if err := run(ctx); err != nil {
 			return err
 		}
+	}
+	// The instance's network interface, which RDS makes (eni_tags.go).
+	if err := e.tagVPCInterfaces(ctx, rc.EC2, net.vpc); err != nil {
+		return err
 	}
 	slog.Info("RDS setup completed successfully.")
 	return nil

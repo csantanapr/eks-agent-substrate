@@ -30,7 +30,15 @@ func (e *env) bootstrap(ctx context.Context) error {
 	}
 	slog.Info("Starting full bootstrap...", "cluster", e.names.Cluster, "region", e.names.Region)
 	steps := []func(context.Context) error{
-		func(ctx context.Context) error { _, err := e.checkCluster(ctx); return err },
+		func(ctx context.Context) error {
+			info, err := e.checkCluster(ctx)
+			if err != nil {
+				return err
+			}
+			// EKS attaches a control-plane interface after create cluster's
+			// pass (eni_tags.go); this one tags it.
+			return e.tagVPCInterfaces(ctx, e.c.EC2, info.VPC)
+		},
 		e.createBuckets,
 		e.createIAM,
 		e.createECR,

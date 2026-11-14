@@ -142,6 +142,10 @@ func createEFS(ctx context.Context, e *env) error {
 	if err := e.ensureEFSAddon(ctx, c.EKS); err != nil {
 		return err
 	}
+	// The mount targets' network interfaces, which EFS makes (eni_tags.go).
+	if err := e.tagVPCInterfaces(ctx, c.EC2, net.vpc); err != nil {
+		return err
+	}
 	if !e.cfg.Plan {
 		slog.Info("EFS ready", "fileSystem", fsID, "securityGroup", sg)
 	}

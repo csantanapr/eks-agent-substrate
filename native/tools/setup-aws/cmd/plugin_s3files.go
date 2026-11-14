@@ -158,6 +158,10 @@ func createS3Files(ctx context.Context, e *env) error {
 	if err := e.roleForSA(ctx, PodIdentity{csiNamespace, efsNodeSA, e.s3filesNodePolicy(fsARN)}); err != nil {
 		return err
 	}
+	// The mount targets' network interfaces, which S3 Files makes (eni_tags.go).
+	if err := e.tagVPCInterfaces(ctx, c.EC2, net.vpc); err != nil {
+		return err
+	}
 	if !e.cfg.Plan {
 		slog.Info("S3 Files ready", "fileSystem", fsID, "securityGroup", sg)
 	}
