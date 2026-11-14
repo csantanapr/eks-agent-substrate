@@ -118,6 +118,9 @@ func createEFS(ctx context.Context, e *env) error {
 	if err != nil {
 		return err
 	}
+	if err := e.refuseForeignEFSDriver(ctx, c.EKS); err != nil {
+		return err
+	}
 	net, err := clusterNetwork(ctx, c.EKS, c.EC2, e.names.Cluster)
 	if err != nil {
 		return err
@@ -143,6 +146,29 @@ func createEFS(ctx context.Context, e *env) error {
 		slog.Info("EFS ready", "fileSystem", fsID, "securityGroup", sg)
 	}
 	return nil
+}
+
+// refuseForeignEFSDriver stops the run before anything is made when the
+// aws-efs-csi-driver add-on or the controllers' Pod Identity association is
+// there without this deployment's owner tag, and names each one. Both names
+// are fixed, so they are the cluster owner's own EFS CSI driver, which the
+// plugin would otherwise take over: reconfigure the add-on (the /var/lib/ate
+// mount) and point the controllers at a role limited to its own file system.
+func (e *env) refuseForeignEFSDriver(ctx context.Context, c clusterAPI) error {
+	var errs []error
+	a, err := describeAddon(ctx, c, e.names.Cluster, efsAddon)
+	if err != nil {
+		return err
+	}
+	if a != nil {
+		if err := e.owned("EKS add-on "+efsAddon, a.Tags); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if _, err := e.ownedAssociation(ctx, csiNamespace, efsControllerSA); err != nil {
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
 }
 
 // nfsNet is the cluster's network, as the NFS plugins need it.

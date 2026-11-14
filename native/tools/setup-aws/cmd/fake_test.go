@@ -30,6 +30,7 @@ type fakeAWS struct {
 	roles    map[string]map[string]string // name -> tags
 	policies map[string]string            // role -> inline policy
 	assocs   map[string]string            // ns/sa -> role ARN
+	assocTag map[string]map[string]string // ns/sa -> tags
 	repos    map[string]bool
 	repoTags map[string]map[string]string // repository -> tags
 	writes   []string
@@ -41,7 +42,7 @@ type fakeAWS struct {
 func newFake() *fakeAWS {
 	return &fakeAWS{version: "1.37", autoMode: true,
 		buckets: map[string]map[string]string{}, roles: map[string]map[string]string{},
-		policies: map[string]string{}, assocs: map[string]string{}, repos: map[string]bool{},
+		policies: map[string]string{}, assocs: map[string]string{}, assocTag: map[string]map[string]string{}, repos: map[string]bool{},
 		repoTags: map[string]map[string]string{}}
 }
 
@@ -76,11 +77,13 @@ func (f *feks) ListPodIdentityAssociations(_ context.Context, in *eks.ListPodIde
 	return &eks.ListPodIdentityAssociationsOutput{Associations: []ekstypes.PodIdentityAssociationSummary{{AssociationId: aws.String(k)}}}, nil
 }
 func (f *feks) DescribePodIdentityAssociation(_ context.Context, in *eks.DescribePodIdentityAssociationInput, _ ...func(*eks.Options)) (*eks.DescribePodIdentityAssociationOutput, error) {
-	return &eks.DescribePodIdentityAssociationOutput{Association: &ekstypes.PodIdentityAssociation{RoleArn: aws.String(f.assocs[aws.ToString(in.AssociationId)])}}, nil
+	k := aws.ToString(in.AssociationId)
+	return &eks.DescribePodIdentityAssociationOutput{Association: &ekstypes.PodIdentityAssociation{AssociationId: in.AssociationId,
+		RoleArn: aws.String(f.assocs[k]), Tags: f.assocTag[k]}}, nil
 }
 func (f *feks) CreatePodIdentityAssociation(_ context.Context, in *eks.CreatePodIdentityAssociationInput, _ ...func(*eks.Options)) (*eks.CreatePodIdentityAssociationOutput, error) {
 	k := aws.ToString(in.Namespace) + "/" + aws.ToString(in.ServiceAccount)
-	f.assocs[k] = aws.ToString(in.RoleArn)
+	f.assocs[k], f.assocTag[k] = aws.ToString(in.RoleArn), in.Tags
 	(*fakeAWS)(f).write("CreatePodIdentityAssociation " + k)
 	return &eks.CreatePodIdentityAssociationOutput{}, nil
 }
