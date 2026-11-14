@@ -26,8 +26,11 @@ package plugin
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -53,12 +56,27 @@ const UpstreamRepo = "https://github.com/agent-substrate/substrate.git"
 // preview gate it enables to every worker, and a v1.0.0 worker exits on
 // NetworkWorkers). ReleaseOf decides it.
 type Release struct {
-	// Tag and ImageRepo name its images, <ImageRepo>/<image>:<Tag>. Tag
-	// also names its cached tree (controlplane.TreeDir).
+	// Tag and ImageRepo name its images, <ImageRepo>/<image>:<Tag>.
 	Tag, ImageRepo string
 	// Repo checked out at Ref is its tree: Ref is a Source's pinned commit,
 	// else the tag.
 	Repo, Ref string
+	// Tree is where the tree is cached with this install's EKS overlay
+	// applied (Locate); empty until located. Every step that reads the tree
+	// (the control plane deploy and delete, the demo, kubectl-ate and image
+	// builds, the plugins) reads it here.
+	Tree string
+}
+
+// Locate is r with Tree set: under root, the tree of r's tag with the overlay
+// whose digest is overlay (eksoverlay.Digest) applied for region. The overlay
+// is applied in place, so the name carries a short digest of the overlay,
+// the Region and r's repository and ref: two checkouts with different
+// deploy/eks, or two Regions, get two trees, and the same ones reuse one.
+func (r Release) Locate(root, overlay, region string) Release {
+	h := sha256.Sum256([]byte(strings.Join([]string{r.Repo, r.Ref, overlay, region}, "\x00")))
+	r.Tree = filepath.Join(root, "substrate-"+r.Tag+"-"+hex.EncodeToString(h[:4]))
+	return r
 }
 
 // Release is the release of an install with these needs: n's Source when a
@@ -142,12 +160,17 @@ type Needs struct {
 // Options is what Deploy, Verify and Remove get.
 type Options struct {
 	Cluster, Region, Profile string
-	// Release is the install's one release (ReleaseOf), already decided by
-	// the caller: a worker pool runs <ImageRepo>/ateworker-<class>:<Tag>,
-	// and what is built from the tree is built from TreeRoot's cached tree
-	// of Tag (controlplane.TreeDir), fetched from Repo at Ref when missing.
+	// Release is the install's one release (ReleaseOf), already decided and
+	// located by the caller: a worker pool runs
+	// <ImageRepo>/ateworker-<class>:<Tag>, and what is built from the tree is
+	// built from Tree, fetched from Repo at Ref when missing.
 	Release
+	// TreeRoot is where the trees are cached, and other sources a plugin
+	// fetches (the credential provider's) beside them.
 	TreeRoot string
+	// OverlayDigest is eksoverlay.Digest of deploy/eks, which Locate keys
+	// the tree by.
+	OverlayDigest string
 	// Kubeconfig is the installer's own kubeconfig for the cluster
 	// (awsx.KubeconfigPath), already written by the caller; its current
 	// context is the cluster. Use Kubectl, which passes it.

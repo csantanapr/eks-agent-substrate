@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"io"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -38,7 +39,7 @@ func TestFetchTreeByTagOrCommit(t *testing.T) {
 	} {
 		var got []string
 		root := t.TempDir()
-		dir := TreeDir(root, "x")
+		dir := filepath.Join(root, "substrate-x")
 		runCommand = func(_ context.Context, _ io.Writer, c command) error {
 			l := strings.Join(c.Argv, " ")
 			for _, a := range c.Argv {
@@ -112,14 +113,17 @@ type deployFakes struct {
 	runErr   error
 	// installed is what the probe reads off the cluster (none by default).
 	installed probe.Result
+	// trees are the directories fetched into, in order.
+	trees []string
 }
 
 // deployEnv stubs every seam Deploy reaches, for the bundled database.
 func deployEnv(t *testing.T, f *deployFakes) Options {
 	t.Helper()
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
-	prev := []any{describeCluster, writeKubeconfig, readRecord, fetchTree, checkCommit, applyOverlay, recordPlugins, runCommand, readInstalled}
+	prev := []any{describeCluster, writeKubeconfig, readRecord, fetchTree, checkCommit, applyOverlay, recordPlugins, runCommand, readInstalled, overlayDigest}
 	t.Cleanup(func() {
+		overlayDigest = prev[9].(func(string) (string, error))
 		describeCluster = prev[0].(func(context.Context, string, string, string) (awsx.Cluster, error))
 		writeKubeconfig = prev[1].(func(string, awsx.Cluster, string, string) error)
 		readRecord = prev[2].(func(context.Context, io.Writer, plugin.Options) ([]string, error))
@@ -137,6 +141,7 @@ func deployEnv(t *testing.T, f *deployFakes) Options {
 		f.calls = append(f.calls, "probe")
 		return f.installed, nil
 	}
+	overlayDigest = func(string) (string, error) { return fakeDigest, nil }
 	describeCluster = func(context.Context, string, string, string) (awsx.Cluster, error) {
 		return awsx.Cluster{Name: "demo", Status: "ACTIVE", Endpoint: "https://example.invalid",
 			CA: base64.StdEncoding.EncodeToString([]byte("ca"))}, nil
@@ -149,8 +154,9 @@ func deployEnv(t *testing.T, f *deployFakes) Options {
 		f.calls = append(f.calls, "read-record")
 		return f.record, nil
 	}
-	fetchTree = func(_ context.Context, _ io.Writer, _, repo, tag string) error {
+	fetchTree = func(_ context.Context, _ io.Writer, dir, repo, tag string) error {
 		f.calls = append(f.calls, "fetch "+repo+" "+tag)
+		f.trees = append(f.trees, dir)
 		return nil
 	}
 	checkCommit = func(_ context.Context, _, commit string) error {

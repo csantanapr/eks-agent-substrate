@@ -17,8 +17,6 @@ import (
 	"time"
 
 	"sigs.k8s.io/kustomize/kyaml/kio"
-
-	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/controlplane"
 )
 
 const (
@@ -29,7 +27,7 @@ const (
 
 func testOptions(root string) Options {
 	return Options{Cluster: "c1", Region: "us-west-2", Profile: "p", Tag: "v1.0.0",
-		TreeRoot: root, ImageRepo: "ghcr.io/agent-substrate/substrate", SandboxClasses: "gvisor,microvm"}
+		Tree: filepath.Join(root, "substrate-v1.0.0"), ImageRepo: "ghcr.io/agent-substrate/substrate", SandboxClasses: "gvisor,microvm"}
 }
 
 // testBase is the counter's base image in the test tree's .ko.yaml.
@@ -49,7 +47,7 @@ baseImageOverrides:
 func testTree(t *testing.T) (root, tree string) {
 	t.Helper()
 	root = t.TempDir()
-	tree = controlplane.TreeDir(root, "v1.0.0")
+	tree = filepath.Join(root, "substrate-v1.0.0")
 	pool, err := os.ReadFile("testdata/pool.yaml.tmpl")
 	if err != nil {
 		t.Fatal(err)

@@ -132,7 +132,7 @@ type ate struct {
 // installer's cache (the path the counter demo uses), fetching the tree from
 // the release's repository when it is gone.
 func kubectlAte(ctx context.Context, w io.Writer, o plugin.Options) (ate, error) {
-	tree := controlplane.TreeDir(o.TreeRoot, o.Tag)
+	tree := o.Tree
 	if _, err := os.Stat(filepath.Join(tree, "cmd", "kubectl-ate")); err != nil {
 		if err := controlplane.FetchTree(ctx, w, tree, o.Repo, o.Ref); err != nil {
 			return ate{}, err

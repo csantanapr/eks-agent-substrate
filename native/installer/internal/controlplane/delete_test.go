@@ -20,6 +20,26 @@ import (
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/probe"
 )
 
+// fakeDigest is the overlay digest the seam gives in these tests.
+const fakeDigest = "0123456789abcdef"
+
+// treeOf is the tree Deploy and Delete use for release r on o's cluster,
+// with the fake overlay digest.
+func treeOf(o Options, r plugin.Release) string {
+	return r.Locate(o.TreeRoot, fakeDigest, o.Region).Tree
+}
+
+// cacheTree makes tree a finished fetch of ref, which FetchTree reuses.
+func cacheTree(t *testing.T, tree, ref string) {
+	t.Helper()
+	if err := os.MkdirAll(tree, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tree, completeMarker), []byte(ref+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 type deleteCall struct {
 	dir  string
 	env  []string
@@ -33,20 +53,15 @@ func deleteEnv(t *testing.T, describeErr error, runErr func(argv []string) error
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 	o = opts()
 	o.TreeRoot = t.TempDir()
-	tree := TreeDir(o.TreeRoot, o.Tag)
-	if err := os.MkdirAll(tree, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(tree, completeMarker), []byte(o.Tag+"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	cacheTree(t, treeOf(o, plugin.Needs{}.Release(o.Tag, o.ImageRepo)), o.Tag)
 	kc = awsx.KubeconfigPath(o.Cluster, o.Region)
 	prevDescribe, prevRun := describeCluster, deleteRun
-	prevRead, prevRemove, prevOverlay, prevInstalled := readRecord, removePlugins, applyOverlay, readInstalled
+	prevRead, prevRemove, prevOverlay, prevInstalled, prevDigest := readRecord, removePlugins, applyOverlay, readInstalled, overlayDigest
 	t.Cleanup(func() {
 		describeCluster, deleteRun = prevDescribe, prevRun
-		readRecord, removePlugins, applyOverlay, readInstalled = prevRead, prevRemove, prevOverlay, prevInstalled
+		readRecord, removePlugins, applyOverlay, readInstalled, overlayDigest = prevRead, prevRemove, prevOverlay, prevInstalled, prevDigest
 	})
+	overlayDigest = func(string) (string, error) { return fakeDigest, nil }
 	readRecord = func(context.Context, io.Writer, plugin.Options) ([]string, error) { return nil, nil }
 	readInstalled = func(context.Context, string) (probe.Result, error) {
 		return probe.Result{Installed: true, Atelet: true, Version: o.Tag}, nil
@@ -95,7 +110,7 @@ func TestDeleteRunsAteSetupWaitsAndRemovesTheKubeconfig(t *testing.T) {
 	if want := []string{"go", "run", "./cmd/ate-setup", "delete", "ate-system", "--context", "demo"}; !slices.Equal(del.argv, want) {
 		t.Errorf("delete argv = %v, want %v", del.argv, want)
 	}
-	if del.dir != TreeDir(o.TreeRoot, o.Tag) {
+	if del.dir != treeOf(o, plugin.Needs{}.Release(o.Tag, o.ImageRepo)) {
 		t.Errorf("ate-setup ran in %q, not the cached tree", del.dir)
 	}
 	for _, want := range []string{"KUBECONFIG=" + kc, "KUBECTL_CONTEXT=", "NO_DEV_ENV=1", "ATE_INSTALL_STORAGE_BACKEND=s3", "AWS_PROFILE=p"} {

@@ -80,8 +80,9 @@ type Options struct {
 	// volumeTags are the owner tag and TAGS, for the StorageClass.
 	clusterOwned bool
 	volumeTags   map[string]string
-	// ref is what FetchTree checks out: the release's Ref.
-	ref string
+	// ref is what FetchTree checks out: the release's Ref. overlayDigest is
+	// eksoverlay.Digest of Overlay, which the tree is keyed by.
+	ref, overlayDigest string
 }
 
 // db is Database with the default applied.
@@ -91,9 +92,6 @@ func (o Options) db() string {
 	}
 	return o.Database
 }
-
-// TreeDir is the cached tree for a tag.
-func TreeDir(root, tag string) string { return filepath.Join(root, "substrate-"+tag) }
 
 // DefaultTreeRoot is under the user cache dir, like substrate-gke's managed tree.
 func DefaultTreeRoot() string {
@@ -302,6 +300,9 @@ func Deploy(ctx context.Context, w io.Writer, o Options) error {
 	if err := writeKubeconfig(kc, cl, o.Region, o.Profile); err != nil {
 		return err
 	}
+	if o.overlayDigest, err = overlayDigest(o.Overlay); err != nil {
+		return err
+	}
 	po := o.pluginOptions(kc, cl.AutoMode)
 	ids, err := resolvePlugins(ctx, w, &o, &po)
 	if err != nil {
@@ -311,7 +312,7 @@ func Deploy(ctx context.Context, w io.Writer, o Options) error {
 	if err := SameRelease(ctx, kc, o.Cluster, po.Release); err != nil {
 		return err
 	}
-	tree := TreeDir(o.TreeRoot, o.Tag)
+	tree := po.Tree
 	if err := fetchTree(ctx, w, tree, o.Repo, o.ref); err != nil {
 		return err
 	}
@@ -337,6 +338,7 @@ var (
 	writeKubeconfig = awsx.WriteKubeconfig
 	fetchTree       = FetchTree
 	applyOverlay    = eksoverlay.Apply
+	overlayDigest   = eksoverlay.Digest
 	readRecord      = plugin.ReadRecord
 	recordPlugins   = plugin.AddToRecord
 	removePlugins   = plugin.Run
@@ -347,7 +349,7 @@ func (o Options) pluginOptions(kc string, autoMode bool) plugin.Options {
 	po := o.Plugin
 	po.Cluster, po.Region, po.Profile = o.Cluster, o.Region, o.Profile
 	po.Release = plugin.Release{Tag: o.Tag, ImageRepo: o.ImageRepo, Repo: o.Repo, Ref: o.ref}
-	po.TreeRoot, po.Kubeconfig, po.AutoMode = o.TreeRoot, kc, autoMode
+	po.TreeRoot, po.OverlayDigest, po.Kubeconfig, po.AutoMode = o.TreeRoot, o.overlayDigest, kc, autoMode
 	return po
 }
 
@@ -374,7 +376,7 @@ func resolvePlugins(ctx context.Context, w io.Writer, o *Options, po *plugin.Opt
 	if len(ids) > 0 {
 		fmt.Fprintln(w, PluginsLine+strings.Join(ids, ", "))
 	}
-	po.Release = o.Needs.Release(o.Tag, o.ImageRepo)
+	po.Release = o.Needs.Release(o.Tag, o.ImageRepo).Locate(o.TreeRoot, o.overlayDigest, o.Region)
 	o.Tag, o.ImageRepo, o.Repo, o.ref = po.Tag, po.ImageRepo, po.Repo, po.Ref
 	return ids, nil
 }

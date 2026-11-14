@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -44,8 +45,8 @@ func TestReadReleaseWithAndWithoutASource(t *testing.T) {
 		f := &fakeCluster{record: tc.record}
 		o := releaseFixture(t, f)
 		got, err := ReadRelease(context.Background(), io.Discard, o, tc.chosen)
-		if err != nil || got != tc.want {
-			t.Errorf("%s: %+v, %v; want %+v", tc.name, got, err, tc.want)
+		if want := tc.want.Locate(o.TreeRoot, o.OverlayDigest, o.Region); err != nil || got != want {
+			t.Errorf("%s: %+v, %v; want %+v", tc.name, got, err, want)
 		}
 	}
 	f := &fakeCluster{record: "fork"}
@@ -114,5 +115,37 @@ func TestRunRemoveOfASourceGivesTheReinstall(t *testing.T) {
 	}
 	if s := out.String(); !strings.Contains(s, NeedsKeptLine+"top;") || !strings.Contains(s, "run --deploy-control-plane again") {
 		t.Errorf("top removal:\n%s", s)
+	}
+}
+
+// Both ways: the same release, overlay and Region locate one tree, under the
+// root and named for the tag; another overlay digest, another Region, or
+// another ref of the same tag locate another. ReadRelease locates with the
+// options' root, overlay and Region.
+func TestLocateKeysTheTreeByOverlayAndRegion(t *testing.T) {
+	base := upstream.Locate("/trees", "aaaa", "us-west-2")
+	if again := upstream.Locate("/trees", "aaaa", "us-west-2"); again.Tree != base.Tree {
+		t.Errorf("same inputs: %s, %s", base.Tree, again.Tree)
+	}
+	if filepath.Dir(base.Tree) != "/trees" || !strings.HasPrefix(filepath.Base(base.Tree), "substrate-v1.0.0-") {
+		t.Errorf("tree %s", base.Tree)
+	}
+	moved := upstream
+	moved.Ref = "0123456789012345678901234567890123456789"
+	for name, other := range map[string]Release{
+		"overlay": upstream.Locate("/trees", "bbbb", "us-west-2"),
+		"region":  upstream.Locate("/trees", "aaaa", "us-east-1"),
+		"ref":     moved.Locate("/trees", "aaaa", "us-west-2"),
+	} {
+		if other.Tree == base.Tree {
+			t.Errorf("another %s shares tree %s", name, base.Tree)
+		}
+	}
+	f := &fakeCluster{}
+	o := releaseFixture(t, f)
+	o.TreeRoot, o.OverlayDigest = "/trees", "aaaa"
+	got, err := ReadRelease(context.Background(), io.Discard, o, nil)
+	if err != nil || got.Tree != base.Tree {
+		t.Errorf("ReadRelease tree %q, %v; want %s", got.Tree, err, base.Tree)
 	}
 }

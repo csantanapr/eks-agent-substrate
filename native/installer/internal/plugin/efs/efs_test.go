@@ -78,8 +78,8 @@ func install(t *testing.T, f *fakeKube) plugin.Options {
 	if err := os.WriteFile(filepath.Join(tree, "substrate-v1.0.0", "go.mod"), []byte("module go.ate.dev/substrate\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	return plugin.Options{Cluster: "demo", Region: "us-west-2", Profile: "p", Release: plugin.Release{Tag: "v1.0.0", ImageRepo: "ghcr.io/agent-substrate/substrate"}, TreeRoot: tree, Kubeconfig: "/kc",
-		Tags: "project=agent-substrate auto-delete=no"}
+	return plugin.Options{Cluster: "demo", Region: "us-west-2", Profile: "p", Release: plugin.Release{Tag: "v1.0.0", ImageRepo: "ghcr.io/agent-substrate/substrate",
+		Tree: filepath.Join(tree, "substrate-v1.0.0")}, TreeRoot: tree, Kubeconfig: "/kc", Tags: "project=agent-substrate auto-delete=no"}
 }
 
 // The counter demo's template as `kubectl ate get actor-template -o json`

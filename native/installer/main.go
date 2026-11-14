@@ -136,10 +136,14 @@ func main() {
 		po := pluginOptions()
 		po.Cluster, po.Region, po.Profile, po.TreeRoot = *cluster, *region, *profile, *treeRoot
 		po.Release = plugin.Release{Tag: *tag, ImageRepo: *imageRepo}
+		// The trees are keyed by the overlay applied to them.
+		digest, err := eksoverlay.Digest(findOverlay())
+		exitOn(err)
+		po.OverlayDigest = digest
 		return po
 	}
 	demoOptions := demo.Options{
-		Cluster: *cluster, Region: *region, Profile: *profile, Tag: *tag, TreeRoot: *treeRoot,
+		Cluster: *cluster, Region: *region, Profile: *profile, Tag: *tag,
 		ImageRepo: *imageRepo, SandboxClasses: *classes,
 	}
 
@@ -162,7 +166,7 @@ func main() {
 		// or chosen plugin installed one.
 		po, err := clusterRelease(ctx, clusterOptions(), pluginIDs, *deployDemo)
 		exitOn(err)
-		demoOptions.Tag, demoOptions.ImageRepo = po.Tag, po.ImageRepo
+		demoOptions.Tag, demoOptions.ImageRepo, demoOptions.Tree = po.Tag, po.ImageRepo, po.Tree
 		if *deployDemo {
 			exitOn(demo.Deploy(ctx, os.Stdout, demoOptions))
 		}

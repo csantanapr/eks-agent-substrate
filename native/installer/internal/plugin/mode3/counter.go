@@ -15,7 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/controlplane"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/demo"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin"
 )
@@ -62,12 +61,13 @@ var Interval = 2 * time.Second
 // images and its kubectl-ate.
 func DemoOptions(o plugin.Options) demo.Options {
 	return demo.Options{Cluster: o.Cluster, Region: o.Region, Profile: o.Profile,
-		Tag: Tag, TreeRoot: o.TreeRoot, ImageRepo: ImageRepo}
+		Tag: Tag, Tree: o.Tree, ImageRepo: ImageRepo}
 }
 
-// Tree is the fork's tree, which the control plane deploy fetched.
+// Tree is the fork's tree, which the control plane deploy fetched: the
+// install's release is the fork whenever mode 3 is installed.
 func Tree(o plugin.Options) (string, error) {
-	tree := controlplane.TreeDir(o.TreeRoot, Tag)
+	tree := o.Tree
 	if _, err := os.Stat(filepath.Join(tree, "demos", "counter")); err != nil {
 		return "", fmt.Errorf("no mode 3 tree (substrate %s) at %s: run --deploy-control-plane --plugins %s first", Tag, tree, ID)
 	}

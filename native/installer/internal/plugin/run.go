@@ -124,7 +124,7 @@ data:
 
 // ReadRelease is the release of the install on o's cluster (ReleaseOf): the
 // plugins its record lists plus chosen, on o's release, which is the --tag
-// one.
+// one, located for o's tree root, overlay and Region.
 func ReadRelease(ctx context.Context, w io.Writer, o Options, chosen []string) (Release, error) {
 	rec, err := ReadRecord(ctx, w, o)
 	if err != nil {
@@ -134,7 +134,11 @@ func ReadRelease(ctx context.Context, w io.Writer, o Options, chosen []string) (
 	if err != nil {
 		return Release{}, err
 	}
-	return ReleaseOf(ps, o.Tag, o.ImageRepo)
+	r, err := ReleaseOf(ps, o.Tag, o.ImageRepo)
+	if err != nil {
+		return Release{}, err
+	}
+	return r.Locate(o.TreeRoot, o.OverlayDigest, o.Region), nil
 }
 
 // AddToRecord adds ids to the record.

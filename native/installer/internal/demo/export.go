@@ -11,8 +11,8 @@ import (
 // Thin exports for the plugins that run a counter pool of their own (mode 3
 // and mode 3 on isolated sandboxes): each one calls the unexported code the
 // demo's own Deploy and Verify use, on the same env, so the plugins build,
-// push, wait and check exactly as the demo does. o.Tag and o.TreeRoot name the
-// tree and the kubectl-ate binary; o.SandboxClasses is not read.
+// push, wait and check exactly as the demo does. o.Tag names the kubectl-ate
+// binary; the tree is passed in; o.SandboxClasses is not read.
 
 // exportEnv is the env the exports run on; tests replace it with the fake.
 var exportEnv = newReal

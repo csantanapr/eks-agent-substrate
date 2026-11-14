@@ -18,7 +18,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/controlplane"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin"
 )
 
@@ -298,10 +297,10 @@ func KubectlAtePath(tag string) string {
 	return filepath.Join(dir, "substrate-eks", "bin", "kubectl-ate-"+tag)
 }
 
-// BuildAte builds kubectl-ate from the cached Substrate tree of o.Tag (the
+// BuildAte builds kubectl-ate from the release's cached tree, o.Tree (the
 // control plane deploy fetched it); Go's build cache makes a rebuild quick.
 func BuildAte(ctx context.Context, w io.Writer, o plugin.Options) (Ate, error) {
-	tree := controlplane.TreeDir(o.TreeRoot, o.Tag)
+	tree := o.Tree
 	if _, err := os.Stat(filepath.Join(tree, "go.mod")); err != nil {
 		return Ate{}, fmt.Errorf("no Substrate %s tree at %s: run --deploy-control-plane first", o.Tag, tree)
 	}

@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/eksoverlay"
+	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin/mode3"
 )
 
@@ -92,15 +94,23 @@ func runMain(t *testing.T, answers string, args ...string) (error, string) {
 // fork's); with nothing recorded, on --tag's. Each run here stops at the
 // missing tree, which names the release the demo would have used.
 func TestDemoRunsOnTheRecordedRelease(t *testing.T) {
+	// The tree is the one the release lookup locates for this checkout's
+	// deploy/eks and the Region, as the control plane step put it.
+	digest, err := eksoverlay.Digest("../deploy/eks")
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, tc := range []struct{ record, installed, tag, repo string }{
 		{mode3.ID, mode3.Tag, mode3.Tag, mode3.ImageRepo},
 		{"", "v1.0.0", "v1.0.0", "ghcr.io/agent-substrate/substrate"},
 		{"", "", "v1.0.0", "ghcr.io/agent-substrate/substrate"},
 	} {
+		rel := plugin.ChosenRelease(plugin.ParseRecord(tc.record), "v1.0.0", "ghcr.io/agent-substrate/substrate")
+		tree := filepath.Base(rel.Locate("/any", digest, "us-west-2").Tree)
 		err, out := runMain(t, cluster(tc.record, tc.installed), "--deploy-demo")
 		if err == nil || !strings.Contains(out, ReleaseLine+tc.tag+" ("+tc.repo+")") ||
-			!strings.Contains(out, "no substrate "+tc.tag+" tree with demos/counter") {
-			t.Errorf("record %q: %v\n%s", tc.record, err, out)
+			!strings.Contains(out, "no substrate "+tc.tag+" tree with demos/counter at ") || !strings.Contains(out, "/"+tree+"; ") {
+			t.Errorf("record %q: %v\n%s\nwant the tree %s", tc.record, err, out, tree)
 		}
 	}
 }

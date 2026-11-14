@@ -23,6 +23,8 @@ package eksoverlay
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -194,6 +196,38 @@ func ApplyCodePatches(w io.Writer, root, overlay string) error {
 	}
 	_, err := writeIfChanged(filepath.Join(root, codeMarker), []byte("applied\n"))
 	return err
+}
+
+// Digest is the hex SHA-256 of the overlay at dir: each file under it (the
+// Component, the resources and the code patches), by its path below dir and
+// its content. Apply edits the tree in place, so the tree cache keys each
+// tree by it (plugin.Release.Locate): two checkouts whose deploy/eks differ
+// get two trees, and the same deploy/eks reuses one.
+func Digest(dir string) (string, error) {
+	if err := check(dir); err != nil {
+		return "", err
+	}
+	h := sha256.New()
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(h, "%s\x00%d\x00", filepath.ToSlash(rel), len(data))
+		h.Write(data)
+		return nil
+	})
+	if err != nil {
+		return "", fmt.Errorf("digest %s: %w", dir, err)
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // Apply runs Add and ApplyCodePatches and prints the outcome.

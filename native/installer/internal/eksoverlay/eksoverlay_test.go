@@ -1,6 +1,7 @@
 package eksoverlay
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -135,5 +136,82 @@ func TestAddRequiresRegion(t *testing.T) {
 	root, overlay := tree(t)
 	if _, err := Add(root, overlay, ""); err == nil {
 		t.Fatal("Add accepted an empty region")
+	}
+}
+
+// copyOverlay copies the real deploy/eks to a new directory.
+func copyOverlay(t *testing.T, src string) string {
+	t.Helper()
+	dst := filepath.Join(t.TempDir(), "eks")
+	if err := os.CopyFS(dst, os.DirFS(src)); err != nil {
+		t.Fatal(err)
+	}
+	return dst
+}
+
+// Both ways: a copy of deploy/eks elsewhere has the same digest (the path
+// of the checkout is not in it); a changed code patch, a changed Component
+// file or an added resource each change it; a directory that is not
+// deploy/eks is refused.
+func TestDigestIsTheOverlaysContent(t *testing.T) {
+	_, overlay := tree(t)
+	want, err := Digest(overlay)
+	if err != nil || len(want) != 64 {
+		t.Fatalf("Digest = %q, %v", want, err)
+	}
+	if got, err := Digest(copyOverlay(t, overlay)); err != nil || got != want {
+		t.Errorf("a copy: %q, %v; want %q", got, err, want)
+	}
+	patches, _ := filepath.Glob(filepath.Join(overlay, patchesSrc, "*.patch"))
+	if len(patches) == 0 {
+		t.Fatal("deploy/eks has no code patch")
+	}
+	for name, edit := range map[string]func(dir string) error{
+		"code patch": func(dir string) error {
+			p := filepath.Join(dir, patchesSrc, filepath.Base(patches[0]))
+			b, err := os.ReadFile(p)
+			if err != nil {
+				return err
+			}
+			return os.WriteFile(p, append(b, '\n'), 0o644)
+		},
+		"component": func(dir string) error {
+			p := filepath.Join(dir, componentSrc, "kustomization.yaml")
+			b, err := os.ReadFile(p)
+			if err != nil {
+				return err
+			}
+			return os.WriteFile(p, append(b, []byte("# changed\n")...), 0o644)
+		},
+		// Same size, other content: the digest reads the bytes, not only
+		// the lengths.
+		"same-size edit": func(dir string) error {
+			p := filepath.Join(dir, componentSrc, "kustomization.yaml")
+			b, err := os.ReadFile(p)
+			if err != nil {
+				return err
+			}
+			if !strings.Contains(string(b), "kind") {
+				return errors.New("the Component has no kind")
+			}
+			return os.WriteFile(p, []byte(strings.Replace(string(b), "kind", "KIND", 1)), 0o644)
+		},
+		"added resource": func(dir string) error {
+			if err := os.MkdirAll(filepath.Join(dir, resourcesSrc), 0o755); err != nil {
+				return err
+			}
+			return os.WriteFile(filepath.Join(dir, resourcesSrc, "extra.yaml"), []byte("kind: ConfigMap\n"), 0o644)
+		},
+	} {
+		dir := copyOverlay(t, overlay)
+		if err := edit(dir); err != nil {
+			t.Fatal(err)
+		}
+		if got, err := Digest(dir); err != nil || got == want {
+			t.Errorf("%s changed: digest %q, %v; want another than %q", name, got, err, want)
+		}
+	}
+	if _, err := Digest(t.TempDir()); err == nil {
+		t.Error("a directory that is not deploy/eks has a digest")
 	}
 }

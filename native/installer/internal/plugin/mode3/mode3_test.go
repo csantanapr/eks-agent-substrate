@@ -18,7 +18,6 @@ import (
 	"sigs.k8s.io/kustomize/kyaml/kio"
 
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/awsx"
-	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/controlplane"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/demo"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin"
 )
@@ -233,10 +232,11 @@ func (e *fakeECR) BatchDeleteImage(_ context.Context, in *ecr.BatchDeleteImageIn
 
 func testOptions(t *testing.T) plugin.Options {
 	root := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(controlplane.TreeDir(root, Tag), "demos", "counter"), 0o755); err != nil {
+	tree := filepath.Join(root, "substrate-"+Tag)
+	if err := os.MkdirAll(filepath.Join(tree, "demos", "counter"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	return plugin.Options{Cluster: "c1", Region: "us-east-1", Profile: "p", Release: plugin.Release{Tag: "v1.0.0", ImageRepo: "ghcr.io/agent-substrate/substrate"}, TreeRoot: root, Kubeconfig: "/kc", AutoMode: true}
+	return plugin.Options{Cluster: "c1", Region: "us-east-1", Profile: "p", Release: plugin.Release{Tag: Tag, ImageRepo: ImageRepo, Tree: tree}, TreeRoot: root, Kubeconfig: "/kc", AutoMode: true}
 }
 
 // The control plane installs the fork's pinned commit with its images and
@@ -385,7 +385,7 @@ func TestDeployRefusesNoKataNodeAndNoTree(t *testing.T) {
 	}
 	f = newFake(t)
 	o := testOptions(t)
-	o.TreeRoot = t.TempDir()
+	o.Tree = filepath.Join(t.TempDir(), "substrate-"+Tag)
 	if err := deploy(context.Background(), io.Discard, o); err == nil || !strings.Contains(err.Error(), "--deploy-control-plane --plugins mode3") || len(f.log) != 0 {
 		t.Errorf("no tree: err = %v, ran %q", err, f.log)
 	}

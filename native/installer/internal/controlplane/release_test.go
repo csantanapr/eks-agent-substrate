@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/eksoverlay"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/probe"
 )
@@ -115,22 +116,69 @@ func TestDeleteRunsOnTheInstallsRelease(t *testing.T) {
 		want := plugin.Release{Tag: "v1.0.0", ImageRepo: "ghcr.io/agent-substrate/substrate", Repo: DefaultRepo, Ref: "v1.0.0"}
 		if tc.fork {
 			want = plugin.Release{Tag: "v1.0.0-fork", ImageRepo: "ghcr.io/example/fork", Repo: "https://example.invalid/fork.git", Ref: forkCommit}
-			tree := TreeDir(o.TreeRoot, want.Tag)
-			if err := os.MkdirAll(tree, 0o755); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(filepath.Join(tree, completeMarker), []byte(forkCommit+"\n"), 0o644); err != nil {
-				t.Fatal(err)
-			}
+			cacheTree(t, treeOf(o, want), forkCommit)
 		}
+		want.Tree = treeOf(o, want)
 		if err := Delete(context.Background(), io.Discard, o); err != nil {
 			t.Fatalf("%s: %v", tc.name, err)
 		}
 		if removedOn != want {
 			t.Errorf("%s: plugins removed on %+v, want %+v", tc.name, removedOn, want)
 		}
-		if len(*calls) == 0 || (*calls)[0].dir != TreeDir(o.TreeRoot, want.Tag) {
-			t.Errorf("%s: ate-setup delete ran in %+v, want %s", tc.name, *calls, TreeDir(o.TreeRoot, want.Tag))
+		if len(*calls) == 0 || (*calls)[0].dir != want.Tree {
+			t.Errorf("%s: ate-setup delete ran in %+v, want %s", tc.name, *calls, want.Tree)
+		}
+	}
+}
+
+// writeOverlay makes a deploy/eks at dir with the given patch text.
+func writeOverlay(t *testing.T, dir, patch string) string {
+	t.Helper()
+	for name, body := range map[string]string{
+		"components/eks/kustomization.yaml": "apiVersion: kustomize.config.k8s.io/v1alpha1\nkind: Component\n",
+		"patches/ate-setup.patch":           patch,
+	} {
+		p := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+// Both ways, through Deploy with the real overlay digest: the tree is keyed
+// by the overlay applied to it in place, so two checkouts whose deploy/eks
+// differ (here only in the code patch) fetch into two trees, and a second
+// checkout with the same deploy/eks reuses the first's. Another Region is
+// another tree too, since the overlay is filled in for it.
+func TestTreesAreKeyedByTheOverlay(t *testing.T) {
+	a := writeOverlay(t, filepath.Join(t.TempDir(), "eks"), "patch one\n")
+	sameAsA := writeOverlay(t, filepath.Join(t.TempDir(), "eks"), "patch one\n")
+	b := writeOverlay(t, filepath.Join(t.TempDir(), "eks"), "patch two\n")
+	f := &deployFakes{}
+	o := deployEnv(t, f)
+	overlayDigest = eksoverlay.Digest
+	for _, tc := range []struct{ overlay, region string }{{a, "us-west-2"}, {sameAsA, "us-west-2"}, {b, "us-west-2"}, {a, "us-east-1"}} {
+		o.Overlay, o.Region = tc.overlay, tc.region
+		if err := Deploy(context.Background(), io.Discard, o); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(f.trees) != 4 {
+		t.Fatalf("fetched %q", f.trees)
+	}
+	if f.trees[0] != f.trees[1] {
+		t.Errorf("the same overlay got two trees: %s, %s", f.trees[0], f.trees[1])
+	}
+	if f.trees[2] == f.trees[0] || f.trees[3] == f.trees[0] || f.trees[2] == f.trees[3] {
+		t.Errorf("another overlay or Region shares a tree: %q", f.trees)
+	}
+	for _, d := range f.trees {
+		if filepath.Dir(d) != o.TreeRoot || !strings.HasPrefix(filepath.Base(d), "substrate-v1.0.0-") || len(filepath.Base(d)) != len("substrate-v1.0.0-")+8 {
+			t.Errorf("tree %s is not <tree root>/substrate-v1.0.0-<8 hex>", d)
 		}
 	}
 }
