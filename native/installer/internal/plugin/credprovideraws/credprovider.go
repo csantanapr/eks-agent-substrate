@@ -17,10 +17,11 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"sigs.k8s.io/kustomize/kyaml/kio"
 	"sigs.k8s.io/kustomize/kyaml/yaml"
+
+	"github.com/csantanapr/eks-agent-substrate/native/tools/setup-aws/awsload"
 
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/controlplane"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin"
@@ -107,12 +108,9 @@ var caller = func(ctx context.Context, o plugin.Options) (aws.Config, string, st
 	return ac, aws.ToString(id.Account), parts[1], nil
 }
 
+// loadConfig loads through awsload, so a deploy outlives its session.
 func loadConfig(ctx context.Context, o plugin.Options) (aws.Config, error) {
-	opts := []func(*awsconfig.LoadOptions) error{awsconfig.WithRegion(o.Region)}
-	if o.Profile != "" {
-		opts = append(opts, awsconfig.WithSharedConfigProfile(o.Profile))
-	}
-	return awsconfig.LoadDefaultConfig(ctx, opts...)
+	return awsload.Config(ctx, o.Region, o.Profile)
 }
 
 // pause waits d; replaced in tests.

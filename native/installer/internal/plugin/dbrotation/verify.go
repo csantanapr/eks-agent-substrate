@@ -16,8 +16,9 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
+
+	"github.com/csantanapr/eks-agent-substrate/native/tools/setup-aws/awsload"
 
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/controlplane"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin"
@@ -63,11 +64,8 @@ type smAPI interface {
 // Seams replaced in tests.
 var (
 	newSM = func(ctx context.Context, profile, region string) (smAPI, error) {
-		opts := []func(*awsconfig.LoadOptions) error{awsconfig.WithRegion(region)}
-		if profile != "" {
-			opts = append(opts, awsconfig.WithSharedConfigProfile(profile))
-		}
-		cfg, err := awsconfig.LoadDefaultConfig(ctx, opts...)
+		// awsload: the rotation wait can outlive the session.
+		cfg, err := awsload.Config(ctx, region, profile)
 		if err != nil {
 			return nil, err
 		}
