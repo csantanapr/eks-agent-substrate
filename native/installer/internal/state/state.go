@@ -17,20 +17,27 @@ import (
 type Step int
 
 // The steps. EKS has no Images step yet (the install uses the published
-// release images) and folds the sandbox choice into ControlPlane (gvisor and
-// microvm are both installed). Teardown's steps come after Complete, as
-// substrate-gke's upgrade steps do: their place on screen comes from the
-// Machine's order, not from these values.
+// release images) and folds the sandbox choice into Settings. Teardown's
+// steps come after Complete, as substrate-gke's upgrade steps do: their place
+// on screen comes from the Machine's order, not from these values.
 const (
 	Welcome Step = iota
 	CheckSetup
 	Account // substrate-gke: Project
 	Cluster
 	Database
+	// Settings edits config.env's knobs for the run, Plugins chooses the
+	// optional parts, and Review shows every command, its time and the cost
+	// before anything runs.
+	Settings
+	Plugins
+	Review
 	CreateCluster
 	Provision
 	RDS
 	ControlPlane
+	// InstallPlugins deploys and checks the chosen plugins.
+	InstallPlugins
 	Demo
 	Complete
 
@@ -40,19 +47,23 @@ const (
 )
 
 // Order is the linear flow of the wizard: connect an existing cluster, with
-// the RDS database. InstallOrder adds or drops the optional steps.
-var Order = []Step{Welcome, CheckSetup, Account, Cluster, Database, Provision, RDS, ControlPlane, Complete}
+// the RDS database and no plugin. InstallOrder adds or drops the optional
+// steps.
+var Order = []Step{Welcome, CheckSetup, Account, Cluster, Database, Settings, Plugins, Review, Provision, RDS, ControlPlane, Complete}
 
 // InstallOrder is the install flow for the answers in s, as substrate-gke's
 // InstallOrder picks DemoOrder for a demo run. Every choice that changes the
-// flow is made on the Cluster and Database screens, before any step runs:
+// flow is made on the Cluster, Database, Settings and Plugins screens, before
+// Review, and nothing runs before Review:
 //   - CreateCluster runs `setup-aws create cluster` when the run creates the
 //     cluster, before Provision, which needs it ACTIVE;
 //   - RDS runs `setup-aws create rds` after Provision when the database is
 //     RDS, before ControlPlane, which connects to it;
+//   - InstallPlugins deploys the chosen plugins after ControlPlane, which
+//     already carries their needs;
 //   - Demo deploys and checks the counter demo on a demo run (--demo).
 func InstallOrder(s *Setup) []Step {
-	order := []Step{Welcome, CheckSetup, Account, Cluster, Database}
+	order := []Step{Welcome, CheckSetup, Account, Cluster, Database, Settings, Plugins, Review}
 	if s.ClusterIsNew {
 		order = append(order, CreateCluster)
 	}
@@ -61,6 +72,9 @@ func InstallOrder(s *Setup) []Step {
 		order = append(order, RDS)
 	}
 	order = append(order, ControlPlane)
+	if len(s.Plugins) > 0 {
+		order = append(order, InstallPlugins)
+	}
 	if s.DemoMode {
 		order = append(order, Demo)
 	}
@@ -87,6 +101,12 @@ func (s Step) Title() string {
 		return "Connect your cluster"
 	case Database:
 		return "Choose the database"
+	case Settings:
+		return "Settings"
+	case Plugins:
+		return "Choose plugins"
+	case Review:
+		return "Review the plan"
 	case CreateCluster:
 		return "Create the cluster"
 	case Provision:
@@ -95,6 +115,8 @@ func (s Step) Title() string {
 		return "Create the database"
 	case ControlPlane:
 		return "Turn on Substrate"
+	case InstallPlugins:
+		return "Install the plugins"
 	case Demo:
 		return "Deploy the demo"
 	case Complete:

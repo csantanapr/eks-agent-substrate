@@ -18,6 +18,7 @@ import (
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/awsx"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/doctor"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/execx"
+	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/probe"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/state"
 )
@@ -147,6 +148,13 @@ func testDeps(r *recorder) Deps {
 			return execx.Spec{Label: "control plane", Display: "deploy --snap-bucket new-snap-111122223333-us-west-2",
 				SimLines: []string{"Uploading assets to s3://new-assets-111122223333-us-west-2/microvm-assets/ ...", "[step]: deploy_crds"}}
 		},
+		Plugins: func(s *state.Setup) execx.Spec {
+			var sim []string
+			for _, p := range resolved(s.Plugins) {
+				sim = append(sim, plugin.DeployLine+p.ID, plugin.VerifyLine+p.ID)
+			}
+			return execx.Spec{Label: "plugins", Display: "substrate-eks --plugin-action deploy --plugins " + plugin.FormatRecord(s.Plugins), SimLines: sim}
+		},
 		Demo:      spec("demo", "Deploying the counter demo on gvisor"),
 		Verify:    spec("verify"),
 		Inventory: spec("inventory"),
@@ -160,9 +168,12 @@ func testDeps(r *recorder) Deps {
 	}
 }
 
+// newSetup is a run with no plugin chosen (as --plugins with an empty
+// choice), so the flows below are the core steps; the plugin tests start
+// from nil, the wizard's "not chosen yet".
 func newSetup(cluster string) *state.Setup {
-	s := state.NewSetup()
-	s.Region, s.ClusterName = region, cluster
+	s := state.NewSetupFrom(func(string) (string, bool) { return "", false })
+	s.Region, s.ClusterName, s.Plugins = region, cluster, []string{}
 	return s
 }
 
@@ -178,8 +189,14 @@ func key(k string) tea.KeyMsg {
 		return tea.KeyMsg{Type: tea.KeyDown}
 	case "backspace":
 		return tea.KeyMsg{Type: tea.KeyBackspace}
+	case "left":
+		return tea.KeyMsg{Type: tea.KeyLeft}
+	case " ":
+		return tea.KeyMsg{Type: tea.KeySpace, Runes: []rune{' '}}
 	case "ctrl+c":
 		return tea.KeyMsg{Type: tea.KeyCtrlC}
+	case "ctrl+s":
+		return tea.KeyMsg{Type: tea.KeyCtrlS}
 	}
 	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(k)}
 }
@@ -234,27 +251,34 @@ func typeIn(m Model, text string) Model {
 	return m
 }
 
-// toStep presses enter until the wizard is at step, failing after 20.
+// toStep presses enter until the wizard is at step, failing after 25. The
+// Settings screen moves on with n, and Review starts the install with y.
 func toStep(t *testing.T, m Model, step state.Step) Model {
 	t.Helper()
-	for range 20 {
-		if m.m.Current() == step {
+	for range 25 {
+		switch m.m.Current() {
+		case step:
 			return m
+		case state.Settings:
+			m = press(m, "n")
+		case state.Review:
+			m = press(m, "y")
+		default:
+			m = press(m, "enter")
 		}
-		m = press(m, "enter")
 	}
 	t.Fatalf("never reached %s; at %s (cluster mode %q)", step.Title(), m.m.Current().Title(), m.cl.mode)
 	return m
 }
 
 // startKey starts the install's first long step from the screen toBootstrap
-// stops on: enter on the Database screen.
-const startKey = "enter"
+// stops on: y on the Review screen.
+const startKey = "y"
 
 // toBootstrap walks to the screen whose startKey starts Provision.
 func toBootstrap(t *testing.T, m Model) Model {
 	t.Helper()
-	return toStep(t, m, state.Database)
+	return toStep(t, m, state.Review)
 }
 
 func before(t *testing.T, list []string, a, b string) {
@@ -330,6 +354,11 @@ func TestCreateNewClusterRunsCreateClusterBeforeProvision(t *testing.T) {
 		t.Fatalf("order %v: want CreateCluster right before Provision", order)
 	}
 	m = press(m, "enter") // RDS, the default
+	m = press(m, "n", "enter")
+	if m.m.Current() != state.Review || len(r.ran()) != 0 {
+		t.Fatalf("at %s, ran %q: want Review with nothing run", m.m.Current().Title(), r.ran())
+	}
+	m = press(m, "y")
 	if m.m.Current() != state.CreateCluster {
 		t.Fatalf("at %s, want Create the cluster", m.m.Current().Title())
 	}
@@ -547,6 +576,7 @@ func TestEveryLongStepRetriesOnEnter(t *testing.T) {
 	s.DemoMode = true
 	m := toStep(t, New(testDeps(r), s), state.Cluster)
 	m = press(m, "enter", "enter", "enter") // create "fresh", RDS
+	m = toStep(t, m, state.CreateCluster)   // Settings, Plugins, Review
 	for m.m.Current() != state.Complete {
 		cur := m.m.Current()
 		if tk := m.tasks[cur]; tk == nil || tk.err == nil || !strings.Contains(m.View(), "enter to retry") {

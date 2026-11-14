@@ -10,14 +10,20 @@ import (
 )
 
 func TestInstallOrderAddsTheOptionalSteps(t *testing.T) {
+	choose := []Step{Welcome, CheckSetup, Account, Cluster, Database, Settings, Plugins, Review}
 	for _, tc := range []struct {
 		s    Setup
 		want []Step
 	}{
 		{Setup{Database: DatabaseRDS}, Order},
-		{Setup{Database: DatabaseBundled}, []Step{Welcome, CheckSetup, Account, Cluster, Database, Provision, ControlPlane, Complete}},
+		{Setup{Database: DatabaseBundled}, append(slices.Clone(choose), Provision, ControlPlane, Complete)},
 		{Setup{Database: DatabaseRDS, ClusterIsNew: true, DemoMode: true},
-			[]Step{Welcome, CheckSetup, Account, Cluster, Database, CreateCluster, Provision, RDS, ControlPlane, Demo, Complete}},
+			append(slices.Clone(choose), CreateCluster, Provision, RDS, ControlPlane, Demo, Complete)},
+		// A chosen plugin adds its step after the control plane, before the
+		// demo; an empty choice adds none.
+		{Setup{Database: DatabaseBundled, Plugins: []string{"efs"}, DemoMode: true},
+			append(slices.Clone(choose), Provision, ControlPlane, InstallPlugins, Demo, Complete)},
+		{Setup{Database: DatabaseBundled, Plugins: []string{}}, append(slices.Clone(choose), Provision, ControlPlane, Complete)},
 	} {
 		if got := InstallOrder(&tc.s); !slices.Equal(got, tc.want) {
 			t.Errorf("%+v: %v, want %v", tc.s, got, tc.want)
