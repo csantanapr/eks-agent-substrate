@@ -5,15 +5,14 @@
 package main
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/csantanapr/eks-agent-substrate/native/tools/setup-aws/cmd"
 )
 
 func main() {
+	// cobra has printed the error ("Error: ..."); exit non-zero only.
 	if err := cmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
