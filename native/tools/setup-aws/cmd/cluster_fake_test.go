@@ -810,7 +810,7 @@ func (e *fcEKS) DescribeAddon(_ context.Context, in *eks.DescribeAddonInput, _ .
 	}
 	c := *a
 	// The networking add-ons come up on their own; coredns and the EBS CSI
-	// driver stay DEGRADED until there are nodes (create-cluster.sh's trap).
+	// driver stay DEGRADED until there are nodes, as on EKS.
 	if a.Status == ekstypes.AddonStatusCreating || a.Status == ekstypes.AddonStatusDegraded {
 		switch {
 		case aws.ToString(a.AddonName) != "coredns" && aws.ToString(a.AddonName) != "aws-ebs-csi-driver", e.anyNodegroupActive():

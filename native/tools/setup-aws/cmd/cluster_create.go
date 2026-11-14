@@ -30,7 +30,7 @@ import (
 
 // CreatedByTagKey marks what setup-aws itself created, next to the owner tag,
 // so teardown can tell these resources from the ones eksctl made for the
-// same deployment (create-cluster.sh).
+// same deployment.
 const (
 	CreatedByTagKey   = "agent-substrate-on-eks/created-by"
 	CreatedByTagValue = "setup-aws"
@@ -55,7 +55,7 @@ var ccfg clusterConfig
 var createClusterCmd = &cobra.Command{
 	Use:   "cluster",
 	Short: "Create the VPC, IAM roles, EKS cluster, add-ons and node groups",
-	Long: `Creates what create-cluster.sh creates, through the AWS SDK: a VPC with
+	Long: `Creates, through the AWS SDK: a VPC with
 public and private subnets in 2-3 Availability Zones and one NAT gateway; the
 cluster and node IAM roles; the EKS cluster (Auto Mode on by default) with its
 API endpoint limited to EKS_PUBLIC_ACCESS_CIDRS (by default "auto": this
@@ -198,7 +198,7 @@ func planned(id string) bool { return strings.HasPrefix(id, plannedPrefix) }
 
 // --- phase 1: preflight -------------------------------------------------------
 
-// clusterNameRE is lib/common.sh's rule: every derived name (buckets with
+// clusterNameRE is the CLUSTER_NAME rule: every derived name (buckets with
 // account and region, IAM roles, launch templates) stays valid.
 var clusterNameRE = regexp.MustCompile(`^[a-z][a-z0-9-]{0,26}[a-z0-9]$`)
 

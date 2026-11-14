@@ -1,8 +1,8 @@
 package cmd
 
 // The AWS half of the db-rotation plugin (installer/internal/plugin/dbrotation),
-// eks-talk's demos/db-rotation/deploy.sh and clean.sh in Go: Secrets Manager
-// rotation of the two RDS logins Substrate uses, with the AWS-hosted
+// made and deleted here: Secrets Manager rotation of the two RDS logins
+// Substrate uses, with the AWS-hosted
 // "alternating users" PostgreSQL function, and the Pod Identity role External
 // Secrets Operator reads them with.
 //
@@ -598,7 +598,8 @@ func (r *rotTD) stepStack(ctx context.Context) ([]tdTarget, []string, error) {
 }
 
 // stepRotationOff turns rotation off on a login secret that still has it,
-// as clean.sh did: deleting the stack's schedules normally does it already.
+// in case the stack's delete left it on; deleting the stack's schedules
+// normally turns it off already.
 func (r *rotTD) stepRotationOff(ctx context.Context) ([]tdTarget, []string, error) {
 	rc, err := r.clients(ctx)
 	if err != nil {

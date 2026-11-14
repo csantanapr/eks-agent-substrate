@@ -3,8 +3,8 @@
 // the Secrets Manager credential provider, OpenClaw, and mode 3. Each lives in
 // its own file (or subpackage) and registers itself with Register from an
 // init function, so plugins are built in parallel without touching each
-// other's files. It is the native form of eks-talk's demos/*/deploy.sh, and of
-// substrate-gke's optional steps (Filestore CSI, autoscaling).
+// other's files. It is the counterpart of substrate-gke's optional steps
+// (Filestore CSI, autoscaling).
 //
 // A plugin has two halves:
 //   - AWS resources, made by `setup-aws plugin <id>` (tools/setup-aws), which
@@ -84,7 +84,7 @@ type Plugin struct {
 	// Minutes is the rough time Deploy plus Verify take, for the Review screen.
 	Minutes int
 	// Default plugins are preselected in the wizard (the LLM gateway, which
-	// eks-talk's deploy.sh always installed).
+	// every install has).
 	Default bool
 	// Requires are plugin IDs that must be installed first (OpenClaw keeps
 	// its gateway state on EFS).

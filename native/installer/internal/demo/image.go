@@ -26,8 +26,8 @@ import (
 )
 
 // Releases publish the worker images but not the counter demo's, so the demo
-// builds it, as demos/counter/deploy.sh does with docker: the counter binary
-// from the cached tree on the base image upstream's .ko.yaml names for it,
+// builds it, without docker: the counter binary from the cached tree on the
+// base image upstream's .ko.yaml names for it,
 // pushed to the private ECR repository `setup-aws bootstrap` creates,
 // <cluster>/counter. Nothing here runs docker or writes a docker config.
 
@@ -83,7 +83,7 @@ var placeholder = regexp.MustCompile(`^\$\{[A-Z_]+\}$`)
 
 // render is upstream's demo template at path with its ko:// references
 // replaced by images (keyed by package path) and its unset placeholder
-// lines dropped, the manifest deploy.sh's render pipes to kubectl. A
+// lines dropped, the manifest the demo applies with kubectl. A
 // reference with no image is an error, not a manifest kubectl would apply.
 func render(path string, images map[string]string) ([]byte, error) {
 	data, err := os.ReadFile(path)

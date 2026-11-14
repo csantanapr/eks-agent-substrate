@@ -29,7 +29,7 @@ type PodIdentity struct {
 	Namespace, ServiceAccount, Policy string
 }
 
-// podIdentities are the least-privilege roles aws/infra.sh makes:
+// podIdentities are the least-privilege roles bootstrap makes:
 // ate-api-server lists, reads, writes and deletes snapshots (its objectstore
 // sidecar copies tagged snapshots and deletes unreferenced ones); atelet reads
 // and writes snapshots but never deletes, reads the asset bucket, and pulls
@@ -74,7 +74,7 @@ func (e *env) trustPolicy() string {
 		n.Partition, n.Account, n.Region, n.Cluster)
 }
 
-// roleForSA ports role_for_sa (lib/common.sh): the role, its trust and inline
+// roleForSA makes a ServiceAccount's role: the role, its trust and inline
 // policy, and exactly one Pod Identity association pointing at it.
 func (e *env) roleForSA(ctx context.Context, p PodIdentity) error {
 	role := e.names.IAMPrefix + "-" + p.ServiceAccount

@@ -194,7 +194,7 @@ func (k ate) actorNames(ctx context.Context, space string) ([]string, error) {
 
 // ---- Deploy ---------------------------------------------------------------
 
-// Deploy is demos/credprovider-aws/deploy.sh after its AWS part: the images,
+// Deploy makes the plugin's Kubernetes half, after its AWS half: the images,
 // the secret policy, the provider (mTLS, egress gateway only), then the probe
 // atespaces Verify uses. The control plane install already registered the
 // provider with the egress gateway (Needs).
@@ -299,12 +299,12 @@ func nodeArch(ctx context.Context, w io.Writer, o plugin.Options) (string, error
 	case 1:
 		return archs[0], nil
 	}
-	// shortcut: one single-architecture image per binary, as deploy.sh built;
-	// push an index if the node groups ever need to differ.
+	// shortcut: one single-architecture image per binary; push an index if
+	// the node groups ever need to differ.
 	return "", fmt.Errorf("the nodes labeled %s are %s: the images are built for one architecture", sel, strings.Join(archs, " and "))
 }
 
-// providerManifest is the provider's kustomize base with deploy.sh's edits:
+// providerManifest is the provider's kustomize base with the EKS edits:
 // the ECR image, this Region, its own role (it exits at startup on any
 // other), the system node group and its taint, and the policy's hash, so a
 // policy change rolls the pods. The base must have exactly one Deployment
@@ -505,7 +505,7 @@ func templateImage(b []byte) (string, error) {
 	return cs[0].Image, nil
 }
 
-// goldenTries at goldenWait is deploy.sh's 15-minute wait for the golden
+// goldenTries at goldenWait is a 15-minute wait for the golden
 // snapshot new actors restore from.
 const (
 	goldenTries = 90
@@ -548,7 +548,7 @@ func (k ate) waitGolden(ctx context.Context, w io.Writer, space string) error {
 
 // ---- Remove ---------------------------------------------------------------
 
-// Remove is clean.sh's Kubernetes part: the probe actors, templates and
+// Remove deletes the Kubernetes half: the probe actors, templates and
 // atespaces, the worker pool's namespace, then the provider and its policy.
 // Run then deletes the AWS half (setup-aws plugin credprovider-aws --delete).
 // The egress gateway keeps naming the provider until the next control plane

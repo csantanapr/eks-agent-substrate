@@ -37,7 +37,7 @@ groups, the cluster and its IAM roles, the launch template and the VPC.
 
 Only resources with this deployment's owner tag are deleted. A resource with
 one of its names but another owner, or one that belongs to a CloudFormation
-stack (eksctl, create-cluster.sh), stops the run before anything is deleted.
+stack (a cluster eksctl made), stops the run before anything is deleted.
 Run the installer's control-plane removal first, so PVC-backed volumes are
 released. It ends with the inventory and fails if anything is left. Rerunning
 it resumes; --plan deletes nothing.`,

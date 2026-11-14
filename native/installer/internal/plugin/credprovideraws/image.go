@@ -28,7 +28,7 @@ import (
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin"
 )
 
-// The two images deploy.sh built with docker, built here in Go and pushed to
+// The plugin's two images, built here in Go without docker and pushed to
 // the plugin's ECR repositories (setup-aws plugin credprovider-aws makes
 // them) the way the counter demo's image is (demo/image.go): a static binary
 // at ko's path on a base pinned by digest, pushed with an in-memory ECR
