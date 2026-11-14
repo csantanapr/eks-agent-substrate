@@ -159,6 +159,11 @@ func Run(ctx context.Context, w io.Writer, action string, ids []string, o Option
 		if err != nil {
 			return err
 		}
+		for _, p := range ps {
+			if p.NeedsAutoMode != "" && !o.AutoMode {
+				return fmt.Errorf("plugin %s %s; %s has EKS Auto Mode off", p.ID, p.NeedsAutoMode, o.Cluster)
+			}
+		}
 		if action == ActionVerify {
 			for _, p := range ps {
 				fmt.Fprintln(w, VerifyLine+p.ID)
@@ -176,9 +181,6 @@ func Run(ctx context.Context, w io.Writer, action string, ids []string, o Option
 			return err
 		}
 		for _, p := range ps {
-			if p.NeedsAutoMode != "" && !o.AutoMode {
-				return fmt.Errorf("plugin %s %s; %s has EKS Auto Mode off", p.ID, p.NeedsAutoMode, o.Cluster)
-			}
 			if hasNeeds(p) && !slices.Contains(rec, p.ID) {
 				return fmt.Errorf("plugin %s changes the control plane install, which does not carry it yet: run --deploy-control-plane --plugins %s first", p.ID, p.ID)
 			}
