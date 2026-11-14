@@ -70,25 +70,39 @@ func Delete(ctx context.Context, w io.Writer, o Options) error {
 	}
 	// The release the install ran (a recorded plugin may have replaced it),
 	// read before the plugins are removed and their record with them.
+	if o.overlayDigest, err = overlayDigest(o.Overlay); err != nil {
+		return err
+	}
 	po := o.pluginOptions(kc, cl.AutoMode)
 	o.Plugins = nil
-	if _, err := resolvePlugins(ctx, w, &o, po); err != nil {
+	if _, err := resolvePlugins(ctx, w, &o, &po); err != nil {
 		return err
+	}
+	// A plugin removed earlier leaves its release running with the record
+	// no longer naming it (a control plane deploy cannot change it), and
+	// removing the control plane is the way out: remove it with the release
+	// that runs.
+	running, err := InstalledRelease(ctx, kc)
+	if err != nil {
+		return fmt.Errorf("read the release %s runs: %w", o.Cluster, err)
+	}
+	if id := plugin.SourceOf(running); id != "" && running != o.Tag {
+		o.Plugins = []string{id}
+		if _, err := resolvePlugins(ctx, w, &o, &po); err != nil {
+			return err
+		}
 	}
 	// Every recorded plugin goes first, Kubernetes objects then AWS
 	// resources: their objects run on Substrate, and a volume they hold
-	// would keep the VPC's subnets.
+	// would keep the VPC's subnets. They are removed on the install's
+	// release, as they were made.
 	if err := removePlugins(ctx, w, plugin.ActionRemove, nil, po); err != nil {
 		return err
 	}
 
 	// The tree the install ran from, fetched again if the cache is gone.
-	repo := o.Repo
-	if repo == "" {
-		repo = DefaultRepo
-	}
-	tree := TreeDir(o.TreeRoot, o.Tag)
-	if err := fetchTree(ctx, w, tree, repo, o.treeRef()); err != nil {
+	tree := po.Tree
+	if err := fetchTree(ctx, w, tree, o.Repo, o.ref); err != nil {
 		return err
 	}
 	if err := applyOverlay(w, tree, o.Overlay, o.Region); err != nil {

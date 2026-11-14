@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -298,7 +300,7 @@ func runVerify(t *testing.T, f *fakeVerify) error {
 	plugin.Exec, probeGet = f.exec, f.get
 	freePort = func() (int, error) { f.ports++; return f.ports, nil }
 	pause = func(context.Context, time.Duration) error { return nil }
-	o := plugin.Options{Cluster: "demo", Region: "us-west-2", Kubeconfig: "/kc", Tag: "v1.0.0", TreeRoot: t.TempDir()}
+	o := plugin.Options{Cluster: "demo", Region: "us-west-2", Kubeconfig: "/kc", Release: plugin.Release{Tag: "v1.0.0", ImageRepo: "ghcr.io/agent-substrate/substrate"}, TreeRoot: t.TempDir()}
 	c := check{k: ate{bin: "/cache/kubectl-ate-v1.0.0", o: o}, o: o, w: io.Discard, value: testValue, echo: "https://postman-echo.com/headers"}
 	defer c.stopAll()
 	return c.run(context.Background(), uri("111122223333", "us-west-2", "ate/ate-demo-credprovider/demo-demo-token"),
@@ -345,5 +347,66 @@ func TestVerifyBothWays(t *testing.T) {
 		if err != nil && strings.Contains(err.Error(), testValue) {
 			t.Errorf("%s: the error prints the secret", name)
 		}
+	}
+}
+
+// Both ways: the probe pool runs the install's release's gVisor worker,
+// pinned: a fork's when a plugin replaced the release, upstream's otherwise.
+// Its ko:// reference is always replaced.
+func TestWorkerPoolRunsTheReleaseWorker(t *testing.T) {
+	prev := pinRelease
+	t.Cleanup(func() { pinRelease = prev })
+	pinRelease = func(_ context.Context, tagged string) (string, error) { return tagged + "@sha256:pinned", nil }
+	for _, rel := range []plugin.Release{
+		{Tag: "v1.0.0", ImageRepo: "ghcr.io/agent-substrate/substrate"},
+		{Tag: "v1.0.0-mode3.9f36a0d", ImageRepo: "ghcr.io/csantanapr/substrate"},
+	} {
+		pool, err := workerPool(context.Background(), plugin.Options{Release: rel})
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Anchored: the manifest's own comment mentions ko://.
+		want := "\n  workerImage: " + rel.ImageRepo + "/ateworker-gvisor:" + rel.Tag + "@sha256:pinned\n"
+		if !strings.Contains(pool, want) || strings.Count(pool, "\n  workerImage: ") != 1 {
+			t.Errorf("%s: pool lacks %q or keeps ko://:\n%s", rel.Tag, want, pool)
+		}
+	}
+}
+
+// Both ways: a missing tree is fetched into the release's located tree from
+// the release's repository at its ref (a fork's pinned commit here, never
+// upstream at the tag), then kubectl-ate is built in it; a tree that is
+// there is not fetched again.
+func TestKubectlAteFetchesAMissingTreeFromTheRelease(t *testing.T) {
+	prevFetch, prevExec := fetchTree, plugin.Exec
+	t.Cleanup(func() { fetchTree, plugin.Exec = prevFetch, prevExec })
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	rel := plugin.Release{Tag: "v1.0.0-mode3.9f36a0d", ImageRepo: "ghcr.io/csantanapr/substrate",
+		Repo: "https://github.com/csantanapr/substrate.git", Ref: "9f36a0d7f2abca950f25fc7bd023752d3852504c"}
+	o := plugin.Options{Cluster: "demo", Region: "us-west-2", Kubeconfig: "/kc", Release: rel.Locate(t.TempDir(), "digest", "us-west-2")}
+	var fetched []string
+	fetchTree = func(_ context.Context, _ io.Writer, dir, repo, ref string) error {
+		fetched = append(fetched, dir+" "+repo+" "+ref)
+		return os.MkdirAll(filepath.Join(dir, "cmd", "kubectl-ate"), 0o755)
+	}
+	var builtIn []string
+	plugin.Exec = func(_ context.Context, _ io.Writer, c plugin.Cmd) error {
+		builtIn = append(builtIn, c.Dir)
+		return nil
+	}
+	if _, err := kubectlAte(context.Background(), io.Discard, o); err != nil {
+		t.Fatal(err)
+	}
+	if want := o.Tree + " " + rel.Repo + " " + rel.Ref; len(fetched) != 1 || fetched[0] != want {
+		t.Errorf("fetched %q, want %q", fetched, want)
+	}
+	if len(builtIn) != 1 || builtIn[0] != o.Tree {
+		t.Errorf("built kubectl-ate in %q, want %s", builtIn, o.Tree)
+	}
+	if _, err := kubectlAte(context.Background(), io.Discard, o); err != nil {
+		t.Fatal(err)
+	}
+	if len(fetched) != 1 {
+		t.Errorf("fetched a tree that is there: %q", fetched)
 	}
 }

@@ -75,7 +75,7 @@ func main() {
 		deployDemo = flag.Bool("deploy-demo", false, "deploy the counter demo on --cluster, then exit (with --verify: check it after)")
 		verify     = flag.Bool("verify", false, "check that suspend and resume continue the counter demo on every sandbox class, then exit")
 		probeInst  = flag.Bool("probe-installed", false, "print whether --cluster already runs Substrate (the wizard's reinstall guard), then exit")
-		plugins    = flag.String("plugins", "", "comma-separated plugin IDs: the wizard preselects them, --deploy-control-plane carries their needs, --plugin-action acts on them")
+		plugins    = flag.String("plugins", "", "comma-separated plugin IDs: the wizard preselects them, --deploy-control-plane carries their needs, --plugin-action acts on them, and with the recorded ones they decide the release every step uses")
 		pluginAct  = flag.String("plugin-action", "", "deploy, verify or remove the --plugins on --cluster (remove with no --plugins: every recorded plugin), then exit")
 
 		redact  = flag.Bool("redact", false, "also mask the rest of each account id, ARNs and bucket names, on screen, in snapshots and in the exit notes")
@@ -124,14 +124,26 @@ func main() {
 	cpOptions := func() controlplane.Options {
 		return controlplane.Options{
 			Cluster: *cluster, Region: *region, Profile: *profile,
-			Tag: *tag, Repo: controlplane.DefaultRepo, ImageRepo: *imageRepo,
+			Tag: *tag, ImageRepo: *imageRepo,
 			SnapBucket: *snapBucket, AssetBucket: *assetBkt, SandboxClasses: *classes,
 			Database: *database, TreeRoot: *treeRoot, Overlay: findOverlay(),
 			Plugins: pluginIDs, Plugin: pluginOptions(),
 		}
 	}
+	// clusterOptions are the plugin options of --cluster on the --tag
+	// release, which clusterRelease replaces with the install's.
+	clusterOptions := func() plugin.Options {
+		po := pluginOptions()
+		po.Cluster, po.Region, po.Profile, po.TreeRoot = *cluster, *region, *profile, *treeRoot
+		po.Release = plugin.Release{Tag: *tag, ImageRepo: *imageRepo}
+		// The trees are keyed by the overlay applied to them.
+		digest, err := eksoverlay.Digest(findOverlay())
+		exitOn(err)
+		po.OverlayDigest = digest
+		return po
+	}
 	demoOptions := demo.Options{
-		Cluster: *cluster, Region: *region, Profile: *profile, Tag: *tag, TreeRoot: *treeRoot,
+		Cluster: *cluster, Region: *region, Profile: *profile, Tag: *tag,
 		ImageRepo: *imageRepo, SandboxClasses: *classes,
 	}
 
@@ -150,6 +162,11 @@ func main() {
 		exitOn(controlplane.Delete(ctx, os.Stdout, cpOptions()))
 		return
 	case *deployDemo || *verify:
+		// The demo runs on the install's release: a fork's when a recorded
+		// or chosen plugin installed one.
+		po, err := clusterRelease(ctx, clusterOptions(), pluginIDs, *deployDemo)
+		exitOn(err)
+		demoOptions.Tag, demoOptions.ImageRepo, demoOptions.Tree = po.Tag, po.ImageRepo, po.Tree
 		if *deployDemo {
 			exitOn(demo.Deploy(ctx, os.Stdout, demoOptions))
 		}
@@ -158,7 +175,7 @@ func main() {
 		}
 		return
 	case *pluginAct != "":
-		exitOn(runPlugins(ctx, *pluginAct, pluginIDs, cpOptions()))
+		exitOn(runPlugins(ctx, *pluginAct, pluginIDs, clusterOptions()))
 		return
 	case *probeInst:
 		ctx, cancel := context.WithTimeout(ctx, time.Minute)
@@ -299,31 +316,64 @@ func simChecks() []doctor.Check {
 	}
 }
 
-// runPlugins is --plugin-action: it writes the installer's own kubeconfig for
-// the cluster, as the control plane deploy does, then runs the plugins.
-func runPlugins(ctx context.Context, action string, ids []string, o controlplane.Options) error {
+// runPlugins is --plugin-action: the plugins, on the install's release
+// (clusterRelease; a deploy is refused on a release the control plane does
+// not run).
+func runPlugins(ctx context.Context, action string, ids []string, o plugin.Options) error {
 	if o.Cluster == "" || o.Region == "" {
 		return fmt.Errorf("--plugin-action needs --cluster and --region")
 	}
 	if action != plugin.ActionRemove && len(ids) == 0 {
 		return fmt.Errorf("--plugin-action %s needs --plugins", action)
 	}
-	c, err := awsx.New(ctx, o.Profile, o.Region)
+	po, err := clusterRelease(ctx, o, ids, action == plugin.ActionDeploy)
 	if err != nil {
-		return err
-	}
-	cl, err := c.Describe(ctx, o.Cluster)
-	if err != nil {
-		return err
-	}
-	po := o.Plugin
-	po.Cluster, po.Region, po.Profile, po.Tag, po.TreeRoot = o.Cluster, o.Region, o.Profile, o.Tag, o.TreeRoot
-	po.AutoMode, po.Kubeconfig = cl.AutoMode, awsx.KubeconfigPath(o.Cluster, o.Region)
-	fmt.Println(controlplane.KubeconfLine + po.Kubeconfig)
-	if err := awsx.WriteKubeconfig(po.Kubeconfig, cl, o.Region, o.Profile); err != nil {
 		return err
 	}
 	return plugin.Run(ctx, os.Stdout, action, ids, po)
+}
+
+// ReleaseLine is printed with the release a subcommand decided to use.
+const ReleaseLine = "Substrate release: "
+
+// clusterRelease writes the installer's own kubeconfig for o's cluster, as
+// the control plane deploy does, and returns o for that cluster on the
+// install's one release: the Source of a recorded or chosen plugin, else o's
+// --tag release (plugin.ReadRelease). A deploy (deploying) is refused, before
+// it applies anything, on a release other than the one the control plane
+// runs (controlplane.SameRelease): its worker pools would not run there.
+func clusterRelease(ctx context.Context, o plugin.Options, chosen []string, deploying bool) (plugin.Options, error) {
+	if o.Cluster == "" || o.Region == "" {
+		return o, fmt.Errorf("--cluster and --region are required")
+	}
+	c, err := awsx.New(ctx, o.Profile, o.Region)
+	if err != nil {
+		return o, err
+	}
+	cl, err := c.Describe(ctx, o.Cluster)
+	if err != nil {
+		return o, err
+	}
+	o.AutoMode, o.Kubeconfig = cl.AutoMode, awsx.KubeconfigPath(o.Cluster, o.Region)
+	fmt.Println(controlplane.KubeconfLine + o.Kubeconfig)
+	if err := awsx.WriteKubeconfig(o.Kubeconfig, cl, o.Region, o.Profile); err != nil {
+		return o, err
+	}
+	if o.Release, err = plugin.ReadRelease(ctx, os.Stdout, o, chosen); err != nil {
+		return o, err
+	}
+	fmt.Println(ReleaseLine + o.Tag + " (" + o.ImageRepo + ")")
+	// What the control plane runs: a plugin removal on another release
+	// gives the reinstall as the fix, and a deploy there is refused.
+	if o.Running, err = controlplane.InstalledRelease(ctx, o.Kubeconfig); err != nil {
+		return o, fmt.Errorf("read the release %s runs: %w", o.Cluster, err)
+	}
+	if deploying {
+		if err := controlplane.CheckRelease(o.Cluster, o.Running, o.Release); err != nil {
+			return o, err
+		}
+	}
+	return o, nil
 }
 
 func absPath(p string) string {

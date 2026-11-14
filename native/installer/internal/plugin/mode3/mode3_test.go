@@ -18,7 +18,6 @@ import (
 	"sigs.k8s.io/kustomize/kyaml/kio"
 
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/awsx"
-	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/controlplane"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/demo"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin"
 )
@@ -57,9 +56,9 @@ func newFake(t *testing.T) *fake {
 	Interval = 0
 	ecrFor = func(context.Context, plugin.Options) (ecrAPI, error) { return f.ecr, nil }
 	Demo = DemoFuncs{
-		CounterImage: func(_ context.Context, _ io.Writer, o demo.Options, tree, pool string) (string, error) {
+		CounterImage: func(_ context.Context, _ io.Writer, o demo.Options, tree, pool, tag string) (string, error) {
 			f.checkOptions(o)
-			f.log = append(f.log, "counter image "+filepath.Base(tree)+" "+pool)
+			f.log = append(f.log, "counter image "+filepath.Base(tree)+" "+pool+" "+tag)
 			return testCounter, nil
 		},
 		Pin: func(_ context.Context, o demo.Options, tagged string) (string, error) {
@@ -233,10 +232,11 @@ func (e *fakeECR) BatchDeleteImage(_ context.Context, in *ecr.BatchDeleteImageIn
 
 func testOptions(t *testing.T) plugin.Options {
 	root := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(controlplane.TreeDir(root, Tag), "demos", "counter"), 0o755); err != nil {
+	tree := filepath.Join(root, "substrate-"+Tag)
+	if err := os.MkdirAll(filepath.Join(tree, "demos", "counter"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	return plugin.Options{Cluster: "c1", Region: "us-east-1", Profile: "p", Tag: "v1.0.0", TreeRoot: root, Kubeconfig: "/kc", AutoMode: true}
+	return plugin.Options{Cluster: "c1", Region: "us-east-1", Profile: "p", Release: plugin.Release{Tag: Tag, ImageRepo: ImageRepo, Tree: tree}, TreeRoot: root, Kubeconfig: "/kc", AutoMode: true}
 }
 
 // The control plane installs the fork's pinned commit with its images and
@@ -330,7 +330,9 @@ func TestDeploy(t *testing.T) {
 	if err := deploy(context.Background(), &out, testOptions(t)); err != nil {
 		t.Fatalf("%v\n%s", err, out.String())
 	}
-	if err := f.has("build kubectl-ate substrate-"+Tag, "counter image substrate-"+Tag+" microvm", "pin "+ImageRepo+"/ateworker-gvisor:"+Tag,
+	// The counter is pushed under mode 3's own tag, not the release tag the
+	// demo's counter carries.
+	if err := f.has("build kubectl-ate substrate-"+Tag, "counter image substrate-"+Tag+" microvm "+CounterTag, "pin "+ImageRepo+"/ateworker-gvisor:"+Tag,
 		"kubectl apply -f -", "kubectl -n kube-system rollout status ds/kata-deploy --timeout=10m", "kubectl get runtimeclass kata",
 		"kubectl get nodes -l katacontainers.io/kata-runtime=true", "kubectl apply -f -", "ate create atespace ate-demo-counter-mode3",
 		"ate get actor-template counter-mode3", "ate create actor-template -f", "golden ate-demo-counter-mode3/counter-mode3"); err != nil {
@@ -383,7 +385,7 @@ func TestDeployRefusesNoKataNodeAndNoTree(t *testing.T) {
 	}
 	f = newFake(t)
 	o := testOptions(t)
-	o.TreeRoot = t.TempDir()
+	o.Tree = filepath.Join(t.TempDir(), "substrate-"+Tag)
 	if err := deploy(context.Background(), io.Discard, o); err == nil || !strings.Contains(err.Error(), "--deploy-control-plane --plugins mode3") || len(f.log) != 0 {
 		t.Errorf("no tree: err = %v, ran %q", err, f.log)
 	}
@@ -488,10 +490,12 @@ func TestRemove(t *testing.T) {
 	if f.stdin["delete -f - --ignore-not-found --wait=true"] != string(kataManifest) {
 		t.Error("the delete -f was not the Kata manifest")
 	}
-	if in := f.ecr.in; in == nil || aws.ToString(in.RepositoryName) != "c1/counter" || aws.ToString(in.ImageIds[0].ImageTag) != Tag {
+	// Its own tag, never the release tag the demo's counter carries.
+	if in := f.ecr.in; in == nil || aws.ToString(in.RepositoryName) != "c1/counter" || aws.ToString(in.ImageIds[0].ImageTag) != CounterTag || CounterTag == Tag {
 		t.Errorf("ECR delete = %+v", in)
 	}
-	if !strings.HasSuffix(out.String(), RemovedNote+"\n") || !strings.Contains(RemovedNote, "--deploy-control-plane without --plugins mode3") {
+	// No advice to redeploy without mode3: that deploy is refused.
+	if !strings.HasSuffix(out.String(), RemovedNote+"\n") || strings.Contains(RemovedNote, "--deploy-control-plane") {
 		t.Errorf("output:\n%s", out.String())
 	}
 

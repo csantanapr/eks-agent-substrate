@@ -20,7 +20,6 @@ import (
 
 	"github.com/csantanapr/eks-agent-substrate/native/tools/setup-aws/awsload"
 
-	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/controlplane"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin"
 )
 
@@ -387,7 +386,7 @@ func (v *verifier) api(ctx context.Context) error {
 // buildKubectlAte builds kubectl-ate from the release tree the control plane
 // deploy cached, beside the demo's build of it.
 func buildKubectlAte(ctx context.Context, w io.Writer, o plugin.Options) (string, error) {
-	tree := controlplane.TreeDir(o.TreeRoot, o.Tag)
+	tree := o.Tree
 	if _, err := os.Stat(filepath.Join(tree, "cmd", "kubectl-ate")); err != nil {
 		return "", fmt.Errorf("no Substrate %s tree at %s to build kubectl-ate from: run --deploy-control-plane first", o.Tag, tree)
 	}

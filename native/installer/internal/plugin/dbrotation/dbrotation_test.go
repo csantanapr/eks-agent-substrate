@@ -457,7 +457,7 @@ func (f *fakeK8s) exec(_ context.Context, _ io.Writer, c plugin.Cmd) error {
 }
 
 func testOptions() plugin.Options {
-	return plugin.Options{Cluster: "demo", Region: "us-west-2", Profile: "p", Kubeconfig: "/kc", Tag: "v1.0.0", TreeRoot: "/trees"}
+	return plugin.Options{Cluster: "demo", Region: "us-west-2", Profile: "p", Kubeconfig: "/kc", Release: plugin.Release{Tag: "v1.0.0", ImageRepo: "ghcr.io/agent-substrate/substrate"}, TreeRoot: "/trees"}
 }
 
 // cluster installs f as Exec, sm as Secrets Manager, and fast waits.

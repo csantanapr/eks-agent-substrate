@@ -183,18 +183,34 @@ func (b builder) selfSpec(s *state.Setup, cluster, label string, sim []string, f
 	}
 }
 
-// releaseFlags are --image-repo and --sandbox-classes, each only when it is
-// not the subcommand's default, for the steps that install or read the
-// release's worker images.
+// releaseFlags decide the release a step installs or uses, the same on the
+// control plane, plugins, demo and verify steps: --tag, --image-repo when it
+// is not the default, and --plugins, whose Source replaces the --tag release
+// (plugin.ReadRelease, with the recorded plugins). So a run that chooses
+// mode 3 is on its fork from the control plane step on.
 func releaseFlags(s *state.Setup) []string {
-	var f []string
+	f := []string{"--tag", s.SubstrateTag}
 	if s.ImageRepo != state.DefaultImageRepo {
 		f = append(f, "--image-repo", s.ImageRepo)
 	}
-	if s.SandboxClasses != state.DefaultSandboxClasses {
-		f = append(f, "--sandbox-classes", s.SandboxClasses)
+	if len(s.Plugins) > 0 {
+		f = append(f, "--plugins", plugin.FormatRecord(s.Plugins))
 	}
 	return f
+}
+
+// classFlags are --sandbox-classes when it is not the default, for the steps
+// that install or check the sandbox classes.
+func classFlags(s *state.Setup) []string {
+	if s.SandboxClasses != state.DefaultSandboxClasses {
+		return []string{"--sandbox-classes", s.SandboxClasses}
+	}
+	return nil
+}
+
+// release is the release s's steps install and use (releaseFlags).
+func release(s *state.Setup) plugin.Release {
+	return plugin.ChosenRelease(s.Plugins, s.SubstrateTag, s.ImageRepo)
 }
 
 // controlPlane re-executes the installer with --deploy-control-plane.
@@ -205,8 +221,9 @@ func (b builder) controlPlane(s *state.Setup) execx.Spec {
 	if len(s.Plugins) > 0 {
 		sim = append(sim, controlplane.PluginsLine+strings.Join(resolvedIDs(s.Plugins), ", "))
 	}
+	rel := release(s)
 	sim = append(sim,
-		controlplane.CachedLine+s.SubstrateTag,
+		controlplane.CachedLine+rel.Tag,
 		eksoverlay.LinePrefix+"added deploy/eks to "+eksoverlay.BaseKustomization,
 		eksoverlay.LinePrefix+"applied code patch ate-setup-s3-assets-v1.0.0.patch",
 	)
@@ -229,14 +246,11 @@ func (b builder) controlPlane(s *state.Setup) execx.Spec {
 		`daemon set "atelet" successfully rolled out`,
 		controlplane.ReadyLine,
 	)
-	flags := []string{"--deploy-control-plane", "--database", s.Database, "--tag", s.SubstrateTag,
+	flags := []string{"--deploy-control-plane", "--database", s.Database,
 		"--snap-bucket", s.SnapBucket(), "--asset-bucket", s.AssetBucket()}
-	flags = append(flags, releaseFlags(s)...)
-	if len(s.Plugins) > 0 {
-		flags = append(flags, "--plugins", plugin.FormatRecord(s.Plugins))
-	}
+	flags = append(append(flags, releaseFlags(s)...), classFlags(s)...)
 	spec := b.selfSpec(s, s.ClusterName, "ate-setup deploy ate-system", sim, flags...)
-	spec.Display = "go run ./cmd/ate-setup deploy ate-system  (substrate " + s.SubstrateTag + " + deploy/eks, " + s.SandboxClasses + ", database " + s.Database + ")"
+	spec.Display = "go run ./cmd/ate-setup deploy ate-system  (substrate " + rel.Tag + " + deploy/eks, " + s.SandboxClasses + ", database " + s.Database + ")"
 	spec.DisplayIsSummary = true
 	return spec
 }
@@ -262,8 +276,7 @@ func (b builder) plugins(s *state.Setup) execx.Spec {
 	for _, id := range resolvedIDs(s.Plugins) {
 		sim = append(sim, plugin.DeployLine+id, plugin.VerifyLine+id, plugin.ReadyLine+id)
 	}
-	return b.selfSpec(s, s.ClusterName, "plugins", sim,
-		"--plugin-action", plugin.ActionDeploy, "--plugins", plugin.FormatRecord(s.Plugins), "--tag", s.SubstrateTag)
+	return b.selfSpec(s, s.ClusterName, "plugins", sim, append([]string{"--plugin-action", plugin.ActionDeploy}, releaseFlags(s)...)...)
 }
 
 // demoStep re-executes the installer with --deploy-demo --verify: the counter
@@ -278,15 +291,16 @@ func (b builder) demoStep(s *state.Setup) execx.Spec {
 		sim = append(sim, demo.VerifyLine+c, "suspended counter-"+c+"; snapshot in s3://"+s.SnapBucket()+"/",
 			demo.VerifyPassLine+c+": memory, file and rootfs counters continued after resume")
 	}
-	return b.selfSpec(s, s.ClusterName, "counter demo", sim, append([]string{"--deploy-demo", "--verify", "--tag", s.SubstrateTag}, releaseFlags(s)...)...)
+	flags := append(append([]string{"--deploy-demo", "--verify"}, releaseFlags(s)...), classFlags(s)...)
+	return b.selfSpec(s, s.ClusterName, "counter demo", sim, flags...)
 }
 
 // verify is `substrate-eks --verify`, the user-facing check (AC7.2), shown
 // on the Complete screen of a demo run.
 func (b builder) verify(s *state.Setup) execx.Spec {
-	// --tag, as demoStep and removeControlPlane pass it: verify reads the
-	// tree of the release that was installed (review F11).
-	return b.selfSpec(s, s.ClusterName, "verify", nil, append([]string{"--verify", "--tag", s.SubstrateTag}, releaseFlags(s)...)...)
+	// The release flags, as demoStep passes them: verify reads the tree of
+	// the release that was installed (review F11).
+	return b.selfSpec(s, s.ClusterName, "verify", nil, append(append([]string{"--verify"}, releaseFlags(s)...), classFlags(s)...)...)
 }
 
 // removeControlPlane re-executes the installer with --remove-control-plane

@@ -12,7 +12,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/controlplane"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/demo"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin/mode3"
@@ -263,10 +262,11 @@ func newFake(t *testing.T) *fake {
 
 func testOptions(t *testing.T, autoMode bool) plugin.Options {
 	root := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(controlplane.TreeDir(root, mode3.Tag), "demos", "counter"), 0o755); err != nil {
+	tree := filepath.Join(root, "substrate-"+mode3.Tag)
+	if err := os.MkdirAll(filepath.Join(tree, "demos", "counter"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	return plugin.Options{Cluster: "c1", Region: "us-east-1", TreeRoot: root, Kubeconfig: "/kc", AutoMode: autoMode, Tags: "auto-delete=no"}
+	return plugin.Options{Cluster: "c1", Region: "us-east-1", Release: plugin.Release{Tag: mode3.Tag, ImageRepo: mode3.ImageRepo, Tree: tree}, TreeRoot: root, Kubeconfig: "/kc", AutoMode: autoMode, Tags: "auto-delete=no"}
 }
 
 func (f *fake) has(entries ...string) error {

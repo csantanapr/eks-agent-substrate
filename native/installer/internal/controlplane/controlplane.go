@@ -34,7 +34,7 @@ const (
 )
 
 // DefaultRepo is upstream's repository.
-const DefaultRepo = "https://github.com/agent-substrate/substrate.git"
+const DefaultRepo = plugin.UpstreamRepo
 
 // AtenetClientID is the ingress client every install admits: `kubectl ate
 // proxy`'s ServiceAccount.
@@ -49,9 +49,11 @@ const completeMarker = ".substrate-eks-fetched"
 // Options are the install answers.
 type Options struct {
 	Cluster, Region, Profile string
-	Tag, Repo, ImageRepo     string
-	SnapBucket, AssetBucket  string
-	SandboxClasses           string
+	// Tag and ImageRepo are the --tag release; Deploy and Delete replace
+	// them, and set Repo, with the install's one release (resolvePlugins).
+	Tag, Repo, ImageRepo    string
+	SnapBucket, AssetBucket string
+	SandboxClasses          string
 	// AutoMode, read off the cluster by Deploy, pins the control plane to
 	// the system node group (--cordon-system-infra-components) with RDS, and
 	// picks the StorageClass's EBS driver (storageclass.go).
@@ -78,6 +80,9 @@ type Options struct {
 	// volumeTags are the owner tag and TAGS, for the StorageClass.
 	clusterOwned bool
 	volumeTags   map[string]string
+	// ref is what FetchTree checks out: the release's Ref. overlayDigest is
+	// eksoverlay.Digest of Overlay, which the tree is keyed by.
+	ref, overlayDigest string
 }
 
 // db is Database with the default applied.
@@ -87,9 +92,6 @@ func (o Options) db() string {
 	}
 	return o.Database
 }
-
-// TreeDir is the cached tree for a tag.
-func TreeDir(root, tag string) string { return filepath.Join(root, "substrate-"+tag) }
 
 // DefaultTreeRoot is under the user cache dir, like substrate-gke's managed tree.
 func DefaultTreeRoot() string {
@@ -191,15 +193,6 @@ func isCommitID(ref string) bool {
 		}
 	}
 	return true
-}
-
-// treeRef is what FetchTree checks out for o: the Source's pinned commit when
-// a plugin replaced the release, else the release tag.
-func (o Options) treeRef() string {
-	if s := o.Needs.Source; s != nil && s.Commit != "" {
-		return s.Commit
-	}
-	return o.Tag
 }
 
 // AteSetupArgs are the `ate-setup deploy ate-system` flags for EKS. The
@@ -307,13 +300,20 @@ func Deploy(ctx context.Context, w io.Writer, o Options) error {
 	if err := writeKubeconfig(kc, cl, o.Region, o.Profile); err != nil {
 		return err
 	}
+	if o.overlayDigest, err = overlayDigest(o.Overlay); err != nil {
+		return err
+	}
 	po := o.pluginOptions(kc, cl.AutoMode)
-	ids, err := resolvePlugins(ctx, w, &o, po)
+	ids, err := resolvePlugins(ctx, w, &o, &po)
 	if err != nil {
 		return err
 	}
-	tree := TreeDir(o.TreeRoot, o.Tag)
-	if err := fetchTree(ctx, w, tree, o.Repo, o.treeRef()); err != nil {
+	// Before anything changes: an installed control plane keeps its release.
+	if err := SameRelease(ctx, kc, o.Cluster, po.Release); err != nil {
+		return err
+	}
+	tree := po.Tree
+	if err := fetchTree(ctx, w, tree, o.Repo, o.ref); err != nil {
 		return err
 	}
 	if o.Needs.Source != nil && o.Needs.Source.Commit != "" {
@@ -338,24 +338,27 @@ var (
 	writeKubeconfig = awsx.WriteKubeconfig
 	fetchTree       = FetchTree
 	applyOverlay    = eksoverlay.Apply
+	overlayDigest   = eksoverlay.Digest
 	readRecord      = plugin.ReadRecord
 	recordPlugins   = plugin.AddToRecord
 	removePlugins   = plugin.Run
 )
 
-// pluginOptions is what plugin code gets for this install.
+// pluginOptions is what plugin code gets for this install, on o's release.
 func (o Options) pluginOptions(kc string, autoMode bool) plugin.Options {
 	po := o.Plugin
 	po.Cluster, po.Region, po.Profile = o.Cluster, o.Region, o.Profile
-	po.Tag, po.TreeRoot, po.Kubeconfig, po.AutoMode = o.Tag, o.TreeRoot, kc, autoMode
+	po.Release = plugin.Release{Tag: o.Tag, ImageRepo: o.ImageRepo, Repo: o.Repo, Ref: o.ref}
+	po.TreeRoot, po.OverlayDigest, po.Kubeconfig, po.AutoMode = o.TreeRoot, o.overlayDigest, kc, autoMode
 	return po
 }
 
 // resolvePlugins sets o.Needs from the recorded plugins plus o.Plugins, and
-// applies a plugin's Source to the release. It returns every plugin ID the
-// install now carries, in install order.
-func resolvePlugins(ctx context.Context, w io.Writer, o *Options, po plugin.Options) ([]string, error) {
-	rec, err := readRecord(ctx, w, po)
+// the release, o's and po's, to the install's one release (a plugin's Source
+// replaces the --tag one). It returns every plugin ID the install now
+// carries, in install order.
+func resolvePlugins(ctx context.Context, w io.Writer, o *Options, po *plugin.Options) ([]string, error) {
+	rec, err := readRecord(ctx, w, *po)
 	if err != nil {
 		return nil, err
 	}
@@ -373,17 +376,8 @@ func resolvePlugins(ctx context.Context, w io.Writer, o *Options, po plugin.Opti
 	if len(ids) > 0 {
 		fmt.Fprintln(w, PluginsLine+strings.Join(ids, ", "))
 	}
-	if s := o.Needs.Source; s != nil {
-		if s.Repo != "" {
-			o.Repo = s.Repo
-		}
-		if s.Tag != "" {
-			o.Tag = s.Tag
-		}
-		if s.ImageRepo != "" {
-			o.ImageRepo = s.ImageRepo
-		}
-	}
+	po.Release = o.Needs.Release(o.Tag, o.ImageRepo).Locate(o.TreeRoot, o.overlayDigest, o.Region)
+	o.Tag, o.ImageRepo, o.Repo, o.ref = po.Tag, po.ImageRepo, po.Repo, po.Ref
 	return ids, nil
 }
 

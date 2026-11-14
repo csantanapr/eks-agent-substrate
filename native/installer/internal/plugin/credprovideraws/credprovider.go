@@ -49,10 +49,7 @@ const (
 	// policySHA is the pod annotation that rolls the provider when its policy
 	// changes (it reads the policy only at start).
 	policySHA = "agent-substrate-on-eks/secret-policy-sha256"
-	// releaseImages is where Substrate releases publish the worker images,
-	// main.go's image repo.
-	releaseImages = "ghcr.io/agent-substrate/substrate"
-	poolLabel     = "ate.dev/pool"
+	poolLabel = "ate.dev/pool"
 )
 
 // providerJSON is the --credential-provider object the control plane install
@@ -113,6 +110,9 @@ func loadConfig(ctx context.Context, o plugin.Options) (aws.Config, error) {
 	return awsload.Config(ctx, o.Region, o.Profile)
 }
 
+// fetchTree fetches a missing Substrate tree; replaced in tests.
+var fetchTree = controlplane.FetchTree
+
 // pause waits d; replaced in tests.
 var pause = func(ctx context.Context, d time.Duration) error {
 	select {
@@ -131,14 +131,13 @@ type ate struct {
 	o   plugin.Options
 }
 
-// kubectlAte builds kubectl-ate from the cached tree into the installer's
-// cache (the path the counter demo uses), fetching the tree when it is gone.
+// kubectlAte builds kubectl-ate from the release's cached tree into the
+// installer's cache (the path the counter demo uses), fetching the tree from
+// the release's repository when it is gone.
 func kubectlAte(ctx context.Context, w io.Writer, o plugin.Options) (ate, error) {
-	tree := controlplane.TreeDir(o.TreeRoot, o.Tag)
+	tree := o.Tree
 	if _, err := os.Stat(filepath.Join(tree, "cmd", "kubectl-ate")); err != nil {
-		// shortcut: the default release repository; a plugin that replaces
-		// the release (mode 3) would need its Source here.
-		if err := controlplane.FetchTree(ctx, w, tree, controlplane.DefaultRepo, o.Tag); err != nil {
+		if err := fetchTree(ctx, w, tree, o.Repo, o.Ref); err != nil {
 			return ate{}, err
 		}
 	}
@@ -251,11 +250,10 @@ func Deploy(ctx context.Context, w io.Writer, o plugin.Options) error {
 	}
 	fmt.Fprintf(w, "  atenet-egress serves k8s.io and %s (%s)\n", ProviderName, ProviderAddress)
 
-	worker, err := pinRelease(ctx, releaseImages+"/ateworker-gvisor:"+o.Tag)
+	pool, err := workerPool(ctx, o)
 	if err != nil {
 		return err
 	}
-	pool := strings.ReplaceAll(probePool, "ko://go.ate.dev/substrate/cmd/ateworker-gvisor", worker)
 	if err := plugin.Kubectl(ctx, w, o, []byte(pool), nil, "apply", "-f", "-"); err != nil {
 		return err
 	}
@@ -265,6 +263,17 @@ func Deploy(ctx context.Context, w io.Writer, o plugin.Options) error {
 		}
 	}
 	return nil
+}
+
+// workerPool is the probe's WorkerPool on the release's gVisor worker,
+// pinned by digest: the control plane gives every worker its preview gates,
+// which another release's worker may not know.
+func workerPool(ctx context.Context, o plugin.Options) (string, error) {
+	worker, err := pinRelease(ctx, o.ImageRepo+"/ateworker-gvisor:"+o.Tag)
+	if err != nil {
+		return "", err
+	}
+	return strings.ReplaceAll(probePool, "ko://go.ate.dev/substrate/cmd/ateworker-gvisor", worker), nil
 }
 
 func sha(s string) string {

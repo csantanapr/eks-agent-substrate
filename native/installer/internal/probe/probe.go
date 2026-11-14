@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/awsx"
+	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin"
 )
 
 // Marker starts the line Run prints, as substrate-gke's installedMarker.
@@ -31,6 +32,12 @@ type Result struct {
 	Installed bool
 	Atelet    bool
 	Version   string
+	// Plugins are the plugins the cluster records as installed (the
+	// plugin record, kube-system/substrate-eks-plugins), which
+	// --remove-control-plane removes first. PluginsRead reports that the
+	// record was read: without it the plugins are unknown, not none.
+	Plugins     []string
+	PluginsRead bool
 }
 
 // Partial reports the namespace-without-atelet state.
@@ -70,14 +77,20 @@ func Check(ctx context.Context, kubectl Kubectl) (string, error) {
 		return "", err
 	}
 	line := Marker + "true"
-	if strings.TrimSpace(atelet) == "" {
-		return line, nil
+	if strings.TrimSpace(atelet) != "" {
+		line += " atelet"
+		image, err := kubectl(ctx, "-n", "ate-system", "get", "deployment", "ate-api-server", "--ignore-not-found",
+			"-o", `jsonpath={.spec.template.spec.containers[?(@.name=="ate-api-server")].image}`)
+		if image = strings.TrimSpace(image); err == nil && image != "" {
+			line += " image=" + image
+		}
 	}
-	line += " atelet"
-	image, err := kubectl(ctx, "-n", "ate-system", "get", "deployment", "ate-api-server", "--ignore-not-found",
-		"-o", `jsonpath={.spec.template.spec.containers[?(@.name=="ate-api-server")].image}`)
-	if image = strings.TrimSpace(image); err == nil && image != "" {
-		line += " image=" + image
+	// The plugins a removal removes first; best effort, like the image: a
+	// failed read leaves them unknown.
+	rec, err := kubectl(ctx, "-n", plugin.RecordNamespace, "get", "configmap", plugin.RecordName, "--ignore-not-found",
+		"-o", "jsonpath={.data."+plugin.RecordKey+"}")
+	if err == nil {
+		line += " plugins=" + plugin.FormatRecord(plugin.ParseRecord(rec))
 	}
 	return line, nil
 }
@@ -94,12 +107,15 @@ func ParseInstalled(lines []string) (Result, error) {
 			return Result{}, nil
 		}
 		r := Result{Installed: true}
-		rest = strings.TrimSpace(rest)
-		if after, ok := strings.CutPrefix(rest, "atelet"); ok {
-			r.Atelet, rest = true, strings.TrimSpace(after)
-		}
-		if image, ok := strings.CutPrefix(rest, "image="); ok {
-			r.Version = imageTagVersion(image)
+		for _, f := range strings.Fields(rest) {
+			switch k, v, _ := strings.Cut(f, "="); k {
+			case "atelet":
+				r.Atelet = true
+			case "image":
+				r.Version = imageTagVersion(v)
+			case "plugins":
+				r.Plugins, r.PluginsRead = plugin.ParseRecord(v), true
+			}
 		}
 		return r, nil
 	}
@@ -175,7 +191,7 @@ func SimLine(cluster string) string {
 	case strings.Contains(cluster, "partial"):
 		return Marker + "true"
 	case strings.Contains(cluster, "installed"):
-		return Marker + "true atelet image=ghcr.io/agent-substrate/substrate/ate-api-server:v1.0.0"
+		return Marker + "true atelet image=ghcr.io/agent-substrate/substrate/ate-api-server:v1.0.0 plugins=efs,llm-gateway"
 	}
 	return Marker + "false"
 }

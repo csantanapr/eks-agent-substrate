@@ -193,6 +193,18 @@ plugin still requires one being removed. Before it removes anything it runs
 and a refusal there (a resource of the plugin's name with another owner)
 stops it with nothing removed.
 
+An install runs one Substrate release. It is the release `--tag` and
+`--image-repo` name, unless a chosen or recorded plugin installs another
+build (`mode3` installs the fork `v1.0.0-mode3.9f36a0d` from
+`ghcr.io/csantanapr/substrate`). The control plane, the demo's and every
+plugin's worker pools, and everything built from the tree (the counter,
+`kubectl-ate`) then use that release, because a worker of another release can
+refuse what the control plane gives it. `--deploy-control-plane` refuses to
+change the release of an installed control plane, and so do `--deploy-demo`
+and `--plugin-action deploy` on a release the control plane does not run. To
+add or drop `mode3` on an installed cluster, run `--remove-control-plane`,
+then install again with or without it.
+
 The Makefile and `install.sh` run Go with `GOTOOLCHAIN=local` and
 `GOPROXY=direct`, so module downloads go straight to their source.
 

@@ -28,8 +28,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/controlplane"
 )
 
 // Lines Deploy and Verify print for the wizard's checklist.
@@ -42,10 +40,10 @@ const (
 // Options are the install answers the demo needs.
 type Options struct {
 	Cluster, Region, Profile string
-	// Tag is the Substrate release. TreeRoot is where fetched trees are
-	// cached (the control plane's --tree-root); controlplane.TreeDir(TreeRoot,
-	// Tag) holds demos/counter.
-	Tag, TreeRoot string
+	// Tag is the Substrate release. Tree is its cached tree, which holds
+	// demos/counter (plugin.Release.Tree, located as the control plane
+	// step located it).
+	Tag, Tree string
 	// ImageRepo is where the release images come from.
 	ImageRepo string
 	// SandboxClasses are the classes to deploy and check, e.g. "gvisor,microvm".
@@ -98,15 +96,15 @@ func parseClasses(s string) ([]class, error) {
 }
 
 func (o Options) check() error {
-	if o.Cluster == "" || o.Region == "" || o.Tag == "" || o.TreeRoot == "" || o.ImageRepo == "" {
-		return errors.New("cluster, region, tag, tree root and image repo are required")
+	if o.Cluster == "" || o.Region == "" || o.Tag == "" || o.Tree == "" || o.ImageRepo == "" {
+		return errors.New("cluster, region, tag, tree and image repo are required")
 	}
 	return nil
 }
 
 // treeDir is the cached Substrate tree the control plane step fetched.
 func treeDir(o Options) (string, error) {
-	tree := controlplane.TreeDir(o.TreeRoot, o.Tag)
+	tree := o.Tree
 	if _, err := os.Stat(filepath.Join(tree, "demos", "counter")); err != nil {
 		return "", fmt.Errorf("no substrate %s tree with demos/counter at %s; turn on Substrate first", o.Tag, tree)
 	}

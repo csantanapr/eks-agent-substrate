@@ -24,7 +24,6 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
 	"sigs.k8s.io/kustomize/kyaml/yaml"
 
-	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/controlplane"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin"
 )
 
@@ -304,7 +303,7 @@ func images(ctx context.Context, w io.Writer, o plugin.Options, ac aws.Config, a
 	if err != nil {
 		return "", "", err
 	}
-	tree := controlplane.TreeDir(o.TreeRoot, o.Tag)
+	tree := o.Tree
 	ko, err := os.ReadFile(filepath.Join(tree, ".ko.yaml"))
 	if err != nil {
 		return "", "", fmt.Errorf("no substrate %s tree at %s; turn on Substrate first: %w", o.Tag, tree, err)

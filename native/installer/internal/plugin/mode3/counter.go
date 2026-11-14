@@ -15,7 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/controlplane"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/demo"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin"
 )
@@ -43,7 +42,7 @@ type Counter struct {
 // DemoFuncs is the counter demo's code the plugins run (internal/demo's
 // exports); tests replace Demo.
 type DemoFuncs struct {
-	CounterImage func(ctx context.Context, w io.Writer, o demo.Options, tree, pool string) (string, error)
+	CounterImage func(ctx context.Context, w io.Writer, o demo.Options, tree, pool, tag string) (string, error)
 	Pin          func(ctx context.Context, o demo.Options, tagged string) (string, error)
 	KubectlAte   func(ctx context.Context, w io.Writer, o demo.Options, tree string) (string, error)
 	Ate          func(ctx context.Context, o demo.Options, args ...string) ([]byte, error)
@@ -62,12 +61,13 @@ var Interval = 2 * time.Second
 // images and its kubectl-ate.
 func DemoOptions(o plugin.Options) demo.Options {
 	return demo.Options{Cluster: o.Cluster, Region: o.Region, Profile: o.Profile,
-		Tag: Tag, TreeRoot: o.TreeRoot, ImageRepo: ImageRepo}
+		Tag: Tag, Tree: o.Tree, ImageRepo: ImageRepo}
 }
 
-// Tree is the fork's tree, which the control plane deploy fetched.
+// Tree is the fork's tree, which the control plane deploy fetched: the
+// install's release is the fork whenever mode 3 is installed.
 func Tree(o plugin.Options) (string, error) {
-	tree := controlplane.TreeDir(o.TreeRoot, Tag)
+	tree := o.Tree
 	if _, err := os.Stat(filepath.Join(tree, "demos", "counter")); err != nil {
 		return "", fmt.Errorf("no mode 3 tree (substrate %s) at %s: run --deploy-control-plane --plugins %s first", Tag, tree, ID)
 	}

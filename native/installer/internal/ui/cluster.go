@@ -488,8 +488,7 @@ func (m Model) clusterPanel() string {
 		lines = []string{theme.Bad.Render(head), "", para.Render(why), ""}
 		if sel.CreatedByInstaller(m.s.Region) {
 			lines = append(lines, para.Render("This installer created "+sel.Name+", so it can remove Substrate from it: "+
-				theme.Key.Render("t")+" runs ate-setup delete ate-system, which deletes every actor, template and the control plane, "+
-				"and keeps the cluster and its AWS resources. The install then continues here."))
+				theme.Key.Render("t")+" "+removalText(res)+" The install then continues here."))
 		} else {
 			lines = append(lines,
 				para.Render("This installer did not create "+sel.Name+", so it will not remove anything from it: the cluster may run other people's workloads. Choose another cluster, or create a new one."),
@@ -502,7 +501,7 @@ func (m Model) clusterPanel() string {
 			"Type " + theme.Key.Render(sel.Name) + " to confirm:",
 			theme.Selected.Render("› " + cl.confirm + "▏"),
 			"",
-			para.Render("Runs ate-setup delete ate-system. It deletes every actor (running, suspended or crashed), every ActorTemplate, atespace and WorkerPool, and the control plane. The cluster, its node groups and its AWS resources are kept."),
+			para.Render(confirmText(cl.probed[sel.Name])),
 		}
 	case "removing":
 		lines = []string{"Removing Substrate from " + sel.Name + "…", "", m.taskView(cl.removal)}
@@ -513,4 +512,39 @@ func (m Model) clusterPanel() string {
 		lines = append(lines, theme.Subtle.Render(fmt.Sprintf("Substrate needs EKS 1.%d or newer (the PodCertificate APIs). * created by this installer.", awsx.MinMinor)))
 	}
 	return "\n" + strings.Join(lines, "\n") + "\n"
+}
+
+// pluginsRemoved names what --remove-control-plane removes before ate-system,
+// as the probe read the plugin record: the recorded plugins, "every
+// installed plugin" when the record could not be read, and "" when it lists
+// none.
+func pluginsRemoved(r probe.Result) string {
+	switch n := len(r.Plugins); {
+	case !r.PluginsRead:
+		return "every installed plugin"
+	case n == 0:
+		return ""
+	case n == 1:
+		return "the installed plugin " + r.Plugins[0]
+	default:
+		return "the installed plugins " + strings.Join(r.Plugins[:n-1], ", ") + " and " + r.Plugins[n-1]
+	}
+}
+
+// removalText is what t does on a guarded cluster, after "t ".
+func removalText(r probe.Result) string {
+	const del = "runs ate-setup delete ate-system, which deletes every actor, template and the control plane, and keeps the cluster and its "
+	if p := pluginsRemoved(r); p != "" {
+		return "removes " + p + ", Kubernetes objects and AWS resources alike, then " + del + "other AWS resources."
+	}
+	return del + "AWS resources."
+}
+
+// confirmText is the removal's confirmation detail.
+func confirmText(r probe.Result) string {
+	const del = "ate-setup delete ate-system. It deletes every actor (running, suspended or crashed), every ActorTemplate, atespace and WorkerPool, and the control plane. The cluster, its node groups and its "
+	if p := pluginsRemoved(r); p != "" {
+		return "Removes " + p + " (Kubernetes objects and AWS resources), then runs " + del + "other AWS resources are kept."
+	}
+	return "Runs " + del + "AWS resources are kept."
 }

@@ -84,6 +84,34 @@ func TestFailedReadsAreErrors(t *testing.T) {
 	}
 }
 
+// Both ways: the plugin record is read, on a full or a partial install, and
+// its plugins reported (none when the record is missing); a failed read
+// leaves them unknown, never "none", and the cluster still reads installed.
+// An absent cluster's record is not read.
+func TestInstalledPluginsAreReadFromTheRecord(t *testing.T) {
+	full := map[string]string{"namespace": "ate-system", "daemonset": "daemonset.apps/atelet",
+		"deployment": "ghcr.io/x/ate-api-server:v1.0.0", "configmap": "mode3,efs"}
+	r := checkThenParse(t, fakeKubectl(full, nil))
+	if !r.PluginsRead || strings.Join(r.Plugins, ",") != "efs,mode3" || r.Version != "v1.0.0" || !r.Atelet {
+		t.Errorf("recorded plugins read as %+v", r)
+	}
+	partial := map[string]string{"namespace": "ate-system", "configmap": "efs"}
+	if r := checkThenParse(t, fakeKubectl(partial, nil)); !r.Partial() || !r.PluginsRead || strings.Join(r.Plugins, ",") != "efs" {
+		t.Errorf("partial install's plugins read as %+v", r)
+	}
+	delete(full, "configmap")
+	if r := checkThenParse(t, fakeKubectl(full, nil)); !r.PluginsRead || len(r.Plugins) != 0 {
+		t.Errorf("no record read as %+v, want read with no plugins", r)
+	}
+	r = checkThenParse(t, fakeKubectl(full, map[string]error{"configmap": errors.New("forbidden")}))
+	if r.PluginsRead || len(r.Plugins) != 0 || !r.Installed || r.Version != "v1.0.0" {
+		t.Errorf("an unreadable record read as %+v, want unknown plugins on an installed cluster", r)
+	}
+	if line, _ := Check(context.Background(), fakeKubectl(map[string]string{"configmap": "efs"}, nil)); strings.Contains(line, "plugins") {
+		t.Errorf("absent cluster: %q", line)
+	}
+}
+
 func TestParseInstalledNeedsTheMarker(t *testing.T) {
 	if _, err := ParseInstalled([]string{"error: You must be logged in"}); err == nil {
 		t.Error("parsed a probe that printed no marker")
