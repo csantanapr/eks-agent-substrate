@@ -178,6 +178,8 @@ func key(k string) tea.KeyMsg {
 		return tea.KeyMsg{Type: tea.KeyDown}
 	case "backspace":
 		return tea.KeyMsg{Type: tea.KeyBackspace}
+	case "ctrl+c":
+		return tea.KeyMsg{Type: tea.KeyCtrlC}
 	}
 	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(k)}
 }
@@ -243,6 +245,16 @@ func toStep(t *testing.T, m Model, step state.Step) Model {
 	}
 	t.Fatalf("never reached %s; at %s (cluster mode %q)", step.Title(), m.m.Current().Title(), m.cl.mode)
 	return m
+}
+
+// startKey starts the install's first long step from the screen toBootstrap
+// stops on: enter on the Database screen.
+const startKey = "enter"
+
+// toBootstrap walks to the screen whose startKey starts Provision.
+func toBootstrap(t *testing.T, m Model) Model {
+	t.Helper()
+	return toStep(t, m, state.Database)
 }
 
 func before(t *testing.T, list []string, a, b string) {

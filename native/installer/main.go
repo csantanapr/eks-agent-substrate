@@ -197,6 +197,7 @@ func main() {
 		real := &execx.Real{Log: logger}
 		defer real.Drain()
 		d.Runner = real
+		d.StopTree = ui.StopProcessTree
 		d.Checks = doctor.Checks(s.Profile, s.Region)
 		reads := awsx.Fresh{Profile: s.Profile, Region: s.Region}
 		d.Identity, d.Clusters, d.Describe = reads.Identity, reads.ListClusters, reads.Describe

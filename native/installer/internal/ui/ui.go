@@ -7,6 +7,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -43,6 +44,10 @@ type Deps struct {
 	// LogPath is shown on failure and at the end.
 	LogPath string
 	DryRun  bool
+	// StopTree ends every process the installer started and their children,
+	// for ctrl+c on a running step (StopProcessTree); nil only cancels the
+	// step, which is enough for the dry run's replay.
+	StopTree func()
 }
 
 type (
@@ -59,6 +64,10 @@ type (
 	tickMsg time.Time
 )
 
+// errStopped is a step the user stopped with ctrl+c: done, not successful,
+// and rerun with enter like a failure.
+var errStopped = errors.New("stopped with ctrl+c")
+
 // task is a long step in flight or finished.
 type task struct {
 	items      []steps.ChecklistItem
@@ -68,6 +77,10 @@ type task struct {
 	err        error
 	start, end time.Time
 	spec       execx.Spec
+	// cancel ends the Runner's context; stopped is the user's ctrl+c, which
+	// makes the end of the step errStopped whatever the runner reports.
+	cancel  context.CancelFunc
+	stopped bool
 }
 
 func newTask(spec execx.Spec, items []steps.ChecklistItem) *task {
@@ -91,6 +104,9 @@ type Model struct {
 	cl    *clusterScreen
 	db    *databaseScreen
 	scope *scopeScreen
+
+	// stopAsk is ctrl+c on a running step, waiting for y.
+	stopAsk bool
 
 	quitting bool
 }
@@ -126,7 +142,41 @@ func listen(t *task, ch <-chan execx.Event) tea.Cmd {
 }
 
 func (m *Model) run(t *task) tea.Cmd {
-	return listen(t, m.d.Runner.Start(context.Background(), t.spec))
+	ctx, cancel := context.WithCancel(context.Background())
+	t.cancel = cancel
+	return listen(t, m.d.Runner.Start(ctx, t.spec))
+}
+
+// runningTask is the long step in flight on this screen, the cluster
+// guard's removal included, or nil.
+func (m Model) runningTask() *task {
+	if t := m.tasks[m.m.Current()]; t != nil && !t.done {
+		return t
+	}
+	if t := m.cl.removal; m.m.Current() == state.Cluster && m.cl.mode == "removing" && t != nil && !t.done {
+		return t
+	}
+	return nil
+}
+
+// stopTask is the confirmed ctrl+c on a running step (review F10). Ending
+// the Runner's context alone kills only the direct child: `go run` leaves
+// the program it built running, and that program its kubectl and ate-setup,
+// all still writing to the step's pipes. So StopTree first ends the whole
+// tree, then the context is cancelled. The step then ends as errStopped,
+// which enter reruns as it does a failure.
+func (m *Model) stopTask(t *task) tea.Cmd {
+	t.stopped = true
+	tree, cancel := m.d.StopTree, t.cancel
+	return func() tea.Msg {
+		if tree != nil {
+			tree()
+		}
+		if cancel != nil {
+			cancel()
+		}
+		return nil
+	}
 }
 
 // longStep builds the command and checklist of a step that runs one, and
@@ -271,14 +321,44 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, listen(t, msg.ch)
 		}
 		t.done, t.err, t.end = true, msg.ev.Err, time.Now()
+		// A cancelled Runner may close its channel without an error (execx
+		// drops the final event once its context ends), so the stop decides.
+		if t.stopped {
+			t.err = errStopped
+		}
+		if t.cancel != nil {
+			t.cancel()
+		}
 		if t.err == nil {
 			t.active = len(t.items)
+		}
+		if m.runningTask() == nil {
+			m.stopAsk = false
 		}
 		if t == m.cl.removal {
 			return m, m.removalDone()
 		}
 	case tea.KeyMsg:
+		if m.stopAsk {
+			t := m.runningTask()
+			switch k := msg.String(); {
+			case t == nil:
+				m.stopAsk = false
+			case k == "y" || k == "ctrl+c":
+				m.stopAsk = false
+				return m, m.stopTask(t)
+			case k == "n" || k == "esc":
+				m.stopAsk = false
+			}
+			return m, nil
+		}
 		if msg.String() == "ctrl+c" {
+			// A running step is stopped, after a confirmation, rather than
+			// left running behind a closed wizard (review F10).
+			if t := m.runningTask(); t != nil && !t.stopped {
+				m.stopAsk = true
+				return m, nil
+			}
 			m.quitting = true
 			return m, tea.Quit
 		}
@@ -393,6 +473,14 @@ func (m Model) bodyWidth() int {
 func (m Model) body() string {
 	var b strings.Builder
 	cur := m.m.Current()
+	if m.stopAsk {
+		if t := m.runningTask(); t != nil {
+			b.WriteString(theme.Warning.Render("Stop "+t.spec.Label+"?") + "\n")
+			b.WriteString(theme.Subtle.Render("This ends the command and every process it started. The step is marked") + "\n")
+			b.WriteString(theme.Subtle.Render("stopped; enter runs it again (every step is idempotent).") + "\n")
+			b.WriteString(theme.Key.Render("y") + " stop it   " + theme.Key.Render("n") + " keep it running\n\n")
+		}
+	}
 	switch cur {
 	case state.Welcome:
 		b.WriteString(theme.Logo() + "\n\n")
@@ -594,12 +682,17 @@ func (m Model) taskView(t *task) string {
 	for _, l := range tail {
 		b.WriteString(theme.Fainted.Render(truncate(l, m.bodyWidth()-4)) + "\n")
 	}
-	if t.err != nil {
+	switch {
+	case t.stopped && !t.done:
+		b.WriteString("\n" + theme.Warning.Render(m.spinner()+" Stopping: ending the command and every process it started…") + "\n")
+	case errors.Is(t.err, errStopped):
+		b.WriteString("\n" + theme.Warning.Render("Stopped with ctrl+c: the command and every process it started were ended · enter to run it again") + "\n")
+	case t.err != nil:
 		b.WriteString("\n" + theme.Bad.Render("Failed: "+t.err.Error()+" · enter to retry") + "\n")
 		if m.d.LogPath != "" {
 			b.WriteString(theme.Subtle.Render("Full output: "+m.d.LogPath) + "\n")
 		}
-	} else if t.done {
+	case t.done:
 		b.WriteString(theme.Good.Render(fmt.Sprintf("Done in %s", t.end.Sub(t.start).Round(time.Second))) + "\n")
 	}
 	return b.String()
@@ -608,6 +701,13 @@ func (m Model) taskView(t *task) string {
 func (m Model) hints() string {
 	var h []string
 	cur := m.m.Current()
+	switch {
+	case m.stopAsk:
+		h = []string{"y stop the step", "n keep it running"}
+		return theme.Subtle.Render("  " + strings.Join(h, " · "))
+	case m.runningTask() != nil:
+		return theme.Subtle.Render("  ctrl+c stop this step")
+	}
 	switch cur {
 	case state.Cluster:
 		h = m.clusterHints()
