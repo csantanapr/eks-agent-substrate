@@ -206,6 +206,39 @@ func (c Config) Lookup(key string) (string, bool) {
 	return c.Defaults.Get(key)
 }
 
+// StepKeys are settings the steps read from their own environment, not the
+// wizard: the RDS instance's (setup-aws create rds), the LLM gateway's
+// Bedrock profile, the EFS add-on version, and OpenClaw's images and peer.
+// StepEnv hands the config files' values for them to every step, so setting
+// one in config.env or config.local.env works like exporting it.
+var StepKeys = []string{
+	"DB_ENGINE_VERSION", "DB_INSTANCE_CLASS", "DB_STORAGE_GB", "DB_MULTI_AZ", "DB_BACKUP_DAYS", "DB_DELETION_PROTECTION",
+	"BEDROCK_INFERENCE_PROFILE", "EFS_ADDON_VERSION",
+	"OPENCLAW_GATEWAY_IMAGE", "OPENCLAW_ACTOR_IMAGE", "OPENCLAW_DASHBOARD_IMAGE", "OPENCLAW_WORKERS", "WHATSAPP_PEER",
+}
+
+// StepEnv is KEY=value for each of StepKeys set, non-empty, in
+// config.local.env or config.env and not in the environment: a child step
+// inherits the environment already, and an exported value wins.
+func (c Config) StepEnv() []string {
+	var out []string
+	for _, k := range StepKeys {
+		if c.Env != nil {
+			if _, ok := c.Env(k); ok {
+				continue
+			}
+		}
+		v, ok := c.Local.Get(k)
+		if !ok {
+			v, ok = c.Defaults.Get(k)
+		}
+		if ok && v != "" {
+			out = append(out, k+"="+v)
+		}
+	}
+	return out
+}
+
 // LocalPath is DIR/config.local.env, or "" outside a checkout.
 func (c Config) LocalPath() string {
 	if c.Dir == "" {

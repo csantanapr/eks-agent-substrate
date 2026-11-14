@@ -198,7 +198,8 @@ func main() {
 	defer logger.Close()
 
 	self, _ := os.Executable()
-	b := builder{self: self, setupAWS: *setupAWS, overlay: *overlay, cwd: cwd, exeDir: exeDir, treeRoot: *treeRoot}
+	b := builder{self: self, setupAWS: *setupAWS, overlay: *overlay, cwd: cwd, exeDir: exeDir, treeRoot: *treeRoot,
+		stepEnv: cfg.StepEnv()}
 	d := ui.Deps{
 		Probe: b.probe, CreateCluster: b.createCluster, Bootstrap: b.bootstrap, RDS: b.rds,
 		ControlPlane: b.controlPlane, Plugins: b.plugins, Demo: b.demoStep, Verify: b.verify,

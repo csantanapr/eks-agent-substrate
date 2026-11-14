@@ -3,6 +3,7 @@ package state
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -186,5 +187,32 @@ func TestValidateConfigBothWays(t *testing.T) {
 		if bad := ValidateConfig(good); (len(bad) == 0) != ok {
 			t.Errorf("EKS_PUBLIC_ACCESS_CIDRS=%q: findings %v, want accepted=%v", value, bad, ok)
 		}
+	}
+}
+
+// Both ways: a step setting in config.local.env (over config.env) reaches
+// the steps; an exported value wins and is not repeated; an empty value and
+// a key that is not a step setting are left out.
+func TestStepEnv(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string) {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("config.env", "DB_MULTI_AZ=false\nDB_STORAGE_GB=20\nEFS_ADDON_VERSION=\nCLUSTER_NAME=x\n")
+	write("config.local.env", "DB_MULTI_AZ=true\nBEDROCK_INFERENCE_PROFILE='us.anthropic.claude-haiku-5-5'\n")
+	env := map[string]string{"DB_STORAGE_GB": "50"}
+	c, err := LoadConfig(dir, func(k string) (string, bool) { v, ok := env[k]; return v, ok })
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := c.StepEnv()
+	want := []string{"DB_MULTI_AZ=true", "BEDROCK_INFERENCE_PROFILE=us.anthropic.claude-haiku-5-5"}
+	if !slices.Equal(got, want) {
+		t.Errorf("StepEnv = %q, want %q", got, want)
+	}
+	if (Config{}).StepEnv() != nil {
+		t.Error("outside a checkout StepEnv is not empty")
 	}
 }

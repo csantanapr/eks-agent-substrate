@@ -215,3 +215,33 @@ func TestDisplayIsThePasteableCommand(t *testing.T) {
 		t.Errorf("shellQuote = %s", got)
 	}
 }
+
+// Both ways: the config files' step settings reach every step, setup-aws
+// ones and the installer's own subcommands alike, and the pinned knobs
+// still win over a step setting of the same name; with none, no step
+// carries one.
+func TestStepSettingsReachEveryStep(t *testing.T) {
+	b, s := testBuilder()
+	b.stepEnv = []string{"DB_MULTI_AZ=true", "TAGS=from-config"}
+	for name, spec := range allSpecs(b, s) {
+		if !slices.Contains(spec.Env, "DB_MULTI_AZ=true") {
+			t.Errorf("%s: Env %v lacks the step setting", name, spec.Env)
+		}
+		// exec takes the last of repeated keys: the run's TAGS must be last.
+		var last string
+		for _, e := range spec.Env {
+			if strings.HasPrefix(e, "TAGS=") {
+				last = e
+			}
+		}
+		if last != "TAGS="+s.Tags {
+			t.Errorf("%s: TAGS resolves to %q, want the run's %q", name, last, "TAGS="+s.Tags)
+		}
+	}
+	b.stepEnv = nil
+	for name, spec := range allSpecs(b, s) {
+		if slices.ContainsFunc(spec.Env, func(e string) bool { return strings.HasPrefix(e, "DB_") }) {
+			t.Errorf("%s: carries a step setting with none configured: %v", name, spec.Env)
+		}
+	}
+}
