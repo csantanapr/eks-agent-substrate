@@ -1,0 +1,43 @@
+# The CSIDriverConfig and the StorageClass for per-actor volumes. The efs
+# plugin (efs.go) fills in the fields and applies it; the s3files plugin
+# applies its StorageClass from the same template.
+#   CSIDriverConfig  tells ate-api-server where the EFS CSI driver's
+#                    controller listens (Substrate's own controller, behind
+#                    mTLS)
+#   StorageClass     provisioningMode efs-ap (EFS) or s3files-ap (S3 Files):
+#                    one access point per volume, under basePath, owned by
+#                    uid and gid
+#
+# Learn more:
+#   https://github.com/agent-substrate/substrate/blob/v1.0.0/docs/guides/csi-volumes.md
+#   https://docs.aws.amazon.com/eks/latest/userguide/efs-csi.html
+{{- if .DriverConfig}}
+apiVersion: ate.dev/v1
+kind: CSIDriverConfig
+metadata:
+  name: efs.csi.aws.com
+spec:
+  driverName: efs.csi.aws.com
+  controllerEndpoint: tcp://efs-csi-controller-ate.kube-system.svc.cluster.local:50052
+  tls:
+    enabled: true
+    usePodIdentity: true
+    serverName: efs-csi-controller-ate.kube-system.svc
+---
+{{- end}}
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{.Name}}
+  labels:
+    app.kubernetes.io/managed-by: substrate-eks
+provisioner: efs.csi.aws.com
+parameters:
+  provisioningMode: {{.Mode}}
+  fileSystemId: {{.FileSystem}}
+  directoryPerms: "700"
+  uid: "{{.UID}}"
+  gid: "{{.GID}}"
+  basePath: {{.BasePath}}
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
