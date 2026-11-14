@@ -95,7 +95,12 @@ type Plugin struct {
 	// wizard offers it only on an Auto Mode cluster, and Run refuses to
 	// deploy it on any other.
 	NeedsAutoMode string
-	Needs         Needs
+	// NeedsDemo reports that Deploy builds on the counter demo (its actor
+	// templates): choosing it in the wizard turns the demo on, and the demo
+	// runs before the plugins. Deploy itself refuses when the demo is
+	// missing, so --plugin-action deploy says so too.
+	NeedsDemo bool
+	Needs     Needs
 	// HourlyUSD is the rough on-demand cost the plugin adds, for the Review
 	// screen (0 when it is only Kubernetes objects).
 	HourlyUSD float64

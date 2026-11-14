@@ -19,10 +19,12 @@ func TestInstallOrderAddsTheOptionalSteps(t *testing.T) {
 		{Setup{Database: DatabaseBundled}, append(slices.Clone(choose), Provision, ControlPlane, Complete)},
 		{Setup{Database: DatabaseRDS, ClusterIsNew: true, DemoMode: true},
 			append(slices.Clone(choose), CreateCluster, Provision, RDS, ControlPlane, Demo, Complete)},
-		// A chosen plugin adds its step after the control plane, before the
-		// demo; an empty choice adds none.
+		// A chosen plugin adds its step last, after the demo (efs builds on
+		// the counter demo's templates); an empty choice adds none.
 		{Setup{Database: DatabaseBundled, Plugins: []string{"efs"}, DemoMode: true},
-			append(slices.Clone(choose), Provision, ControlPlane, InstallPlugins, Demo, Complete)},
+			append(slices.Clone(choose), Provision, ControlPlane, Demo, InstallPlugins, Complete)},
+		{Setup{Database: DatabaseBundled, Plugins: []string{"efs"}},
+			append(slices.Clone(choose), Provision, ControlPlane, InstallPlugins, Complete)},
 		{Setup{Database: DatabaseBundled, Plugins: []string{}}, append(slices.Clone(choose), Provision, ControlPlane, Complete)},
 	} {
 		if got := InstallOrder(&tc.s); !slices.Equal(got, tc.want) {

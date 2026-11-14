@@ -59,9 +59,11 @@ var Order = []Step{Welcome, CheckSetup, Account, Cluster, Database, Settings, Pl
 //     cluster, before Provision, which needs it ACTIVE;
 //   - RDS runs `setup-aws create rds` after Provision when the database is
 //     RDS, before ControlPlane, which connects to it;
-//   - InstallPlugins deploys the chosen plugins after ControlPlane, which
-//     already carries their needs;
-//   - Demo deploys and checks the counter demo on a demo run (--demo).
+//   - Demo deploys and checks the counter demo on a demo run (--demo),
+//     after ControlPlane;
+//   - InstallPlugins deploys the chosen plugins last: ControlPlane already
+//     carries their needs, and a plugin that builds on the counter demo
+//     (plugin.NeedsDemo; the wizard turns the demo on for it) finds it.
 func InstallOrder(s *Setup) []Step {
 	order := []Step{Welcome, CheckSetup, Account, Cluster, Database, Settings, Plugins, Review}
 	if s.ClusterIsNew {
@@ -72,11 +74,11 @@ func InstallOrder(s *Setup) []Step {
 		order = append(order, RDS)
 	}
 	order = append(order, ControlPlane)
-	if len(s.Plugins) > 0 {
-		order = append(order, InstallPlugins)
-	}
 	if s.DemoMode {
 		order = append(order, Demo)
+	}
+	if len(s.Plugins) > 0 {
+		order = append(order, InstallPlugins)
 	}
 	return append(order, Complete)
 }

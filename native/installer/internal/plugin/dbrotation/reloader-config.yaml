@@ -1,0 +1,17 @@
+# The ESO Reloader Config: when the Secret ate-api-server-secret-envvars
+# changes, roll the ate-api-server Deployment, which reads its connection
+# strings only when it starts. The db-rotation plugin applies it as it is.
+#
+# Learn more:
+#   https://github.com/external-secrets/reloader
+
+apiVersion: reloader.external-secrets.io/v1alpha1
+kind: Config
+metadata: { name: ate-api-server-db }
+spec:
+  notificationSources:
+  - type: KubernetesSecret
+    kubernetesSecret: { serverURL: https://kubernetes.default.svc }
+  destinationsToWatch:
+  - type: Deployment
+    deployment: { names: [ate-api-server] }
