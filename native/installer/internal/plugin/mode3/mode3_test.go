@@ -57,9 +57,9 @@ func newFake(t *testing.T) *fake {
 	Interval = 0
 	ecrFor = func(context.Context, plugin.Options) (ecrAPI, error) { return f.ecr, nil }
 	Demo = DemoFuncs{
-		CounterImage: func(_ context.Context, _ io.Writer, o demo.Options, tree, pool string) (string, error) {
+		CounterImage: func(_ context.Context, _ io.Writer, o demo.Options, tree, pool, tag string) (string, error) {
 			f.checkOptions(o)
-			f.log = append(f.log, "counter image "+filepath.Base(tree)+" "+pool)
+			f.log = append(f.log, "counter image "+filepath.Base(tree)+" "+pool+" "+tag)
 			return testCounter, nil
 		},
 		Pin: func(_ context.Context, o demo.Options, tagged string) (string, error) {
@@ -236,7 +236,7 @@ func testOptions(t *testing.T) plugin.Options {
 	if err := os.MkdirAll(filepath.Join(controlplane.TreeDir(root, Tag), "demos", "counter"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	return plugin.Options{Cluster: "c1", Region: "us-east-1", Profile: "p", Tag: "v1.0.0", TreeRoot: root, Kubeconfig: "/kc", AutoMode: true}
+	return plugin.Options{Cluster: "c1", Region: "us-east-1", Profile: "p", Release: plugin.Release{Tag: "v1.0.0", ImageRepo: "ghcr.io/agent-substrate/substrate"}, TreeRoot: root, Kubeconfig: "/kc", AutoMode: true}
 }
 
 // The control plane installs the fork's pinned commit with its images and
@@ -330,7 +330,9 @@ func TestDeploy(t *testing.T) {
 	if err := deploy(context.Background(), &out, testOptions(t)); err != nil {
 		t.Fatalf("%v\n%s", err, out.String())
 	}
-	if err := f.has("build kubectl-ate substrate-"+Tag, "counter image substrate-"+Tag+" microvm", "pin "+ImageRepo+"/ateworker-gvisor:"+Tag,
+	// The counter is pushed under mode 3's own tag, not the release tag the
+	// demo's counter carries.
+	if err := f.has("build kubectl-ate substrate-"+Tag, "counter image substrate-"+Tag+" microvm "+CounterTag, "pin "+ImageRepo+"/ateworker-gvisor:"+Tag,
 		"kubectl apply -f -", "kubectl -n kube-system rollout status ds/kata-deploy --timeout=10m", "kubectl get runtimeclass kata",
 		"kubectl get nodes -l katacontainers.io/kata-runtime=true", "kubectl apply -f -", "ate create atespace ate-demo-counter-mode3",
 		"ate get actor-template counter-mode3", "ate create actor-template -f", "golden ate-demo-counter-mode3/counter-mode3"); err != nil {
@@ -488,10 +490,12 @@ func TestRemove(t *testing.T) {
 	if f.stdin["delete -f - --ignore-not-found --wait=true"] != string(kataManifest) {
 		t.Error("the delete -f was not the Kata manifest")
 	}
-	if in := f.ecr.in; in == nil || aws.ToString(in.RepositoryName) != "c1/counter" || aws.ToString(in.ImageIds[0].ImageTag) != Tag {
+	// Its own tag, never the release tag the demo's counter carries.
+	if in := f.ecr.in; in == nil || aws.ToString(in.RepositoryName) != "c1/counter" || aws.ToString(in.ImageIds[0].ImageTag) != CounterTag || CounterTag == Tag {
 		t.Errorf("ECR delete = %+v", in)
 	}
-	if !strings.HasSuffix(out.String(), RemovedNote+"\n") || !strings.Contains(RemovedNote, "--deploy-control-plane without --plugins mode3") {
+	// No advice to redeploy without mode3: that deploy is refused.
+	if !strings.HasSuffix(out.String(), RemovedNote+"\n") || strings.Contains(RemovedNote, "--deploy-control-plane") {
 		t.Errorf("output:\n%s", out.String())
 	}
 

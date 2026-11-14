@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/state"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/theme"
 )
@@ -198,7 +199,8 @@ func (m Model) reviewView(h int) string {
 	head := []string{
 		theme.Title.Render("Review the plan") + "  " + theme.Subtle.Render("nothing has run yet"),
 		theme.Subtle.Render(truncate(fmt.Sprintf("Cluster %s (%s) · EKS %s · %s · %s", s.ClusterName, what, s.ClusterVersion, auto, s.Region), w)),
-		theme.Subtle.Render(truncate(fmt.Sprintf("Substrate %s · %s · database %s · plugins: %s · demo: %s", s.SubstrateTag, s.SandboxClasses, s.Database, plugins, demo), w)),
+		theme.Subtle.Render(truncate(fmt.Sprintf("Substrate %s · %s · database %s · plugins: %s · demo: %s",
+			plugin.ChosenRelease(s.Plugins, s.SubstrateTag, s.ImageRepo).Tag, s.SandboxClasses, s.Database, plugins, demo), w)),
 		theme.Title.Render(pad("   Step", w-24)) + theme.Title.Render(fmt.Sprintf("%8s  %12s", "Time", "Cost an hour")),
 	}
 

@@ -35,9 +35,11 @@ func kubectlFor(kc, cluster string) func(...string) []string {
 
 // CounterImage builds the counter from tree for the architecture of the nodes
 // labeled ate.dev/pool=<pool>, on the base image tree's .ko.yaml gives it,
-// pushes it to <cluster>/counter:<o.Tag> in the caller's ECR registry, and
+// pushes it to <cluster>/counter:<tag> in the caller's ECR registry, and
 // returns its reference by digest: the first half of Deploy's demoImages.
-func CounterImage(ctx context.Context, w io.Writer, o Options, tree, pool string) (string, error) {
+// The demo pushes <cluster>/counter:<o.Tag>, so a plugin on the same release
+// passes a tag of its own, which its removal can delete.
+func CounterImage(ctx context.Context, w io.Writer, o Options, tree, pool, tag string) (string, error) {
 	e := exportEnv(o)
 	kc, err := e.kubeconfig(ctx)
 	if err != nil {
@@ -62,7 +64,7 @@ func CounterImage(ctx context.Context, w io.Writer, o Options, tree, pool string
 	if err := e.run(ctx, w, tree, buildEnv, "go", "build", "-trimpath", "-o", bin, "./demos/counter"); err != nil {
 		return "", fmt.Errorf("build the counter: %w", err)
 	}
-	ref, err := e.pushCounter(ctx, bin, base, arch, o.Cluster+"/counter", o.Tag)
+	ref, err := e.pushCounter(ctx, bin, base, arch, o.Cluster+"/counter", tag)
 	if err != nil {
 		return "", err
 	}

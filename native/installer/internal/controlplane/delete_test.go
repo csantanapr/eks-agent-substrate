@@ -17,6 +17,7 @@ import (
 
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/awsx"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin"
+	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/probe"
 )
 
 type deleteCall struct {
@@ -41,12 +42,15 @@ func deleteEnv(t *testing.T, describeErr error, runErr func(argv []string) error
 	}
 	kc = awsx.KubeconfigPath(o.Cluster, o.Region)
 	prevDescribe, prevRun := describeCluster, deleteRun
-	prevRead, prevRemove, prevOverlay := readRecord, removePlugins, applyOverlay
+	prevRead, prevRemove, prevOverlay, prevInstalled := readRecord, removePlugins, applyOverlay, readInstalled
 	t.Cleanup(func() {
 		describeCluster, deleteRun = prevDescribe, prevRun
-		readRecord, removePlugins, applyOverlay = prevRead, prevRemove, prevOverlay
+		readRecord, removePlugins, applyOverlay, readInstalled = prevRead, prevRemove, prevOverlay, prevInstalled
 	})
 	readRecord = func(context.Context, io.Writer, plugin.Options) ([]string, error) { return nil, nil }
+	readInstalled = func(context.Context, string) (probe.Result, error) {
+		return probe.Result{Installed: true, Atelet: true, Version: o.Tag}, nil
+	}
 	removePlugins = func(_ context.Context, _ io.Writer, action string, ids []string, _ plugin.Options) error {
 		*calls = append(*calls, deleteCall{argv: append([]string{"plugins", action}, ids...)})
 		return nil

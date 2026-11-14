@@ -122,6 +122,21 @@ data:
 	return Kubectl(ctx, w, o, []byte(cm), nil, "apply", "-f", "-")
 }
 
+// ReadRelease is the release of the install on o's cluster (ReleaseOf): the
+// plugins its record lists plus chosen, on o's release, which is the --tag
+// one.
+func ReadRelease(ctx context.Context, w io.Writer, o Options, chosen []string) (Release, error) {
+	rec, err := ReadRecord(ctx, w, o)
+	if err != nil {
+		return Release{}, err
+	}
+	ps, err := Resolve(append(rec, chosen...))
+	if err != nil {
+		return Release{}, err
+	}
+	return ReleaseOf(ps, o.Tag, o.ImageRepo)
+}
+
 // AddToRecord adds ids to the record.
 func AddToRecord(ctx context.Context, w io.Writer, o Options, ids ...string) error {
 	rec, err := ReadRecord(ctx, w, o)
@@ -147,7 +162,8 @@ func hasNeeds(p Plugin) bool {
 //     (`setup-aws plugin <id>`), then Deploy, then Verify; then it is
 //     recorded. A plugin with Needs is refused unless the control plane
 //     already carries them (its ID is in the record), since its objects would
-//     not work: run --deploy-control-plane --plugins <id> first.
+//     not work: run --deploy-control-plane --plugins <id> first, or, for one
+//     that replaces the release, remove the control plane and install again.
 //   - verify: Verify for ids and what they require.
 //   - remove: ids (every recorded plugin when ids is empty), in reverse
 //     order: Remove, then `setup-aws plugin <id> --delete`, then dropped from
@@ -186,9 +202,15 @@ func Run(ctx context.Context, w io.Writer, action string, ids []string, o Option
 			return err
 		}
 		for _, p := range ps {
-			if hasNeeds(p) && !slices.Contains(rec, p.ID) {
-				return fmt.Errorf("plugin %s changes the control plane install, which does not carry it yet: run --deploy-control-plane --plugins %s first", p.ID, p.ID)
+			if !hasNeeds(p) || slices.Contains(rec, p.ID) {
+				continue
 			}
+			if p.Needs.Source != nil {
+				// Its release replaces the one installed, which a deploy of
+				// the control plane refuses to change.
+				return fmt.Errorf("plugin %s installs another Substrate release than the control plane runs: %s", p.ID, ReleaseFix(p.ID))
+			}
+			return fmt.Errorf("plugin %s changes the control plane install, which does not carry it yet: run --deploy-control-plane --plugins %s first", p.ID, p.ID)
 		}
 		for _, p := range ps {
 			if err := deployOne(ctx, w, p, o); err != nil {
@@ -293,7 +315,13 @@ func remove(ctx context.Context, w io.Writer, ids []string, o Options) error {
 			return err
 		}
 		fmt.Fprintln(w, RemovedLine+p.ID)
-		if hasNeeds(p) {
+		switch {
+		case p.Needs.Source != nil:
+			// The release stays: a control plane deploy refuses to change
+			// it, so the fix is a reinstall.
+			fmt.Fprintf(w, NeedsKeptLine+"%s, its Substrate release %s among them, and so does every worker pool; to leave that release, %s (the record no longer lists %s)\n",
+				p.ID, p.Needs.Source.Tag, ReleaseFix(p.ID), p.ID)
+		case hasNeeds(p):
 			// Run has no buckets or database to reinstall the control plane
 			// with, so it says what still runs and how to drop it.
 			fmt.Fprintf(w, NeedsKeptLine+"%s; run --deploy-control-plane again to drop them (the record no longer lists %s)\n", p.ID, p.ID)

@@ -19,6 +19,7 @@ import (
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/awsx"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/doctor"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/execx"
+	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/snap"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/state"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/steps"
@@ -692,7 +693,8 @@ func (m Model) body(h int) string {
 		b.WriteString(m.taskView(m.tasks[cur]))
 	case state.ControlPlane:
 		b.WriteString(theme.Title.Render("Turn on Substrate") + "\n")
-		b.WriteString(theme.Subtle.Render("ate-setup deploy ate-system "+m.s.SubstrateTag+" · sandbox classes "+m.s.SandboxClasses+" · database "+m.s.Database) + "\n\n")
+		rel := plugin.ChosenRelease(m.s.Plugins, m.s.SubstrateTag, m.s.ImageRepo)
+		b.WriteString(theme.Subtle.Render("ate-setup deploy ate-system "+rel.Tag+" · sandbox classes "+m.s.SandboxClasses+" · database "+m.s.Database) + "\n\n")
 		b.WriteString(m.taskView(m.tasks[cur]))
 	case state.Demo:
 		b.WriteString(theme.Title.Render("Deploy the demo") + "\n")

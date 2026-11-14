@@ -30,11 +30,12 @@ func TestCounterImageBuildsAndPushesLikeDeploy(t *testing.T) {
 	o := testOptions(t.TempDir())
 	o.Tag = "v1.0.0-mode3.abc1234"
 	var out bytes.Buffer
-	ref, err := CounterImage(context.Background(), &out, o, tree, "microvm")
+	// The tag is the caller's, not the release's: the demo pushes that one.
+	ref, err := CounterImage(context.Background(), &out, o, tree, "microvm", "mode3-v1.0.0-mode3.abc1234")
 	if err != nil || ref != testCounter {
 		t.Fatalf("CounterImage = %q, %v", ref, err)
 	}
-	if want := []string{"counter|" + testBase + "|arm64|c1/counter|v1.0.0-mode3.abc1234"}; !slices.Equal(f.pushed, want) {
+	if want := []string{"counter|" + testBase + "|arm64|c1/counter|mode3-v1.0.0-mode3.abc1234"}; !slices.Equal(f.pushed, want) {
 		t.Errorf("pushed %q, want %q", f.pushed, want)
 	}
 	var sel, build bool
@@ -52,7 +53,7 @@ func TestCounterImageBuildsAndPushesLikeDeploy(t *testing.T) {
 	f = newFake(t)
 	f.archs = "amd64 arm64"
 	useFake(t, f)
-	if _, err := CounterImage(context.Background(), io.Discard, o, tree, "microvm"); err == nil || len(f.pushed) != 0 {
+	if _, err := CounterImage(context.Background(), io.Discard, o, tree, "microvm", "t"); err == nil || len(f.pushed) != 0 {
 		t.Errorf("mixed architectures: err = %v, pushed %q", err, f.pushed)
 	}
 }

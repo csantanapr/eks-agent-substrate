@@ -12,6 +12,7 @@ import (
 
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/awsx"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin"
+	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/probe"
 )
 
 const forkCommit = "9f36a0d7f2abca950f25fc7bd023752d3852504c"
@@ -109,13 +110,15 @@ type deployFakes struct {
 	record   []string
 	recorded []string
 	runErr   error
+	// installed is what the probe reads off the cluster (none by default).
+	installed probe.Result
 }
 
 // deployEnv stubs every seam Deploy reaches, for the bundled database.
 func deployEnv(t *testing.T, f *deployFakes) Options {
 	t.Helper()
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
-	prev := []any{describeCluster, writeKubeconfig, readRecord, fetchTree, checkCommit, applyOverlay, recordPlugins, runCommand}
+	prev := []any{describeCluster, writeKubeconfig, readRecord, fetchTree, checkCommit, applyOverlay, recordPlugins, runCommand, readInstalled}
 	t.Cleanup(func() {
 		describeCluster = prev[0].(func(context.Context, string, string, string) (awsx.Cluster, error))
 		writeKubeconfig = prev[1].(func(string, awsx.Cluster, string, string) error)
@@ -125,7 +128,15 @@ func deployEnv(t *testing.T, f *deployFakes) Options {
 		applyOverlay = prev[5].(func(io.Writer, string, string, string) error)
 		recordPlugins = prev[6].(func(context.Context, io.Writer, plugin.Options, ...string) error)
 		runCommand = prev[7].(func(context.Context, io.Writer, command) error)
+		readInstalled = prev[8].(func(context.Context, string) (probe.Result, error))
 	})
+	readInstalled = func(_ context.Context, kc string) (probe.Result, error) {
+		if kc == "" {
+			return probe.Result{}, errors.New("probe without a kubeconfig")
+		}
+		f.calls = append(f.calls, "probe")
+		return f.installed, nil
+	}
 	describeCluster = func(context.Context, string, string, string) (awsx.Cluster, error) {
 		return awsx.Cluster{Name: "demo", Status: "ACTIVE", Endpoint: "https://example.invalid",
 			CA: base64.StdEncoding.EncodeToString([]byte("ca"))}, nil
@@ -177,7 +188,7 @@ func TestDeployMergesRecordedAndChosenPlugins(t *testing.T) {
 	}
 	// The fork is fetched by its pinned commit (it has no tags), checked,
 	// and installed with the Source's tag as the image tag.
-	want := []string{"kubeconfig", "read-record", "fetch https://example.invalid/fork.git " + forkCommit, "commit " + forkCommit, "overlay"}
+	want := []string{"kubeconfig", "read-record", "probe", "fetch https://example.invalid/fork.git " + forkCommit, "commit " + forkCommit, "overlay"}
 	if len(f.calls) != len(want)+1 || !slices.Equal(f.calls[:len(want)], want) {
 		t.Fatalf("calls = %q, want %q then ate-setup", f.calls, want)
 	}
@@ -203,7 +214,7 @@ func TestDeployWithoutPluginsOrFailingRecordsNothing(t *testing.T) {
 	if err := Deploy(context.Background(), io.Discard, o); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Contains(f.calls, "fetch "+o.Repo+" v1.0.0") || slices.ContainsFunc(f.calls, func(c string) bool { return strings.HasPrefix(c, "commit") }) {
+	if !slices.Contains(f.calls, "fetch "+DefaultRepo+" v1.0.0") || slices.ContainsFunc(f.calls, func(c string) bool { return strings.HasPrefix(c, "commit") }) {
 		t.Errorf("calls = %q", f.calls)
 	}
 	if len(f.recorded) != 0 {

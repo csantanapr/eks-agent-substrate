@@ -14,8 +14,16 @@
 //     continues across a suspend and resume, and deleting an actor tears its
 //     sandbox down in the guest.
 //   - Remove: the pool and its ate API objects, Kata (kata-deploy undoes its
-//     install on each node), and the counter image. The control plane keeps
-//     running the fork until --deploy-control-plane runs without mode3.
+//     install on each node), and the counter image. The control plane, and
+//     every worker pool, keep running the fork: a control plane deploy
+//     refuses to change the release of an installed one, so going back to
+//     the upstream release is --remove-control-plane, then an install
+//     without mode3.
+//
+// The fork is the install's one release (plugin.Release): the demo's and the
+// other plugins' worker pools run its worker images too, because its
+// controller gives every worker the NetworkWorkers gate, on which an upstream
+// v1.0.0 worker exits.
 //
 // It makes no AWS resources of its own, so it has no setup-aws half.
 package mode3
@@ -41,6 +49,11 @@ const (
 	ImageRepo = "ghcr.io/csantanapr/substrate"
 	// Preview is the gate that lets a WorkerPool set spec.networkTransport.
 	Preview = "NetworkWorkers"
+	// CounterTag is the tag of mode 3's counter image in the deployment's
+	// counter repository. The demo, on the same release, pushes its counter
+	// as <cluster>/counter:<Tag>, so mode 3 uses its own tag: Remove deletes
+	// it, and must not delete the image the demo's template runs.
+	CounterTag = ID + "-" + Tag
 )
 
 // Order places mode 3 after the plugins that only add volumes or providers;
@@ -101,7 +114,7 @@ func deploy(ctx context.Context, w io.Writer, o plugin.Options) error {
 	}
 	// The counter first: it reads the microvm nodes' architecture, so a
 	// cluster without them stops before Kata is installed.
-	counter, err := Demo.CounterImage(ctx, w, do, tree, microvmPoolName)
+	counter, err := Demo.CounterImage(ctx, w, do, tree, microvmPoolName, CounterTag)
 	if err != nil {
 		return err
 	}
@@ -134,9 +147,10 @@ func deploy(ctx context.Context, w io.Writer, o plugin.Options) error {
 	return Kata.Deploy(ctx, w, o, worker, counter, nil)
 }
 
-// RemovedNote is what Remove prints last: the control plane is left as is.
+// RemovedNote is what Remove prints last: the control plane is left as is
+// (plugin.Run then prints how to leave the release).
 const RemovedNote = "The control plane still runs Substrate " + Tag + " from csantanapr/substrate with the " + Preview +
-	" gate. Run --deploy-control-plane without --plugins mode3 to go back to the upstream release (the record no longer lists mode3)."
+	" gate, and so does every worker pool."
 
 func remove(ctx context.Context, w io.Writer, o plugin.Options) error {
 	if err := Kata.Remove(ctx, w, o); err != nil {

@@ -298,7 +298,7 @@ func runVerify(t *testing.T, f *fakeVerify) error {
 	plugin.Exec, probeGet = f.exec, f.get
 	freePort = func() (int, error) { f.ports++; return f.ports, nil }
 	pause = func(context.Context, time.Duration) error { return nil }
-	o := plugin.Options{Cluster: "demo", Region: "us-west-2", Kubeconfig: "/kc", Tag: "v1.0.0", TreeRoot: t.TempDir()}
+	o := plugin.Options{Cluster: "demo", Region: "us-west-2", Kubeconfig: "/kc", Release: plugin.Release{Tag: "v1.0.0", ImageRepo: "ghcr.io/agent-substrate/substrate"}, TreeRoot: t.TempDir()}
 	c := check{k: ate{bin: "/cache/kubectl-ate-v1.0.0", o: o}, o: o, w: io.Discard, value: testValue, echo: "https://postman-echo.com/headers"}
 	defer c.stopAll()
 	return c.run(context.Background(), uri("111122223333", "us-west-2", "ate/ate-demo-credprovider/demo-demo-token"),
@@ -344,6 +344,29 @@ func TestVerifyBothWays(t *testing.T) {
 		}
 		if err != nil && strings.Contains(err.Error(), testValue) {
 			t.Errorf("%s: the error prints the secret", name)
+		}
+	}
+}
+
+// Both ways: the probe pool runs the install's release's gVisor worker,
+// pinned: a fork's when a plugin replaced the release, upstream's otherwise.
+// Its ko:// reference is always replaced.
+func TestWorkerPoolRunsTheReleaseWorker(t *testing.T) {
+	prev := pinRelease
+	t.Cleanup(func() { pinRelease = prev })
+	pinRelease = func(_ context.Context, tagged string) (string, error) { return tagged + "@sha256:pinned", nil }
+	for _, rel := range []plugin.Release{
+		{Tag: "v1.0.0", ImageRepo: "ghcr.io/agent-substrate/substrate"},
+		{Tag: "v1.0.0-mode3.9f36a0d", ImageRepo: "ghcr.io/csantanapr/substrate"},
+	} {
+		pool, err := workerPool(context.Background(), plugin.Options{Release: rel})
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Anchored: the manifest's own comment mentions ko://.
+		want := "\n  workerImage: " + rel.ImageRepo + "/ateworker-gvisor:" + rel.Tag + "@sha256:pinned\n"
+		if !strings.Contains(pool, want) || strings.Count(pool, "\n  workerImage: ") != 1 {
+			t.Errorf("%s: pool lacks %q or keeps ko://:\n%s", rel.Tag, want, pool)
 		}
 	}
 }

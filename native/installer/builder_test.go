@@ -10,6 +10,8 @@ import (
 
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/controlplane"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/execx"
+	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin"
+	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin/mode3"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/state"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/steps"
 )
@@ -31,9 +33,10 @@ func allSpecs(b builder, s *state.Setup) map[string]execx.Spec {
 }
 
 // Settings' release answers reach the children that install or read the
-// release: --image-repo and --sandbox-classes on the control plane, demo and
-// verify steps when they are not the defaults, and on no other step; the
-// defaults add nothing, so the shown command stays short (both directions).
+// release: --image-repo on the control plane, plugins, demo and verify steps
+// and --sandbox-classes on all but plugins, when they are not the defaults,
+// and on no other step; the defaults add nothing, so the shown command stays
+// short (both directions).
 func TestReleaseFlagsReachTheReleaseSteps(t *testing.T) {
 	for _, custom := range []bool{false, true} {
 		b, s := testBuilder()
@@ -41,16 +44,66 @@ func TestReleaseFlagsReachTheReleaseSteps(t *testing.T) {
 			s.ImageRepo, s.SandboxClasses = "registry.example.com/substrate", "gvisor"
 		}
 		for name, spec := range allSpecs(b, s) {
-			wants := custom && (name == "control plane" || name == "demo" || name == "verify")
+			release := name == "control plane" || name == "demo" || name == "verify" || name == "plugins"
 			i := slices.Index(spec.Argv, "--image-repo")
 			j := slices.Index(spec.Argv, "--sandbox-classes")
-			if (i >= 0) != wants || (j >= 0) != wants {
+			if (i >= 0) != (custom && release) || (j >= 0) != (custom && release && name != "plugins") {
 				t.Errorf("custom=%v %s: argv %q", custom, name, spec.Argv)
 				continue
 			}
-			if wants && (spec.Argv[i+1] != s.ImageRepo || spec.Argv[j+1] != "gvisor") {
+			if i >= 0 && spec.Argv[i+1] != s.ImageRepo || j >= 0 && spec.Argv[j+1] != "gvisor" {
 				t.Errorf("%s: argv %q", name, spec.Argv)
 			}
+		}
+	}
+}
+
+// argvRelease is the release a re-executed step's subcommand decides from its
+// argv, on a cluster with nothing recorded: plugin.ReadRelease's rule, from
+// the --tag, --image-repo and --plugins the step was given.
+func argvRelease(t *testing.T, argv []string) plugin.Release {
+	t.Helper()
+	val := func(name, def string) string {
+		if i := slices.Index(argv, name); i >= 0 && i+1 < len(argv) {
+			return argv[i+1]
+		}
+		return def
+	}
+	ps, err := plugin.Resolve(plugin.ParseRecord(val("--plugins", "")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := plugin.ReleaseOf(ps, val("--tag", "unset"), val("--image-repo", state.DefaultImageRepo))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
+}
+
+// Both ways: with mode3 chosen, every step that installs or uses the release
+// (the control plane, the demo, its check and the plugins) carries the fork's
+// release from the first of them, and the control plane step says so; without
+// it, each carries v1.0.0. The control plane removal is left out: it reads the
+// release of the install it removes off the cluster's record (the reinstall
+// guard runs it on a found install, which the chosen plugins say nothing about).
+func TestEveryStepCarriesTheForkReleaseWithMode3(t *testing.T) {
+	for _, chosen := range [][]string{{"mode3", "efs", "credprovider-aws"}, {"efs", "credprovider-aws"}} {
+		b, s := testBuilder()
+		s.Plugins = chosen
+		fork := slices.Contains(chosen, mode3.ID)
+		want := plugin.Release{Tag: state.DefaultTag, ImageRepo: state.DefaultImageRepo, Repo: plugin.UpstreamRepo, Ref: state.DefaultTag}
+		if fork {
+			want = plugin.Release{Tag: mode3.Tag, ImageRepo: mode3.ImageRepo, Repo: mode3.Repo, Ref: mode3.Commit}
+		}
+		specs := allSpecs(b, s)
+		for _, name := range []string{"control plane", "plugins", "demo", "verify"} {
+			if got := argvRelease(t, specs[name].Argv); got != want {
+				t.Errorf("chosen %v, %s: release %+v, want %+v (argv %q)", chosen, name, got, want, specs[name].Argv)
+			}
+		}
+		cp := specs["control plane"]
+		if !strings.Contains(cp.Display, "substrate "+want.Tag+" ") || !slices.Contains(cp.SimLines, controlplane.CachedLine+want.Tag) {
+			t.Errorf("chosen %v: the control plane step shows %q / %q, not %s", chosen, cp.Display, cp.SimLines, want.Tag)
 		}
 	}
 }

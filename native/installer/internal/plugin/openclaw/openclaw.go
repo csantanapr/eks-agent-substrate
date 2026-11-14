@@ -58,10 +58,6 @@ const (
 	DashboardImage = "ghcr.io/csantanapr/always-on-agent/openclaw-dashboard"
 )
 
-// workerImageRepo is where the release's ateworker-gvisor image is
-// published (main.go's --image-repo for the control plane).
-const workerImageRepo = "ghcr.io/agent-substrate/substrate"
-
 // The manifests of github.com/csantanapr/always-on-agent, manifests/eks at
 // commit cfca8780fbf029e6a7283a31ae2e6ce1bb9ec907, unchanged: the plugin
 // renders their REPLACE_WITH_ placeholders itself, as the repository's
@@ -164,11 +160,11 @@ func pinnedImages() (images, error) {
 	return im, nil
 }
 
-// withWorker adds the released ateworker-gvisor of the release the cluster
-// runs, pinned by digest.
+// withWorker adds the ateworker-gvisor of the release the cluster runs
+// (o.Release, a fork's when a plugin installed one), pinned by digest.
 func withWorker(ctx context.Context, o plugin.Options, im images) (images, error) {
 	var err error
-	im.worker, err = pinImage(ctx, workerImageRepo+"/ateworker-gvisor:"+o.Tag)
+	im.worker, err = pinImage(ctx, o.ImageRepo+"/ateworker-gvisor:"+o.Tag)
 	return im, err
 }
 

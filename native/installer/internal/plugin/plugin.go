@@ -41,6 +41,90 @@ type Source struct {
 	Repo, Commit, Tag, ImageRepo string
 }
 
+// UpstreamRepo is upstream Substrate's repository: the tree of every release
+// no plugin replaces.
+const UpstreamRepo = "https://github.com/agent-substrate/substrate.git"
+
+// Release is the one Substrate release an install runs. The control plane,
+// the demo's and every plugin's worker pools, and every image or binary
+// built from the tree (the counter, the credential provider's probe,
+// kubectl-ate) all use it: a worker image of another release can reject what
+// the control plane gives it (the mode 3 fork's controller passes every
+// preview gate it enables to every worker, and a v1.0.0 worker exits on
+// NetworkWorkers). ReleaseOf decides it.
+type Release struct {
+	// Tag and ImageRepo name its images, <ImageRepo>/<image>:<Tag>. Tag
+	// also names its cached tree (controlplane.TreeDir).
+	Tag, ImageRepo string
+	// Repo checked out at Ref is its tree: Ref is a Source's pinned commit,
+	// else the tag.
+	Repo, Ref string
+}
+
+// Release is the release of an install with these needs: n's Source when a
+// plugin set one, else tag from imageRepo on upstream's tree.
+func (n Needs) Release(tag, imageRepo string) Release {
+	r := Release{Tag: tag, ImageRepo: imageRepo, Repo: UpstreamRepo, Ref: tag}
+	if s := n.Source; s != nil {
+		if s.Repo != "" {
+			r.Repo = s.Repo
+		}
+		if s.Tag != "" {
+			r.Tag, r.Ref = s.Tag, s.Tag
+		}
+		if s.ImageRepo != "" {
+			r.ImageRepo = s.ImageRepo
+		}
+		if s.Commit != "" {
+			r.Ref = s.Commit
+		}
+	}
+	return r
+}
+
+// ReleaseOf is the release of an install carrying ps, the chosen and the
+// recorded plugins alike: the Source of the one plugin that sets one, else
+// the --tag release (tag, imageRepo).
+func ReleaseOf(ps []Plugin, tag, imageRepo string) (Release, error) {
+	n, err := Merge(ps)
+	if err != nil {
+		return Release{}, err
+	}
+	return n.Release(tag, imageRepo), nil
+}
+
+// ChosenRelease is ReleaseOf the plugins ids resolve to, for the wizard,
+// which shows it and passes the steps the --tag, --image-repo and --plugins
+// that decide it. IDs that do not resolve keep the --tag release: the wizard
+// offers only registered plugins, one Source among them.
+func ChosenRelease(ids []string, tag, imageRepo string) Release {
+	ps, err := Resolve(ids)
+	if err == nil {
+		if r, err := ReleaseOf(ps, tag, imageRepo); err == nil {
+			return r
+		}
+	}
+	return Needs{}.Release(tag, imageRepo)
+}
+
+// SourceOf is the plugin whose Source installs release tag, or "" when no
+// registered plugin's does (or tag is empty).
+func SourceOf(tag string) string {
+	for _, p := range All() {
+		if s := p.Needs.Source; s != nil && tag != "" && s.Tag == tag {
+			return p.ID
+		}
+	}
+	return ""
+}
+
+// ReleaseFix is how to change the release of an installed control plane,
+// which --deploy-control-plane refuses: remove the control plane, then
+// install again with or without plugin id, whose Source is one of the two.
+func ReleaseFix(id string) string {
+	return "run --remove-control-plane, then install again with or without --plugins " + id
+}
+
 // Needs is what a plugin adds to `ate-setup deploy ate-system`.
 type Needs struct {
 	// Preview gates (ate-setup --preview), e.g. "ExternalVolumes".
@@ -58,8 +142,12 @@ type Needs struct {
 // Options is what Deploy, Verify and Remove get.
 type Options struct {
 	Cluster, Region, Profile string
-	// Tag is the Substrate release; TreeRoot holds its cached tree.
-	Tag, TreeRoot string
+	// Release is the install's one release (ReleaseOf), already decided by
+	// the caller: a worker pool runs <ImageRepo>/ateworker-<class>:<Tag>,
+	// and what is built from the tree is built from TreeRoot's cached tree
+	// of Tag (controlplane.TreeDir), fetched from Repo at Ref when missing.
+	Release
+	TreeRoot string
 	// Kubeconfig is the installer's own kubeconfig for the cluster
 	// (awsx.KubeconfigPath), already written by the caller; its current
 	// context is the cluster. Use Kubectl, which passes it.

@@ -43,7 +43,7 @@ type Counter struct {
 // DemoFuncs is the counter demo's code the plugins run (internal/demo's
 // exports); tests replace Demo.
 type DemoFuncs struct {
-	CounterImage func(ctx context.Context, w io.Writer, o demo.Options, tree, pool string) (string, error)
+	CounterImage func(ctx context.Context, w io.Writer, o demo.Options, tree, pool, tag string) (string, error)
 	Pin          func(ctx context.Context, o demo.Options, tagged string) (string, error)
 	KubectlAte   func(ctx context.Context, w io.Writer, o demo.Options, tree string) (string, error)
 	Ate          func(ctx context.Context, o demo.Options, args ...string) ([]byte, error)

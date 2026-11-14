@@ -26,6 +26,9 @@ func init() {
 	if filepath.Base(os.Args[0]) != "kubectl" {
 		return
 	}
+	if answers, ok := os.LookupEnv(kubectlAnswers); ok {
+		answerKubectl(answers) // release_cli_test.go's cluster; it exits
+	}
 	seen := ""
 	for _, k := range []string{"AWS_PROFILE", "AWS_DEFAULT_PROFILE"} {
 		if v, ok := os.LookupEnv(k); ok {

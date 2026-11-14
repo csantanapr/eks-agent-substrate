@@ -192,7 +192,7 @@ func TestHooksRefuseUnpinnedImagesBeforeTheCluster(t *testing.T) {
 	for _, e := range imageVars {
 		t.Setenv(e, "")
 	}
-	o := plugin.Options{Cluster: "demo", Region: "us-west-2", Kubeconfig: "/kc", Tag: "v1.0.0"}
+	o := plugin.Options{Cluster: "demo", Region: "us-west-2", Kubeconfig: "/kc", Release: plugin.Release{Tag: "v1.0.0", ImageRepo: "ghcr.io/agent-substrate/substrate"}}
 	for name, hook := range map[string]func(context.Context, io.Writer, plugin.Options) error{"deploy": deploy, "verify": verify} {
 		log := recordExec(t)
 		err := hook(context.Background(), io.Discard, o)
@@ -216,7 +216,7 @@ func TestHooksProceedWithPinnedImages(t *testing.T) {
 	t.Setenv("OPENCLAW_GATEWAY_IMAGE", GatewayImage+digest)
 	t.Setenv("OPENCLAW_ACTOR_IMAGE", ActorImage+digest)
 	t.Setenv("OPENCLAW_DASHBOARD_IMAGE", DashboardImage+digest)
-	o := plugin.Options{Cluster: "demo", Region: "us-west-2", Kubeconfig: "/kc", Tag: "v1.0.0"}
+	o := plugin.Options{Cluster: "demo", Region: "us-west-2", Kubeconfig: "/kc", Release: plugin.Release{Tag: "v1.0.0", ImageRepo: "ghcr.io/agent-substrate/substrate"}}
 	for name, first := range map[string]string{
 		"deploy": "kubectl --kubeconfig /kc -n ate-system get deployment ate-api-server",
 		"verify": "kubectl --kubeconfig /kc -n ate-system get deployment atenet-router",
@@ -228,6 +228,23 @@ func TestHooksProceedWithPinnedImages(t *testing.T) {
 		}
 		if len(*log) == 0 || !strings.HasPrefix((*log)[0], first) {
 			t.Errorf("%s: first child %v, want %s", name, *log, first)
+		}
+	}
+}
+
+// Both ways: the gateway's worker pool runs the install's release's gVisor
+// worker, a fork's when a plugin replaced the release.
+func TestWorkerIsTheReleases(t *testing.T) {
+	prev := pinImage
+	t.Cleanup(func() { pinImage = prev })
+	pinImage = func(_ context.Context, tagged string) (string, error) { return tagged + digest, nil }
+	for _, rel := range []plugin.Release{
+		{Tag: "v1.0.0", ImageRepo: "ghcr.io/agent-substrate/substrate"},
+		{Tag: "v1.0.0-mode3.9f36a0d", ImageRepo: "ghcr.io/csantanapr/substrate"},
+	} {
+		im, err := withWorker(context.Background(), plugin.Options{Release: rel}, testImages())
+		if want := rel.ImageRepo + "/ateworker-gvisor:" + rel.Tag + digest; err != nil || im.worker != want {
+			t.Errorf("%s: worker %q, %v; want %q", rel.Tag, im.worker, err, want)
 		}
 	}
 }
