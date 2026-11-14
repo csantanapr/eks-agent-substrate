@@ -448,7 +448,10 @@ func (e *tdEnv) waitAutomatedSnapshots(ctx context.Context, id string) error {
 		}
 		var ids []string
 		for _, s := range out.DBSnapshots {
-			ids = append(ids, aws.ToString(s.DBSnapshotIdentifier))
+			// One being deleted is gone, as dbSnapshotExists counts it.
+			if aws.ToString(s.Status) != "deleting" {
+				ids = append(ids, aws.ToString(s.DBSnapshotIdentifier))
+			}
 		}
 		return ids, nil
 	}

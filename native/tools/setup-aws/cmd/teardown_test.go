@@ -367,6 +367,25 @@ func TestTeardownGivesUpOnAnAutomatedSnapshotRDSNeverRemoves(t *testing.T) {
 	}
 }
 
+// The other direction: a snapshot RDS lists as "deleting" for as long is
+// gone, as the final check (dbSnapshotExists) counts it, so the wait does not
+// run into its bound and fail a teardown whose final check passes.
+func TestTeardownDoesNotWaitOnADeletingAutomatedSnapshot(t *testing.T) {
+	f := fullDeployment()
+	snap := withAutomatedSnapshot(f, 1<<30)
+	f.objs["rds snapshot|"+snap].state = "deleting"
+	e, _, logs := tdTestEnv(t, f, false, true)
+	prev := dbSnapshotTimeout
+	dbSnapshotTimeout = 20 * time.Millisecond
+	t.Cleanup(func() { dbSnapshotTimeout = prev })
+	if err := e.teardown(context.Background()); err != nil {
+		t.Fatalf("teardown --keep-cluster with the snapshot deleting: %v\n%s", err, logs)
+	}
+	if strings.Contains(logs.String(), "waiting for RDS to remove the automated snapshots") {
+		t.Errorf("waited on a snapshot RDS is deleting:\n%s", logs)
+	}
+}
+
 // AC2.2: a resource with this deployment's name but no owner tag, or another
 // owner's, is never deleted, and the run stops before deleting anything.
 func TestTeardownStopsOnAResourceItDoesNotOwn(t *testing.T) {
