@@ -2,8 +2,14 @@ package cmd
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/base64"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
 	"slices"
 	"strings"
 	"time"
@@ -101,11 +107,19 @@ func (r *clusterRun) ensureCluster(ctx context.Context) error {
 			return err
 		}
 	}
-	vc := r.cluster.ResourcesVpcConfig
-	if vc != nil && !slices.Equal(sortedCopy(vc.PublicAccessCidrs), sortedCopy(strings.Fields(r.cfg.PublicAccessCIDRs))) {
-		slog.Warn("the cluster's public endpoint allows other address ranges than EKS_PUBLIC_ACCESS_CIDRS; change them with aws eks update-cluster-config --resources-vpc-config publicAccessCidrs=...",
-			"cluster", strings.Join(vc.PublicAccessCidrs, " "), "configured", r.cfg.PublicAccessCIDRs)
+	allowed, err := r.ensurePublicAccess(ctx)
+	if err != nil {
+		return err
 	}
+	// Only now is the cluster ACTIVE with any access update Successful.
+	if !r.plan() {
+		if err := probeCluster(ctx, r.cluster); err != nil {
+			return fmt.Errorf("this machine cannot reach the Kubernetes API of cluster %s at %s, which accepts %s: %w. This network may reach AWS from another address than %s sees; %s, then run create cluster again, which updates the ranges in a few minutes",
+				name, aws.ToString(r.cluster.Endpoint), strings.Join(allowed, " "), err, checkIPURL, cidrsFix)
+		}
+		slog.Info("this machine reaches the Kubernetes API", "cluster", name, "connections", probeConns)
+	}
+	vc := r.cluster.ResourcesVpcConfig
 	// EKS makes the cluster security group, which every node uses, and
 	// cannot tag it at create time. Only a cluster this tool created gets
 	// the created-by tag on it; eksctl's keeps its own tags.
@@ -128,6 +142,126 @@ func sortedCopy(s []string) []string {
 	c := slices.Clone(s)
 	slices.Sort(c)
 	return c
+}
+
+// ensurePublicAccess makes the cluster's public endpoint accept an explicit
+// EKS_PUBLIC_ACCESS_CIDRS, exactly that list, so rerunning `create cluster`
+// with it is how to change the ranges (or drop an old address). auto never
+// changes them: a rerun must not narrow a running cluster by surprise, so it
+// logs the ranges the cluster has and leaves them. The endpoint's public and
+// private switches are sent as they are. It returns the ranges in effect.
+func (r *clusterRun) ensurePublicAccess(ctx context.Context) ([]string, error) {
+	vc := r.cluster.ResourcesVpcConfig
+	if vc == nil || !vc.EndpointPublicAccess {
+		return nil, nil // no public endpoint, so no ranges to keep
+	}
+	have := vc.PublicAccessCidrs
+	if r.autoCIDRs {
+		slog.Info("EKS_PUBLIC_ACCESS_CIDRS=auto keeps the cluster's API access ranges; set it to change them", "ranges", strings.Join(have, " "))
+		if slices.Contains(have, "0.0.0.0/0") {
+			slog.Warn("the Kubernetes API accepts connections from any address (authenticated by IAM); set EKS_PUBLIC_ACCESS_CIDRS to narrow it")
+		}
+		return have, nil
+	}
+	want := strings.Fields(r.cfg.PublicAccessCIDRs)
+	if slices.Equal(sortedCopy(have), sortedCopy(want)) {
+		return have, nil
+	}
+	name := r.e.names.Cluster
+	var id string
+	what := fmt.Sprintf("let %s reach the Kubernetes API of cluster %s (it allows %s)", strings.Join(want, " "), name, strings.Join(have, " "))
+	if err := r.change(what, func() error {
+		out, err := r.c.EKS.UpdateClusterConfig(ctx, &eks.UpdateClusterConfigInput{Name: aws.String(name),
+			ResourcesVpcConfig: &ekstypes.VpcConfigRequest{PublicAccessCidrs: want,
+				EndpointPublicAccess: aws.Bool(vc.EndpointPublicAccess), EndpointPrivateAccess: aws.Bool(vc.EndpointPrivateAccess)}})
+		if err == nil && out.Update != nil {
+			id = aws.ToString(out.Update.Id)
+		}
+		return err
+	}); err != nil {
+		return nil, fmt.Errorf("update the API access ranges of cluster %s: %w", name, err)
+	}
+	if r.plan() {
+		return have, nil
+	}
+	return want, waitFor(ctx, "the API access update of cluster "+name+" (a few minutes)", 20*time.Minute, func() (bool, error) {
+		out, err := r.c.EKS.DescribeUpdate(ctx, &eks.DescribeUpdateInput{Name: aws.String(name), UpdateId: aws.String(id)})
+		if err != nil {
+			return false, fmt.Errorf("describe update %s of cluster %s: %w", id, name, err)
+		}
+		switch out.Update.Status {
+		case ekstypes.UpdateStatusSuccessful:
+			return true, nil
+		case ekstypes.UpdateStatusInProgress:
+			return false, nil
+		}
+		var why []string
+		for _, e := range out.Update.Errors {
+			why = append(why, string(e.ErrorCode)+": "+aws.ToString(e.ErrorMessage))
+		}
+		return false, fmt.Errorf("the API access update of cluster %s is %s: %s", name, out.Update.Status, strings.Join(why, "; "))
+	})
+}
+
+// Replaced in tests. probeConns new connections in a row must reach the
+// API: behind a NAT that picks its public address per connection, some of
+// them would fail.
+var (
+	probeConns   = 6
+	probeTimeout = 5 * time.Second
+	probeWarmup  = 2 * time.Minute
+	probeCluster = func(ctx context.Context, c *ekstypes.Cluster) error {
+		ca := ""
+		if c.CertificateAuthority != nil {
+			ca = aws.ToString(c.CertificateAuthority.Data)
+		}
+		return probeAPI(ctx, aws.ToString(c.Endpoint), ca)
+	}
+)
+
+// probeAPI checks that this machine reaches the Kubernetes API at endpoint
+// the way kubectl does: through HTTPS_PROXY if set, verifying the cluster
+// CA. It waits up to probeWarmup for a first answer, while the endpoint's
+// name and access rules settle, then needs probeConns-1 more in a row, each
+// on a new connection. Any HTTP answer counts (401 included): the request
+// carries no credentials, and only reaching the server matters.
+func probeAPI(ctx context.Context, endpoint, caData string) error {
+	pem, err := base64.StdEncoding.DecodeString(caData)
+	pool := x509.NewCertPool()
+	if endpoint == "" || err != nil || !pool.AppendCertsFromPEM(pem) {
+		return errors.New("the cluster reports no endpoint or certificate authority")
+	}
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.DisableKeepAlives, t.TLSClientConfig = true, &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
+	client := &http.Client{Transport: t, Timeout: probeTimeout}
+	get := func() error {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint+"/version", nil)
+		if err != nil {
+			return err
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			return err
+		}
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
+		return resp.Body.Close()
+	}
+	var last error
+	if err := waitFor(ctx, "the Kubernetes API to answer this machine", probeWarmup, func() (bool, error) {
+		last = get()
+		return last == nil, nil
+	}); err != nil {
+		if ctx.Err() == nil && last != nil {
+			return fmt.Errorf("no answer in %s: %w", probeWarmup, last)
+		}
+		return err
+	}
+	for i := 2; i <= probeConns; i++ {
+		if err := get(); err != nil {
+			return fmt.Errorf("connection %d of %d failed after the first answered: %w", i, probeConns, err)
+		}
+	}
+	return nil
 }
 
 // clusterAdminPolicy is the EKS access policy the caller gets.

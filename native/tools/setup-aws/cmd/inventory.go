@@ -482,9 +482,9 @@ func sortedSet(m map[string]bool) []string {
 
 // ec2Item is one EC2 resource, the fields teardown needs from any kind.
 type ec2Item struct {
-	id, vpc, name, state, alloc string
-	main, isDefault             bool
-	tags                        map[string]string
+	id, vpc, name, state string
+	main, isDefault      bool
+	tags                 map[string]string
 }
 
 // EC2 kinds, also the TYPE column of the inventory.
@@ -561,11 +561,8 @@ func (e *tdEnv) ec2List(ctx context.Context, kind string, f ...ec2types.Filter) 
 			var pg *ec2.DescribeNatGatewaysOutput
 			if pg, err = p.NextPage(ctx); err == nil {
 				for _, v := range pg.NatGateways {
-					it := ec2Item{id: aws.ToString(v.NatGatewayId), vpc: aws.ToString(v.VpcId), state: string(v.State), tags: kvMap(v.Tags, ec2KV)}
-					if len(v.NatGatewayAddresses) > 0 {
-						it.alloc = aws.ToString(v.NatGatewayAddresses[0].AllocationId)
-					}
-					out = append(out, it)
+					// Its Elastic IP is listed and released on its own, by owner tag.
+					out = append(out, ec2Item{id: aws.ToString(v.NatGatewayId), vpc: aws.ToString(v.VpcId), state: string(v.State), tags: kvMap(v.Tags, ec2KV)})
 				}
 			}
 		}

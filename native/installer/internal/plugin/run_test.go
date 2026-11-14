@@ -143,6 +143,27 @@ func TestRunRemoveAll(t *testing.T) {
 	}
 }
 
+// Both ways: removing a plugin with Needs says the control plane still
+// carries them and how to drop them; removing one without says nothing.
+func TestRunRemoveSaysNeedsAreKept(t *testing.T) {
+	f := &fakeCluster{record: "base,top"}
+	o := runFixture(t, f, nil)
+	var out bytes.Buffer
+	if err := Run(context.Background(), &out, ActionRemove, []string{"top"}, o); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), NeedsKeptLine+"top;") || !strings.Contains(out.String(), "--deploy-control-plane") {
+		t.Errorf("no needs line for top:\n%s", out.String())
+	}
+	out.Reset()
+	if err := Run(context.Background(), &out, ActionRemove, []string{"base"}, o); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.String(), NeedsKeptLine) {
+		t.Errorf("needs line for base, which has none:\n%s", out.String())
+	}
+}
+
 // Both directions: removing what a staying plugin requires is refused before
 // anything is removed; removing both is allowed.
 func TestRunRemoveKeepsRequirements(t *testing.T) {
@@ -214,5 +235,28 @@ func TestOwnerTags(t *testing.T) {
 	o.Tags = "bad"
 	if _, err := o.OwnerTags(); err == nil {
 		t.Error("a tag without = passed")
+	}
+}
+
+// Both ways: a plugin that needs EKS Auto Mode is refused, before anything
+// runs, on a cluster without it, and deployed on one with it.
+func TestRunDeployNeedsAutoMode(t *testing.T) {
+	f := &fakeCluster{}
+	o := runFixture(t, f, nil)
+	Register(Plugin{ID: "iso", Order: 4, NeedsAutoMode: "needs EKS Auto Mode",
+		Deploy: hook(f, "deploy iso", nil), Verify: hook(f, "verify iso", nil)})
+	err := Run(context.Background(), io.Discard, ActionDeploy, []string{"iso"}, o)
+	if err == nil || !strings.Contains(err.Error(), "Auto Mode off") {
+		t.Fatalf("want the Auto Mode refusal, got %v", err)
+	}
+	if len(f.log) != 0 {
+		t.Errorf("ran after the refusal: %q", f.log)
+	}
+	o.AutoMode = true
+	if err := Run(context.Background(), io.Discard, ActionDeploy, []string{"iso"}, o); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(f.log, "deploy iso") {
+		t.Errorf("not deployed on Auto Mode: %q", f.log)
 	}
 }
