@@ -593,6 +593,13 @@ func (e *env) roundtrip(ctx context.Context, w io.Writer, k ate, c class, bucket
 	if _, err := e.waitState(ctx, k, c, stateRunning, 90); err != nil {
 		return "", fmt.Errorf("%w after resume", err)
 	}
+	// The proxy dials again for each connection, and its cached cluster
+	// token may have expired with the AWS session while the actor slept
+	// (client-go refreshes it only after a refused call): reach readyz,
+	// which moves no counter, before the one read that must show +1.
+	if !e.poll(ctx, 60, func() bool { _, err := e.get(ctx, base+"readyz", 10*time.Second); return err == nil }) {
+		return "", fmt.Errorf("actor %s did not answer through kubectl ate proxy after the resume", c.actor)
+	}
 	after, err := e.read(ctx, base, 120*time.Second)
 	if err != nil {
 		return "", err

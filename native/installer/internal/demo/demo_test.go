@@ -108,6 +108,10 @@ type fake struct {
 	listed  []string // bucket|prefix of every S3 list
 	objects int
 	lose    map[string]string // actor -> counter its resume loses
+	// resets is how many proxy requests fail with a connection reset after
+	// each resume, as a dial with an expired cluster token does.
+	resets  int
+	pending map[string]int
 
 	// The deploy's side: the node architectures kubectl reports, what was
 	// pushed and pinned, every manifest applied (by file name, read when
@@ -244,6 +248,12 @@ func (f *fake) ate(argv []string) ([]byte, error) {
 		}
 	case "resume":
 		a.state = stateRunning
+		if f.resets > 0 {
+			if f.pending == nil {
+				f.pending = map[string]int{}
+			}
+			f.pending[name] = f.resets
+		}
 		switch a.lose {
 		case "memory":
 			a.c.memory = 0
@@ -265,6 +275,10 @@ func (f *fake) get(_ context.Context, url string, _ time.Duration) (string, erro
 	a := f.actors[f.proxies[port]]
 	if a == nil {
 		return "", errors.New("connection refused")
+	}
+	if f.pending[f.proxies[port]] > 0 {
+		f.pending[f.proxies[port]]--
+		return "", errors.New("read: connection reset by peer")
 	}
 	if a.state == stateSuspended {
 		a.state = stateRunning // a request wakes a suspended actor
@@ -613,6 +627,23 @@ func TestVerifyPassesOnBothClasses(t *testing.T) {
 // The S3 copy of a snapshot took 4.5 to 6 minutes on sub-nt6, at the edge
 // of a 120-read wait; the check waits 10 minutes (300 reads at the 2s
 // interval), so an upload done after 200 reads passes.
+// The proxy's first dials after a resume can fail (its cached cluster token
+// expired while the actor slept, as on sub-e2e); Verify reaches readyz
+// before the read, and still catches a counter that does not continue.
+func TestVerifySurvivesFailedDialsAfterTheResume(t *testing.T) {
+	root, _ := testTree(t)
+	f := newFake(t)
+	f.resets = 2
+	if err := f.env().verify(context.Background(), io.Discard, testOptions(root)); err != nil {
+		t.Fatalf("two resets after each resume: %v", err)
+	}
+	f = newFake(t)
+	f.resets, f.lose = 2, map[string]string{"demo-gvisor": "memory"}
+	if err := f.env().verify(context.Background(), io.Discard, testOptions(root)); err == nil || !strings.Contains(err.Error(), "lost state") {
+		t.Errorf("lost counter behind resets: %v", err)
+	}
+}
+
 func TestVerifyWaitsForASlowSnapshotUpload(t *testing.T) {
 	root, _ := testTree(t)
 	f := newFake(t)
