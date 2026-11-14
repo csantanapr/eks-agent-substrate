@@ -1,0 +1,71 @@
+# Secrets Manager rotation for Agent Substrate's two database logins, with
+# the AWS-maintained "alternating users" PostgreSQL function. Each rotation
+# switches the secret between <user> and <user>_clone and sets a new password
+# on the one not in use, so the login running pods hold keeps working until
+# the next rotation. The functions run in the cluster's private subnets and
+# reach RDS through their own security group.
+#
+# `setup-aws plugin db-rotation` creates the stack from this file, compiled
+# into setup-aws (plugin_db_rotation.go), with the owner tag and TAGS as stack
+# tags, which CloudFormation copies to every resource it makes. The Transform
+# line runs before the stack is made: it turns each HostedRotationLambda into
+# a rotation function AWS maintains, in a nested stack.
+#
+# Learn more:
+#   https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/transform-aws-secretsmanager.html
+#   https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-properties-secretsmanager-rotationschedule-hostedrotationlambda.html
+#   https://docs.aws.amazon.com/secretsmanager/latest/userguide/rotation-strategy.html
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::SecretsManager-2024-09-16
+Parameters:
+  OwnerSecretArn: { Type: String }
+  ReadWriteSecretArn: { Type: String }
+  MasterSecretArn: { Type: String }
+  SubnetIds: { Type: String, Description: comma-separated private subnets }
+  SecurityGroupId: { Type: String }
+  NamePrefix: { Type: String }
+  Schedule: { Type: String, Default: "rate(30 days)" }
+Resources:
+  # The functions' log groups, made by the stack rather than by Lambda on the
+  # first run, so they carry the stack's tags and go with the stack.
+  OwnerLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${NamePrefix}-owner"
+      RetentionInDays: 30
+  ReadWriteLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${NamePrefix}-readwrite"
+      RetentionInDays: 30
+  # One rotation schedule per login. Each function signs in with the master
+  # secret to set the other user's password.
+  OwnerRotation:
+    Type: AWS::SecretsManager::RotationSchedule
+    DependsOn: OwnerLogs
+    Properties:
+      SecretId: !Ref OwnerSecretArn
+      RotateImmediatelyOnUpdate: false
+      RotationRules: { ScheduleExpression: !Ref Schedule }
+      HostedRotationLambda:
+        RotationType: PostgreSQLMultiUser
+        RotationLambdaName: !Sub "${NamePrefix}-owner"
+        MasterSecretArn: !Ref MasterSecretArn
+        VpcSubnetIds: !Ref SubnetIds
+        VpcSecurityGroupIds: !Ref SecurityGroupId
+        # Passwords go into a postgres:// URL; keep them URL-safe.
+        ExcludeCharacters: "/@\"'\\:?#[]%&+=,;!$*(){}<>|`^~ "
+  ReadWriteRotation:
+    Type: AWS::SecretsManager::RotationSchedule
+    DependsOn: ReadWriteLogs
+    Properties:
+      SecretId: !Ref ReadWriteSecretArn
+      RotateImmediatelyOnUpdate: false
+      RotationRules: { ScheduleExpression: !Ref Schedule }
+      HostedRotationLambda:
+        RotationType: PostgreSQLMultiUser
+        RotationLambdaName: !Sub "${NamePrefix}-readwrite"
+        MasterSecretArn: !Ref MasterSecretArn
+        VpcSubnetIds: !Ref SubnetIds
+        VpcSecurityGroupIds: !Ref SecurityGroupId
+        ExcludeCharacters: "/@\"'\\:?#[]%&+=,;!$*(){}<>|`^~ "
