@@ -29,7 +29,6 @@ const (
 	secretStore    = "aws-secrets-manager"
 	envSecret      = "ate-api-server-secret-envvars"
 	apiServer      = "ate-api-server"
-	reloaderConfig = "ate-api-server-db"
 	// bundledDB is the StatefulSet of ate-setup's bundled PostgreSQL.
 	bundledDB = "postgres"
 )
@@ -90,8 +89,45 @@ func requireRDS(ctx context.Context, w io.Writer, o plugin.Options) error {
 	return nil
 }
 
+// refuseForeign refuses a cluster that already runs an External Secrets
+// Operator or ESO Reloader the plugin did not install. Applying over one
+// would take it over (deploy turns ClusterSecretStore and PushSecret
+// reconciling off for the whole cluster), and a later Remove would delete
+// its CRDs, and with them every ExternalSecret and SecretStore in the
+// cluster. What the plugin installs carries partOf.
+func refuseForeign(ctx context.Context, w io.Writer, o plugin.Options) error {
+	for _, obj := range []struct{ kind, name string }{
+		{"crd", esoCRD}, {"namespace", esoNS}, {"crd", reloaderCRD}, {"namespace", reloaderNS},
+	} {
+		s, err := output(ctx, w, o, "get", obj.kind, obj.name, "--ignore-not-found", "-o", "json")
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(s) == "" {
+			continue
+		}
+		var m struct {
+			Metadata struct {
+				Labels map[string]string `json:"labels"`
+			} `json:"metadata"`
+		}
+		if err := json.Unmarshal([]byte(s), &m); err != nil {
+			return fmt.Errorf("read %s %s: %w", obj.kind, obj.name, err)
+		}
+		if m.Metadata.Labels[partOfKey] != partOfValue {
+			return fmt.Errorf("%s %s exists without the label %s, so another External Secrets Operator or ESO Reloader install owns it: "+
+				"db-rotation needs its own ESO and Reloader and does not take over another install; remove that install first, or leave db-rotation off",
+				obj.kind, obj.name, partOf)
+		}
+	}
+	return nil
+}
+
 func deploy(ctx context.Context, w io.Writer, o plugin.Options) error {
 	if err := requireRDS(ctx, w, o); err != nil {
+		return err
+	}
+	if err := refuseForeign(ctx, w, o); err != nil {
 		return err
 	}
 
@@ -153,7 +189,9 @@ func deploy(ctx context.Context, w io.Writer, o plugin.Options) error {
 
 // applyRelease applies a release manifest into its namespace. Server-side,
 // since a CRD is larger than client-side apply's annotation allows; forced,
-// so an install a Helm release made is taken over.
+// so a rerun reapplies the plugin's own objects whichever field manager last
+// changed them. refuseForeign has already stopped a deploy onto another
+// install.
 func applyRelease(ctx context.Context, w io.Writer, o plugin.Options, ns, manifest string) error {
 	if err := kubectl(ctx, w, o, namespace(ns), "apply", "-f", "-"); err != nil {
 		return err
@@ -254,11 +292,13 @@ func podsWithout(ps []pod, name string) []string {
 	return missing
 }
 
-// remove deletes what deploy made: the Reloader Config, the ExternalSecret
-// and SecretStore (the Secret ate-api-server-secret-envvars stays, with the
-// current logins), then both releases, which carry the plugin's label. The
-// logins in Secrets Manager and the database users stay; `setup-aws plugin
-// db-rotation --delete`, which Run calls next, turns rotation off.
+// remove deletes what deploy made, and only that: every delete selects the
+// plugin's label (partOf), so an object of another install, a CRD above all,
+// is never named. First the Reloader Config, the ExternalSecret and
+// SecretStore (the Secret ate-api-server-secret-envvars stays, with the
+// current logins), then both releases. The logins in Secrets Manager and the
+// database users stay; `setup-aws plugin db-rotation --delete`, which Run
+// calls next, turns rotation off.
 func remove(ctx context.Context, w io.Writer, o plugin.Options) error {
 	has := func(crd string) (bool, error) {
 		s, err := output(ctx, w, o, "get", "crd", crd, "--ignore-not-found", "-o", "name")
@@ -268,9 +308,9 @@ func remove(ctx context.Context, w io.Writer, o plugin.Options) error {
 		crd  string
 		args []string
 	}{
-		{reloaderCRD, []string{"delete", "configs.reloader.external-secrets.io", reloaderConfig, "--ignore-not-found"}},
-		{esoCRD, []string{"-n", ateNS, "delete", "externalsecret", externalSecret, "--ignore-not-found"}},
-		{storeCRD, []string{"-n", ateNS, "delete", "secretstore", secretStore, "--ignore-not-found"}},
+		{reloaderCRD, []string{"delete", "configs.reloader.external-secrets.io", "-l", partOf, "--ignore-not-found"}},
+		{esoCRD, []string{"-n", ateNS, "delete", "externalsecret", "-l", partOf, "--ignore-not-found"}},
+		{storeCRD, []string{"-n", ateNS, "delete", "secretstore", "-l", partOf, "--ignore-not-found"}},
 	} {
 		ok, err := has(d.crd)
 		if err != nil {

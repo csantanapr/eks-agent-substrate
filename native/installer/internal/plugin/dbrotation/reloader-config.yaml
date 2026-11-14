@@ -7,7 +7,8 @@
 
 apiVersion: reloader.external-secrets.io/v1alpha1
 kind: Config
-metadata: { name: ate-api-server-db }
+# The plugin's label: removing the plugin deletes only what carries it.
+metadata: { name: ate-api-server-db, labels: { app.kubernetes.io/part-of: substrate-eks-db-rotation } }
 spec:
   notificationSources:
   - type: KubernetesSecret

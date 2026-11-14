@@ -333,6 +333,9 @@ type fakeK8s struct {
 	atespaces         map[string]bool
 	argv, applied     []string
 	reads             int
+	// objects are what `get <kind> <name> -o json` finds, by "kind/name"
+	// (none: a cluster with no ESO or Reloader yet).
+	objects map[string]string
 }
 
 func newFakeK8s(sm *fakeSM) *fakeK8s {
@@ -406,6 +409,9 @@ func (f *fakeK8s) exec(_ context.Context, _ io.Writer, c plugin.Cmd) error {
 		if f.crds {
 			io.WriteString(out, "customresourcedefinition/x\n")
 		}
+	case (strings.HasPrefix(args, "get crd ") || strings.HasPrefix(args, "get namespace ")) && strings.HasSuffix(args, " --ignore-not-found -o json"):
+		a := strings.Fields(args)
+		io.WriteString(out, f.objects[a[1]+"/"+a[2]])
 	case args == "apply -f -" || strings.HasPrefix(args, "apply --server-side "):
 		f.applied = append(f.applied, string(c.Stdin))
 	case strings.HasPrefix(args, "-n external-secrets get pods "):
@@ -527,6 +533,66 @@ func TestDeployRefuses(t *testing.T) {
 	}
 }
 
+// Review R3, both ways: a cluster whose ESO or Reloader CRD or namespace
+// lacks the plugin's label runs another install, and deploy refuses before
+// applying anything, naming the object; the same objects carrying the label
+// are the plugin's own (a rerun), and deploy goes ahead.
+func TestDeployRefusesAnotherESO(t *testing.T) {
+	keys := []string{"crd/" + esoCRD, "namespace/" + esoNS, "crd/" + reloaderCRD, "namespace/" + reloaderNS}
+	obj := func(labels string) string { return `{"metadata":{"labels":{` + labels + `}}}` }
+	for _, k := range keys {
+		for name, labels := range map[string]string{
+			"no labels":             "",
+			"a Helm release's":      `"app.kubernetes.io/managed-by":"Helm"`,
+			"another part-of value": `"` + partOfKey + `":"someone-else"`,
+		} {
+			t.Run(k+" with "+name, func(t *testing.T) {
+				fixtures(t, esoFixture, reloaderFixture)
+				f := newFakeK8s(newFakeSM())
+				f.objects = map[string]string{k: obj(labels)}
+				cluster(t, f)
+				err := deploy(context.Background(), io.Discard, testOptions())
+				kind, n, _ := strings.Cut(k, "/")
+				if err == nil || !strings.Contains(err.Error(), kind+" "+n+" exists without the label "+partOf) ||
+					!strings.Contains(err.Error(), "needs its own ESO") {
+					t.Fatalf("want the refusal naming %s, got %v", k, err)
+				}
+				if len(f.applied) != 0 {
+					t.Errorf("applied %d manifests before refusing", len(f.applied))
+				}
+			})
+		}
+	}
+
+	fixtures(t, esoFixture, reloaderFixture)
+	f := newFakeK8s(newFakeSM())
+	f.objects = map[string]string{}
+	for _, k := range keys {
+		f.objects[k] = obj(`"` + partOfKey + `":"` + partOfValue + `"`)
+	}
+	cluster(t, f)
+	if err := deploy(context.Background(), io.Discard, testOptions()); err != nil {
+		t.Fatalf("the plugin's own install was refused: %v", err)
+	}
+	if len(f.applied) == 0 {
+		t.Error("nothing applied over the plugin's own install")
+	}
+}
+
+// Every object of the embedded manifests carries the plugin's label, which
+// is all remove selects on.
+func TestManifestsCarryThePluginLabel(t *testing.T) {
+	es, err := render(externalSecretYAML, testOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range append(parse(t, es), parse(t, string(reloaderConfigYAML))...) {
+		if got := n.GetLabels()[partOfKey]; got != partOfValue {
+			t.Errorf("%s %s has %s=%q, want %q", n.GetKind(), n.GetName(), partOfKey, got, partOfValue)
+		}
+	}
+}
+
 func TestRemove(t *testing.T) {
 	f := newFakeK8s(newFakeSM())
 	cluster(t, f)
@@ -535,9 +601,9 @@ func TestRemove(t *testing.T) {
 	}
 	got := strings.Join(f.argv, "\n")
 	for _, want := range []string{
-		"delete configs.reloader.external-secrets.io ate-api-server-db --ignore-not-found",
-		"-n ate-system delete externalsecret ate-api-server-db --ignore-not-found",
-		"-n ate-system delete secretstore aws-secrets-manager --ignore-not-found",
+		"delete configs.reloader.external-secrets.io -l " + partOf + " --ignore-not-found",
+		"-n ate-system delete externalsecret -l " + partOf + " --ignore-not-found",
+		"-n ate-system delete secretstore -l " + partOf + " --ignore-not-found",
 		"delete namespace -l " + partOf,
 		"delete crd,clusterrole,clusterrolebinding -l " + partOf,
 	} {
@@ -547,6 +613,13 @@ func TestRemove(t *testing.T) {
 	}
 	if strings.Contains(got, "delete secret ") {
 		t.Error("removed a Secret: ate-api-server-secret-envvars must stay")
+	}
+	// Review R3: every delete selects the plugin's label, so no object of
+	// another install (its CRDs above all) is ever named.
+	for _, a := range f.argv {
+		if strings.Contains(a, " delete ") && !strings.Contains(a, " -l "+partOf+" ") {
+			t.Errorf("a delete without the plugin's label: %s", a)
+		}
 	}
 
 	// Without the CRDs (never deployed) no custom resource is named, which
