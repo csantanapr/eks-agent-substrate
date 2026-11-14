@@ -1,8 +1,7 @@
 package cmd
 
 // `setup-aws plugin s3files`: the AWS half of the installer's s3files plugin
-// (installer/internal/plugin/s3files), the native form of eks-talk's
-// demos/s3files/deploy.sh. An S3 file system presents an S3 bucket over NFS;
+// (installer/internal/plugin/s3files). An S3 file system presents an S3 bucket over NFS;
 // each actor gets its own S3 Files access point through the EFS CSI driver
 // the efs plugin installs, and its files land in the bucket. It makes
 //
@@ -38,8 +37,7 @@ import (
 
 const efsNodeSA = "efs-csi-node-sa"
 
-// Names of the s3files plugin, matching lib/common.sh (S3FILES_BUCKET,
-// S3FILES_SG_NAME) and demos/s3files/deploy.sh.
+// Names of the s3files plugin's resources.
 func (n Names) S3FilesBucket() string {
 	return fmt.Sprintf("%s-files-%s-%s", n.Cluster, n.Account, n.Region)
 }

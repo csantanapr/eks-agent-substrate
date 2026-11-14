@@ -1,7 +1,7 @@
 # The native installer (native/) on every pull request and every push to
 # main: gofmt, go vet and go test for both Go modules, the install.sh
-# launcher check, and the render-parity test of deploy/eks against
-# patches/substrate-v1.0.0-eks.patch.
+# launcher check, and the render-parity test of deploy/eks against the
+# reference patch patches/substrate-v1.0.0-eks.patch.
 name: native
 on:
   pull_request:

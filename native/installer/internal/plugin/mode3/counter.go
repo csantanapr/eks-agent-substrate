@@ -93,9 +93,8 @@ func (c Counter) pool() demo.Pool {
 // atespace and the ActorTemplate with counter as its image, then waits for
 // the template's golden snapshot. A template that already runs counter is
 // kept; one that runs another image is an error naming how to replace it
-// (templates are immutable), as demos/mode3/deploy.sh does. beforeTemplate,
-// when set, runs before a new template is created (mode3-iso waits there for
-// its nodes). Build kubectl-ate first (Demo.KubectlAte).
+// (templates are immutable). beforeTemplate, when set, runs before a new
+// template is created (mode3-iso waits there for its nodes). Build kubectl-ate first (Demo.KubectlAte).
 func (c Counter) Deploy(ctx context.Context, w io.Writer, o plugin.Options, worker, counter string, beforeTemplate func() error) error {
 	do := DemoOptions(o)
 	pool, err := fill(c.Pool, map[string]string{"WORKER_IMAGE": worker})
@@ -151,10 +150,10 @@ func (c Counter) Deploy(ctx context.Context, w io.Writer, o plugin.Options, work
 		"custom-columns=POD:.metadata.name,RUNTIME:.spec.runtimeClassName,NODE:.spec.nodeName")
 }
 
-// Verify is demos/counter/verify.sh's check of the pool: every worker Pod
-// runs under c.RuntimeClass on a node with c.NodeLabels; the actor continues
-// its counters across a suspend and resume (with its snapshot in S3); and
-// deleting an actor tears its sandbox down inside the worker's guest.
+// Verify checks the pool: every worker Pod runs under c.RuntimeClass on a
+// node with c.NodeLabels; the actor continues its counters across a suspend
+// and resume (with its snapshot in S3); and deleting an actor tears its
+// sandbox down inside the worker's guest.
 func (c Counter) Verify(ctx context.Context, w io.Writer, o plugin.Options) error {
 	tree, err := Tree(o)
 	if err != nil {
@@ -298,15 +297,14 @@ func poll(ctx context.Context, tries int, f func() bool) bool {
 }
 
 // Poll bounds at the 2s interval: an actor starts within 3 minutes, and its
-// worker logs the teardown within a minute (verify.sh: 30 reads, 2s apart).
+// worker logs the teardown within a minute (30 reads, 2s apart).
 const (
 	startTries    = 90
 	teardownTries = 30
 )
 
-// DeleteCheck is verify.sh's delete_check: deleting an actor tears its
-// sandbox down inside the worker's guest, so the worker Pod logs a
-// TerminateWorkload call for the actor's UID.
+// DeleteCheck checks that deleting an actor tears its sandbox down inside
+// the worker's guest, so the worker Pod logs a TerminateWorkload call for the actor's UID.
 func (c Counter) DeleteCheck(ctx context.Context, w io.Writer, o plugin.Options) error {
 	do := DemoOptions(o)
 	name := c.DeleteActor
@@ -355,7 +353,7 @@ func (c Counter) DeleteCheck(ctx context.Context, w io.Writer, o plugin.Options)
 }
 
 // LogsTerminate reports whether a worker's logs hold a line that handles the
-// TerminateWorkload RPC for uid, verify.sh's three greps on one line.
+// TerminateWorkload RPC for uid: all three on one line.
 func LogsTerminate(logs, uid string) bool {
 	for _, l := range strings.Split(logs, "\n") {
 		if strings.Contains(l, "Handle RPC") && strings.Contains(l, "TerminateWorkload") && strings.Contains(l, uid) {

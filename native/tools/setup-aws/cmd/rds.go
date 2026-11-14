@@ -335,8 +335,8 @@ const (
 	ingressOK                       // exactly what we want
 )
 
-// classifyDBIngress checks the database security group's ingress rules, as
-// infra.sh does: every rule must be tcp 5432 from the cluster security group
+// classifyDBIngress checks the database security group's ingress rules:
+// every rule must be tcp 5432 from the cluster security group
 // or the rotation group, with no address range or prefix list. It returns
 // ingressOK when the cluster rule is there, ingressNone when it is missing,
 // and an error naming the first other rule.

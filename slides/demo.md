@@ -5,18 +5,24 @@ sandboxes: each mode 3 worker Pod runs under RuntimeClass `isolated-sandbox`,
 an AWS Nitro Sandbox with its own guest kernel, and the worker runs actors
 with gVisor inside it.
 
-Install first, with the installer or the scripts: EKS Auto Mode, both mode 3
-plugins (`MODE3=on`, `MODE3_ISO=on`, the defaults in `config.env`), and the
-Secrets Manager credential provider for section 3. See the
-[README](../README.md#on-by-default-mode-3-on-isolated-sandboxes). Run every
-block from the eks-talk checkout, in one shell.
+Install first with the installer (`./native/install.sh`): EKS Auto Mode, the
+counter demo, the `mode3` and `mode3-iso` plugins, and the Secrets Manager
+credential provider (`credprovider-aws`) for section 3. See the
+[README](../README.md#plugins). Run every block from a checkout of this
+repository, in one shell.
 
 ## 0. Set up the shell
 
+The installer keeps a kubeconfig for each cluster, and builds `kubectl-ate`
+when it deploys the demo, both under `~/.cache/substrate-eks/`
+(`~/Library/Caches/substrate-eks/` on macOS):
+
 ```bash
-export KUBECONFIG=$PWD/.work/kubeconfig PATH=$PWD/.work/bin:$PATH
 export AWS_PROFILE=<your profile> AWS_REGION=<the cluster's Region>
 export CLUSTER_NAME=<the cluster's name>
+export KUBECONFIG=~/.cache/substrate-eks/kubeconfig/$CLUSTER_NAME.$AWS_REGION.yaml
+mkdir -p ~/.local/bin && export PATH=~/.local/bin:$PATH
+ln -sf "$(ls -t ~/.cache/substrate-eks/bin/kubectl-ate-* | head -1)" ~/.local/bin/kubectl-ate
 kubectl get nodes -L ate.dev/pool,node.kubernetes.io/instance-type
 ```
 
@@ -127,7 +133,7 @@ PROBE_IMAGE=$(kubectl ate get actor-template probe -a ate-demo-credprovider -o j
 for AS in ate-demo-credprovider ate-demo-credprovider-denied; do
   sed -e "s|REPLACE_WITH_ATESPACE|$AS|" -e "s|REPLACE_WITH_PROBE_IMAGE|$PROBE_IMAGE|" \
     -e 's|^  name: probe$|  name: probe-iso|' -e 's|workload: credprovider-probe$|workload: credprovider-probe-iso|' \
-    demos/credprovider-aws/probe-template.yaml.tmpl | kubectl ate create actor-template -f -
+    native/installer/internal/plugin/credprovideraws/probe-template.yaml | kubectl ate create actor-template -f -
 done
 ```
 
@@ -195,7 +201,7 @@ kubectl -n ate-demo-credprovider delete workerpool credprovider-probe-iso
 
 A Nitro sandbox Pod mounts EBS, EFS and S3 Files volumes through the usual
 CSI drivers. Substrate's per-actor volumes (`volumes[].external`, the
-`counter-efs` template of `demos/efs`) are different: atelet mounts them on
+`counter-efs` template of the `efs` plugin) are different: atelet mounts them on
 the node when an actor starts. A mode 3 worker runs in its own guest, which
 cannot see node mounts, so atelet refuses them for mode 3 workers, on Kata
 and on Nitro sandboxes alike
@@ -211,6 +217,9 @@ section 2.
 
 ## 5. Tear down
 
+The installer's teardown removes the plugins first, then Substrate, then
+every AWS resource with this deployment's owner tag:
+
 ```bash
-./clean.sh --yes && ./delete-cluster.sh --yes
+make -C native teardown CLUSTER_NAME=$CLUSTER_NAME AWS_REGION=$AWS_REGION AWS_PROFILE=$AWS_PROFILE
 ```

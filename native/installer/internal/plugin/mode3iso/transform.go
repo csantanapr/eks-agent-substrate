@@ -36,7 +36,7 @@ func path(m obj, keys ...string) (obj, error) {
 	return m, nil
 }
 
-// NodePool is demos/mode3-iso/deploy.sh's NodePool ate-isolated, made from
+// NodePool is the NodePool ate-isolated, made from
 // Auto Mode's built-in general-purpose NodePool (`kubectl get nodepool
 // general-purpose -o json`): the same requirements, its nodes labeled
 // ate.dev/pool=isolated and tainted ate.dev/sandboxClass=isolated, so only the
@@ -117,7 +117,7 @@ const (
 	providerConfig = "image-credential-provider-config"
 )
 
-// AteletIso is demos/mode3-iso/deploy.sh's atelet-iso, made from the atelet
+// AteletIso is atelet-iso, made from the atelet
 // DaemonSet (`kubectl -n ate-system get ds atelet -o json`): the same Pods,
 // labeled ate.dev/atelet-variant=iso and kept app=atelet (so the ate-system
 // NetworkPolicies cover them), on the isolated nodes only, with the

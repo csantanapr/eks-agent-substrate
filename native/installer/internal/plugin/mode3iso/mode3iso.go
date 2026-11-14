@@ -2,9 +2,7 @@
 // sandboxes. As in mode 3, each worker Pod is a microVM that runs gVisor
 // actors inside; here the microVM is RuntimeClass isolated-sandbox, which
 // EKS Auto Mode provides, on nodes Auto Mode launches for those Pods. No
-// node group and no Kata install is involved. It is the native form of
-// eks-talk's demos/mode3-iso/deploy.sh, and of its parts of
-// demos/counter/verify.sh and clean.sh.
+// node group and no Kata install is involved.
 //
 //   - Requires mode3, whose control plane (the fork, with NetworkWorkers) and
 //     counter image it uses, and an Auto Mode cluster.
@@ -44,7 +42,7 @@ import (
 // ID is the plugin ID.
 const ID = "mode3-iso"
 
-// The names demos/mode3-iso/deploy.sh gave its objects.
+// The names of the plugin's objects.
 const (
 	RuntimeClass                = "isolated-sandbox"
 	NodePoolName                = "ate-isolated"
@@ -148,8 +146,8 @@ func waitNodeClass(ctx context.Context, w io.Writer, o plugin.Options) error {
 // NoNodeTagsLine is printed on a cluster setup-aws did not create.
 const NoNodeTagsLine = "The cluster was not created by setup-aws, so its role may not let Auto Mode add tags: the isolated nodes get no deployment tags"
 
-// Bounds demos/mode3-iso/deploy.sh used: Auto Mode launches the nodes while
-// the worker Pods wait.
+// How long to wait: Auto Mode launches the nodes while the worker Pods
+// wait.
 const (
 	poolRollout   = "--timeout=10m"
 	ateletRollout = "--timeout=5m"

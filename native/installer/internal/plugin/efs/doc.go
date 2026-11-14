@@ -1,5 +1,5 @@
 // Package efs is the efs plugin: Amazon EFS volumes for actors (the
-// ExternalVolumes preview), the native form of eks-talk's demos/efs.
+// ExternalVolumes preview).
 //
 // Each actor gets its own EFS access point as its data volume, created when
 // the actor is created and mounted on whichever node it resumes on. Its AWS

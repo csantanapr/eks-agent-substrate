@@ -1,5 +1,4 @@
-// Package s3files is the s3files plugin: Amazon S3 Files volumes for actors,
-// the native form of eks-talk's demos/s3files.
+// Package s3files is the s3files plugin: Amazon S3 Files volumes for actors.
 //
 // An S3 file system presents an S3 bucket over NFS. Each actor gets its own
 // S3 Files access point through the EFS CSI driver and Substrate controller
