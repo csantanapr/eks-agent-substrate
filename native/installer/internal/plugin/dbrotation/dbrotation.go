@@ -153,7 +153,7 @@ func deploy(ctx context.Context, w io.Writer, o plugin.Options) error {
 
 // applyRelease applies a release manifest into its namespace. Server-side,
 // since a CRD is larger than client-side apply's annotation allows; forced,
-// so an install a Helm release made (demos/db-rotation) is taken over.
+// so an install a Helm release made is taken over.
 func applyRelease(ctx context.Context, w io.Writer, o plugin.Options, ns, manifest string) error {
 	if err := kubectl(ctx, w, o, namespace(ns), "apply", "-f", "-"); err != nil {
 		return err

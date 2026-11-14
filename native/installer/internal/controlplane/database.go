@@ -1,9 +1,8 @@
 package controlplane
 
-// The RDS half of the deploy, in Go: eks-talk's aws/db-bootstrap.sh (the
-// in-cluster schema bootstrap) and the connection strings of
-// substrate/install.sh. setup-aws create rds made the instance and the
-// logins; this reads them with the AWS SDK and hands them on without a
+// The RDS half of the deploy, in Go: the in-cluster schema bootstrap and the
+// connection strings ate-setup gets. setup-aws create rds made the instance
+// and the logins; this reads them with the AWS SDK and hands them on without a
 // password ever reaching an argv, a log line or a file:
 //
 //   - the bootstrap Job gets the three logins from a Secret that kubectl
@@ -31,9 +30,10 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/rds"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
+
+	"github.com/csantanapr/eks-agent-substrate/native/tools/setup-aws/awsload"
 )
 
 // Lines the RDS path prints for the progress checklist.
@@ -46,7 +46,7 @@ const (
 
 const (
 	bootstrapNS = "ate-db-bootstrap"
-	// The postgres client image, pinned by digest (aws/db-bootstrap.sh).
+	// The postgres client image, pinned by digest.
 	bootstrapImage = "public.ecr.aws/docker/library/postgres:18-alpine@sha256:10a5c69a83035ab5239f5620d708520e8b28f5aa1f2b20143e6024532edadfb5"
 	// bootstrapJob is under Options.Overlay (deploy/eks).
 	bootstrapJob     = "db-bootstrap/job.yaml"
@@ -77,11 +77,7 @@ var (
 	httpClient     = &http.Client{Timeout: time.Minute}
 	dbWaitTimeout  = 20 * time.Minute
 	newDBClients   = func(ctx context.Context, profile, region string) (RDSAPI, SecretsAPI, error) {
-		opts := []func(*awsconfig.LoadOptions) error{awsconfig.WithRegion(region)}
-		if profile != "" {
-			opts = append(opts, awsconfig.WithSharedConfigProfile(profile))
-		}
-		cfg, err := awsconfig.LoadDefaultConfig(ctx, opts...)
+		cfg, err := awsload.Config(ctx, region, profile)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -258,7 +254,7 @@ func dsn(l login, host string, port int) string {
 }
 
 // alternatesSQL makes both logins of each pair with the attributes setup.sql
-// requires, before it runs. Secrets Manager rotation (demos/db-rotation)
+// requires, before it runs. Secrets Manager rotation (the db-rotation plugin)
 // alternates each login between USER and USER_clone: setup.sql manages
 // whichever one the secret names now, and rotation only sets the other's
 // password. The names are checked, since they are spliced into SQL.

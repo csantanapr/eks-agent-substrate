@@ -11,7 +11,6 @@ import (
 	"text/tabwriter"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/ecr"
@@ -35,12 +34,13 @@ import (
 
 // Tag keys inventory and teardown read besides OwnerTagKey.
 const (
-	// tdCreatedByKey marks a resource setup-aws created itself (the bash
-	// scripts do not set it). Shown by inventory; ownership is OwnerTagKey.
+	// tdCreatedByKey marks a resource setup-aws created itself (a resource
+	// eksctl made does not carry it). Shown by inventory; ownership is
+	// OwnerTagKey.
 	tdCreatedByKey = CreatedByTagKey
 	// tdStackKey is set by CloudFormation on what a stack creates, here
-	// eksctl's stacks from create-cluster.sh. teardown never deletes such a
-	// resource: ./delete-cluster.sh does, through its stack.
+	// the stacks of a cluster eksctl made. teardown never deletes such a
+	// resource: eksctl delete cluster does, through its stack.
 	tdStackKey = "aws:cloudformation:stack-name"
 	// eksClusterNameTag is on every volume EKS Auto Mode creates: its
 	// managed policy allows CreateVolume only with it. pvcNamespaceTag is the
@@ -145,13 +145,9 @@ type tdClients struct {
 }
 
 var newTDClients = func(ctx context.Context, c Config) (*tdClients, error) {
-	opts := []func(*awsconfig.LoadOptions) error{awsconfig.WithRegion(c.Region)}
-	if c.Profile != "" {
-		opts = append(opts, awsconfig.WithSharedConfigProfile(c.Profile))
-	}
-	ac, err := awsconfig.LoadDefaultConfig(ctx, opts...)
+	ac, err := loadAWSConfig(ctx, c)
 	if err != nil {
-		return nil, fmt.Errorf("load AWS config: %w", err)
+		return nil, err
 	}
 	return &tdClients{
 		STS: sts.NewFromConfig(ac), Tag: rgt.NewFromConfig(ac), EC2: ec2.NewFromConfig(ac),
@@ -205,11 +201,10 @@ func (e *tdEnv) mask(s string) string {
 	return strings.ReplaceAll(s, a, strings.Repeat("*", len(a)-4)+a[len(a)-4:])
 }
 
-// Derived names, matching lib/common.sh and the create commands.
+// Derived names, matching the create commands.
 func (e *tdEnv) dbID() string { return e.n.Cluster + "-pg" }
 
-// ltNames are the node groups' launch templates create cluster makes (the
-// microvm one is lib/common.sh's LT_NAME).
+// ltNames are the node groups' launch templates create cluster makes.
 func (e *tdEnv) ltNames() []string {
 	c := e.n.Cluster
 	return []string{c + "-microvm-nested-virt", c + "-system-nodes", c + "-gvisor-nodes"}
@@ -244,7 +239,7 @@ func (e *tdEnv) owned(tags map[string]string) bool { return tags[OwnerTagKey] ==
 // stack.
 func (e *tdEnv) refuse(kind, id string, tags map[string]string) string {
 	if s := tags[tdStackKey]; s != "" {
-		return fmt.Sprintf("%s %s belongs to CloudFormation stack %s (eksctl, from create-cluster.sh): delete it with ./delete-cluster.sh, or run teardown --keep-cluster", kind, id, s)
+		return fmt.Sprintf("%s %s belongs to CloudFormation stack %s (made by eksctl): delete the cluster with eksctl delete cluster --name %s --region %s, or run teardown --keep-cluster", kind, id, s, e.n.Cluster, e.n.Region)
 	}
 	if got := tags[OwnerTagKey]; got != e.n.OwnerValue {
 		return fmt.Sprintf("%s %s is not owned by %s (%s=%q); teardown leaves it alone", kind, id, e.n.OwnerValue, OwnerTagKey, got)
@@ -1014,7 +1009,7 @@ func (e *tdEnv) inventory(ctx context.Context) ([]tdRow, error) {
 				}
 				continue
 			}
-			// eksctl's own stacks go with the cluster (./delete-cluster.sh).
+			// eksctl's own stacks go with the cluster (eksctl delete cluster).
 			eksctl := svc == "cloudformation" && strings.HasPrefix(id, "eksctl-"+e.n.Cluster+"-")
 			add(tdRow{svc + " " + rtype, id, kvMap(m.Tags, rgtKV), eksctl})
 		}

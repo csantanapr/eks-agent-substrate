@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"log/slog"
 	"sort"
 	"strings"
@@ -310,6 +311,62 @@ func TestTeardownKeepClusterLeavesTheCluster(t *testing.T) {
 	phaseOrder(t, logs.String())
 }
 
+// withAutomatedSnapshot adds RDS's first automated backup of demo-pg, with
+// the instance's tags (CopyTagsToSnapshot) and its tagging-API entry, which
+// RDS removes reads reads of it after the instance is deleted.
+func withAutomatedSnapshot(f *tdFake, reads int) string {
+	const id = "rds:demo-pg-2026-11-14-03-27"
+	f.put(&tdObj{kind: "rds snapshot", id: id, name: "demo-pg", state: "available", pending: reads, tags: own()})
+	f.tagged = append(f.tagged, rgttypes.ResourceTagMapping{ResourceARN: aws.String("arn:aws:rds:us-west-2:111122223333:snapshot:" + id),
+		Tags: []rgttypes.Tag{{Key: aws.String(OwnerTagKey), Value: aws.String(tdOwner)}}})
+	return id
+}
+
+// Live on sub-r17, RDS still listed the deleted instance's automated
+// snapshot as available when a keep-cluster teardown's final check ran, 30 s
+// after the instance was gone. Teardown waits for RDS to remove it, so the
+// check passes on the first run, with or without the cluster.
+func TestTeardownWaitsForRDSToRemoveTheAutomatedSnapshots(t *testing.T) {
+	for _, keep := range []bool{true, false} {
+		t.Run(fmt.Sprintf("keep-cluster=%v", keep), func(t *testing.T) {
+			f := fullDeployment()
+			snap := withAutomatedSnapshot(f, 3)
+			e, _, logs := tdTestEnv(t, f, false, keep)
+			if err := e.teardown(context.Background()); err != nil {
+				t.Fatalf("teardown: %v\n%s", err, logs)
+			}
+			if f.objs["rds snapshot|"+snap] != nil {
+				t.Errorf("the automated snapshot is still there")
+			}
+			for _, want := range []string{"waiting for RDS to remove the automated snapshots of demo-pg",
+				"RDS removed the automated snapshots of demo-pg"} {
+				if !strings.Contains(logs.String(), want) {
+					t.Errorf("log lacks %q", want)
+				}
+			}
+			// The wait comes after the instance is gone and before the subnet
+			// group, which is the next step.
+			l := logs.String()
+			if a, b := strings.Index(l, "waiting for RDS to remove"), strings.Index(l, "delete RDS subnet group demo-pg"); a < 0 || b < a {
+				t.Errorf("the snapshot wait is not before the subnet group delete:\n%s", l)
+			}
+		})
+	}
+}
+
+func TestTeardownGivesUpOnAnAutomatedSnapshotRDSNeverRemoves(t *testing.T) {
+	f := fullDeployment()
+	snap := withAutomatedSnapshot(f, 1<<30)
+	e, _, logs := tdTestEnv(t, f, false, true)
+	prev := dbSnapshotTimeout
+	dbSnapshotTimeout = 20 * time.Millisecond
+	t.Cleanup(func() { dbSnapshotTimeout = prev })
+	err := e.teardown(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "RDS still lists the automated snapshots "+snap+" of the deleted instance demo-pg after 20ms") {
+		t.Fatalf("want the bound and the snapshot named, got %v\n%s", err, logs)
+	}
+}
+
 // AC2.2: a resource with this deployment's name but no owner tag, or another
 // owner's, is never deleted, and the run stops before deleting anything.
 func TestTeardownStopsOnAResourceItDoesNotOwn(t *testing.T) {
@@ -363,8 +420,9 @@ func TestTeardownRefusesAnEksctlCluster(t *testing.T) {
 	e, _, _ := tdTestEnv(t, f, false, false)
 	err := e.teardown(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "EKS cluster demo belongs to CloudFormation stack eksctl-demo-cluster") ||
-		!strings.Contains(err.Error(), "./delete-cluster.sh") {
-		t.Fatalf("want a refusal pointing at delete-cluster.sh, got %v", err)
+		!strings.Contains(err.Error(), "eksctl delete cluster --name demo --region us-west-2") ||
+		strings.Contains(err.Error(), "delete-cluster.sh") {
+		t.Fatalf("want a refusal pointing at eksctl delete cluster, got %v", err)
 	}
 	if len(f.calls) != 0 {
 		t.Errorf("deleted before refusing: %v", f.calls)

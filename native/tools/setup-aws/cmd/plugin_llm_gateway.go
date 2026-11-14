@@ -21,8 +21,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 )
 
-// The llm-gateway plugin's AWS half, llm-gateway/deploy.sh's IAM part: one
-// role, assumed through EKS Pod Identity by llm-gateway/llm-gateway, allowed
+// The llm-gateway plugin's AWS half, its IAM part: one role, assumed
+// through EKS Pod Identity by llm-gateway/llm-gateway, allowed
 // to invoke only the inference profiles the gateway serves. Each
 // foundation-model grant is conditioned on its own profile, so the role
 // cannot call a model directly or any other model. The installer's
@@ -81,7 +81,7 @@ type bedrockProfile struct {
 
 // llmVersion reads the version after "<prefix>.anthropic.claude-<family>-":
 // the minor version has at most two digits, so a date such as
-// claude-sonnet-4-20250514 reads as 4.0 (deploy.sh's jq).
+// claude-sonnet-4-20250514 reads as 4.0.
 var llmVersion = regexp.MustCompile(`^([0-9]+)(?:-([0-9]{1,2}))?(?:-|$)`)
 
 // newestProfile is the ACTIVE profile with id prefix p and the highest

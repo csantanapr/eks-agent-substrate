@@ -13,7 +13,8 @@ import (
 	"time"
 
 	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
-	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+
+	"github.com/csantanapr/eks-agent-substrate/native/tools/setup-aws/awsload"
 )
 
 // ModelNames are the names actors ask the gateway for: "claude" is the
@@ -31,7 +32,7 @@ type Profile struct {
 
 // version reads the version after "<prefix>.anthropic.claude-<family>-": the
 // minor version has at most two digits, so a date such as
-// claude-sonnet-4-20250514 reads as 4.0 (deploy.sh's jq).
+// claude-sonnet-4-20250514 reads as 4.0.
 var version = regexp.MustCompile(`^([0-9]+)(?:-([0-9]{1,2}))?(?:-|$)`)
 
 // Newest is the ACTIVE profile with id prefix p and the highest version; a
@@ -95,11 +96,7 @@ const emptySHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b785
 // shortcut: the endpoint is the aws partition's (bedrock.<region>.amazonaws.com);
 // add the other partitions' DNS suffixes if they are ever supported.
 func bedrockProfiles(ctx context.Context, profile, region string) ([]Profile, error) {
-	opts := []func(*awsconfig.LoadOptions) error{awsconfig.WithRegion(region)}
-	if profile != "" {
-		opts = append(opts, awsconfig.WithSharedConfigProfile(profile))
-	}
-	ac, err := awsconfig.LoadDefaultConfig(ctx, opts...)
+	ac, err := awsload.Config(ctx, region, profile)
 	if err != nil {
 		return nil, err
 	}

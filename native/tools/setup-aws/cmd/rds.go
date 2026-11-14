@@ -1,7 +1,7 @@
 package cmd
 
-// `setup-aws create rds`: the database half of eks-talk's aws/infra.sh, the
-// counterpart of substrate-gke's `setup-gcp create cloudsql`. It makes a
+// `setup-aws create rds`: the database, the counterpart of substrate-gke's
+// `setup-gcp create cloudsql`. It makes a
 // private Amazon RDS for PostgreSQL instance in the cluster's private
 // subnets, a security group that admits only 5432 from the cluster security
 // group, and the two Substrate logins in Secrets Manager. The schema
@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
@@ -41,7 +40,7 @@ type rdsConfig struct {
 
 var rdsCfg rdsConfig
 
-// Fixed by the scripts and by the installer, which reads the same names.
+// Fixed names; the installer reads the same ones.
 const (
 	dbName         = "atepg"
 	dbMasterUser   = "ateadmin"
@@ -54,15 +53,14 @@ const (
 // migrations, readwrite runs DML.
 var dbLogins = []string{"owner", "readwrite"}
 
-// DBID is the RDS instance, DB subnet group and security group name
-// (lib/common.sh DB_ID).
+// DBID is the RDS instance, DB subnet group and security group name.
 func (n Names) DBID() string { return n.Cluster + "-pg" }
 
-// RotationSGName is the security group demos/db-rotation gives its rotation
-// Lambdas (lib/common.sh ROTATION_SG_NAME). It may also reach 5432.
+// RotationSGName is the security group the db-rotation plugin gives its
+// rotation Lambdas. It may also reach 5432.
 func (n Names) RotationSGName() string { return n.Cluster + "-db-rotation" }
 
-// DBSecret is a login's secret name (lib/common.sh SECRET_PREFIX/ate-WHO).
+// DBSecret is a login's secret name, <cluster>/ate-<who>.
 func (n Names) DBSecret(who string) string { return n.Cluster + "/ate-" + who }
 
 // The API surfaces `create rds` uses, beside the shared EKS client.
@@ -97,13 +95,9 @@ type rdsClients struct {
 
 // newRDSClients is replaced in tests.
 var newRDSClients = func(ctx context.Context, c Config) (*rdsClients, error) {
-	opts := []func(*awsconfig.LoadOptions) error{awsconfig.WithRegion(c.Region)}
-	if c.Profile != "" {
-		opts = append(opts, awsconfig.WithSharedConfigProfile(c.Profile))
-	}
-	ac, err := awsconfig.LoadDefaultConfig(ctx, opts...)
+	ac, err := loadAWSConfig(ctx, c)
 	if err != nil {
-		return nil, fmt.Errorf("load AWS config: %w", err)
+		return nil, err
 	}
 	return &rdsClients{EC2: ec2.NewFromConfig(ac), RDS: rds.NewFromConfig(ac), SM: secretsmanager.NewFromConfig(ac)}, nil
 }
@@ -263,7 +257,7 @@ func (e *env) rdsNetwork(ctx context.Context, rc *rdsClients, net *rdsNet) error
 	}
 
 	// Ingress: 5432 from the cluster security group, and from the rotation
-	// Lambdas' group when demos/db-rotation added one. Nothing else: any
+	// Lambdas' group when the db-rotation plugin added one. Nothing else: any
 	// other rule stops the run, which never removes a rule.
 	rotation, err := findSG(ctx, rc.EC2, net.vpc, e.names.RotationSGName())
 	if err != nil {
@@ -301,7 +295,7 @@ func (e *env) rdsNetwork(ctx context.Context, rc *rdsClients, net *rdsNet) error
 
 // tagSGRules tags the group's rules that lack this deployment's tags: the
 // allow-all egress rule EC2 adds to every new group by itself, and a rule an
-// older run (aws/infra.sh) added untagged.
+// older install added untagged.
 func (e *env) tagSGRules(ctx context.Context, c EC2API, name, group string) error {
 	if group == "" {
 		return nil // --plan, and the group is not made yet

@@ -1,6 +1,5 @@
 // Package credprovideraws is the credprovider-aws plugin: egress credential
-// injection from AWS Secrets Manager, the native form of
-// demos/credprovider-aws/{deploy,verify,clean}.sh.
+// injection from AWS Secrets Manager.
 //
 // An actor sends a placeholder header; the egress gateway asks the
 // credprovider-aws-secret-manager provider for the secret its EgressPolicy

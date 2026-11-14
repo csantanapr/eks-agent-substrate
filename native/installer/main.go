@@ -37,9 +37,8 @@ func main() {
 	if exe, err := os.Executable(); err == nil {
 		exeDir = filepath.Dir(exe)
 	}
-	// eks-talk's config.env and config.local.env, under the environment,
-	// give the defaults, as they do for the scripts; Settings writes
-	// config.local.env.
+	// The repository's config.env and config.local.env, under the
+	// environment, give the defaults; Settings writes config.local.env.
 	cfg, err := state.FindConfig(os.LookupEnv, cwd, exeDir)
 	exitOn(err)
 	conf := func(key, def string) string {
@@ -175,8 +174,7 @@ func main() {
 	s.Profile, s.Region, s.ClusterName, s.SubstrateTag = *profile, *region, *cluster, *tag
 	s.ImageRepo, s.SandboxClasses = *imageRepo, *classes
 	if s.ClusterName == "" && !*teardown {
-		// config.local.env's cluster, as the scripts would use, ready to
-		// pick or create; never a teardown's target, which is named.
+		// config.local.env's cluster, ready to pick or create; never a teardown's target, which is named.
 		s.ClusterName = conf("CLUSTER_NAME", "")
 	}
 	s.Database, s.DemoMode, s.Teardown = *database, *demoMode, *teardown
@@ -321,8 +319,8 @@ func absPath(p string) string {
 
 // saveConfig writes s's Settings answers to cfg's config.local.env (0600),
 // keeping a different earlier file as a backup under the user cache dir, and
-// returns its path. It is written when the install starts, so the scripts
-// and the next wizard run start from the same answers.
+// returns its path. It is written when the install starts, so the next
+// wizard run starts from the same answers.
 func saveConfig(cfg state.Config, s *state.Setup, cache string) (string, error) {
 	text, err := cfg.RenderLocal(state.ConfigValues(s))
 	if err != nil {

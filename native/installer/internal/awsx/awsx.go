@@ -54,8 +54,8 @@ func (c Cluster) CreatedByInstaller(region string) bool {
 	return c.Tags[CreatedByTagKey] == CreatedByValue && c.Tags[OwnerTagKey] == c.Name+"."+region
 }
 
-// clusterNameRE is eks-talk's rule for CLUSTER_NAME (lib/common.sh): S3, IAM,
-// RDS and ECR names derive from it, so it is stricter than EKS's own.
+// clusterNameRE is the rule for CLUSTER_NAME: S3, IAM, RDS and ECR names
+// derive from it, so it is stricter than EKS's own.
 var clusterNameRE = regexp.MustCompile(`^[a-z][a-z0-9-]{0,26}[a-z0-9]$`)
 
 // ValidClusterName is the rule a new cluster's name must meet.

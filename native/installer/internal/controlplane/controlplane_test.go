@@ -38,8 +38,8 @@ func flag(args []string, name string) string {
 	return args[i+1]
 }
 
-// The flags eks-talk's substrate/install.sh passes.
-func TestAteSetupArgsMatchInstallScript(t *testing.T) {
+// The flags an EKS install passes to ate-setup.
+func TestAteSetupArgsForEKS(t *testing.T) {
 	o := opts()
 	o.caFile = "/tmp/x/rds-ca.pem"
 	a := AteSetupArgs(o, "demo")

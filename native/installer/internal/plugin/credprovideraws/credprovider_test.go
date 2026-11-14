@@ -62,7 +62,7 @@ spec:
         - "--log-level=info"
 `
 
-// Both directions: the edits deploy.sh made, and a refusal for a base that
+// Both directions: the EKS edits, and a refusal for a base that
 // is not the provider's (no ko:// image, no --region, two containers).
 func TestProviderManifest(t *testing.T) {
 	role := "arn:aws:iam::111122223333:role/demo-us-west-2-aws-sm-credential-provider"

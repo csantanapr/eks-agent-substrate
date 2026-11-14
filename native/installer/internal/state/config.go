@@ -1,11 +1,9 @@
 package state
 
-// eks-talk's config.env holds the defaults every install uses, and
+// The repository's config.env holds the defaults every install uses, and
 // config.local.env (gitignored) what a person changed. The wizard reads both,
-// as lib/common.sh does, so the native installer and the scripts share one
-// configuration; its Settings screen writes config.local.env, as eks-talk's
-// first installer did. This is that installer's config package, cut to the
-// keys the Settings screen edits.
+// config.local.env after config.env, and its Settings screen writes
+// config.local.env.
 
 import (
 	"bufio"
@@ -55,8 +53,8 @@ var (
 	sectionRe = regexp.MustCompile(`^-{3} .* -{3}$`)
 )
 
-// ParseConfig reads a bash KEY=VALUE file. It understands what eks-talk's
-// files use: bare words, "double quoted" and 'single quoted' values, a
+// ParseConfig reads a bash KEY=VALUE file. It understands what config.env
+// and config.local.env use: bare words, "double quoted" and 'single quoted' values, a
 // trailing " # comment", and comment lines. Anything else (a command, an
 // expansion) is an error, so the installer never misreads a file.
 func ParseConfig(r io.Reader) (ConfigFile, error) {
@@ -153,7 +151,8 @@ func parseConfigFile(path string) (ConfigFile, error) {
 }
 
 // Config is an eks-talk checkout's config.env and config.local.env, under
-// the environment: Lookup answers as lib/common.sh's scripts see a key.
+// the environment: Lookup answers the environment first, then
+// config.local.env, then config.env.
 type Config struct {
 	// Dir is the checkout; empty when the installer runs outside one, and
 	// then Lookup reads the environment alone and nothing is written.
@@ -254,8 +253,8 @@ func quote(v string) string {
 // other key the existing config.local.env set, as it was.
 func (c Config) RenderLocal(values map[string]string) (string, error) {
 	var b strings.Builder
-	b.WriteString("# Written by the substrate-eks installer (Settings). The scripts and the\n" +
-		"# installer read it after config.env; edit it, or run the installer again.\n\n")
+	b.WriteString("# Written by the substrate-eks installer (Settings). The installer reads\n" +
+		"# it after config.env; edit it, or run the installer again.\n\n")
 	managed := map[string]bool{}
 	for _, k := range ManagedKeys {
 		managed[k] = true

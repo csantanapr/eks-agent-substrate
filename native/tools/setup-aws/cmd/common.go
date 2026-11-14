@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ecr"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
@@ -22,8 +21,7 @@ import (
 
 // OwnerTagKey marks every resource this tool creates. A resource with a
 // global name (bucket, IAM role) is reused or changed only when it carries
-// this tag with this deployment's value. It matches lib/common.sh, so the
-// scripts and this tool recognise each other's resources.
+// this tag with this deployment's value.
 const OwnerTagKey = "agent-substrate-on-eks/deployment"
 
 // Config holds the settings every subcommand reads. Each has a flag, and the
@@ -46,7 +44,7 @@ type Config struct {
 var cfg Config
 
 // Names are the resource names derived from the config and the caller's
-// account. They match lib/common.sh.
+// account. The installer reads the same names.
 type Names struct {
 	Partition, Account, Region, Cluster string
 	SnapBucket, AssetBucket             string
@@ -138,13 +136,9 @@ type Clients struct {
 }
 
 var newClients = func(ctx context.Context, c Config) (*Clients, error) {
-	opts := []func(*awsconfig.LoadOptions) error{awsconfig.WithRegion(c.Region)}
-	if c.Profile != "" {
-		opts = append(opts, awsconfig.WithSharedConfigProfile(c.Profile))
-	}
-	ac, err := awsconfig.LoadDefaultConfig(ctx, opts...)
+	ac, err := loadAWSConfig(ctx, c)
 	if err != nil {
-		return nil, fmt.Errorf("load AWS config: %w", err)
+		return nil, err
 	}
 	return &Clients{
 		STS: sts.NewFromConfig(ac),

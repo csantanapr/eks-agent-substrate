@@ -360,7 +360,7 @@ func TestReviewCostFollowsTheChoices(t *testing.T) {
 	}
 	c := state.ClusterConfigFromEnv(func(string) (string, bool) { return "", false })
 	if usd, unknown := clusterHourly(c); unknown != "" || usd < 2.376 || usd > 2.377 {
-		t.Errorf("default cluster $%.4f (%q); the first installer's model says $2.3764", usd, unknown)
+		t.Errorf("default cluster $%.4f (%q); the price table says $2.3764", usd, unknown)
 	}
 	c.SystemInstanceType = "c7i.large"
 	if _, unknown := clusterHourly(c); unknown != "c7i.large" {

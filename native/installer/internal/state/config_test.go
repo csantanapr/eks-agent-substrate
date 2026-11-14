@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-const configEnv = `# Settings for every script.
+const configEnv = `# Settings for every install.
 
 # --- Cluster ---
 # 2-28 characters of a-z, 0-9 and '-'.
@@ -49,7 +49,7 @@ func checkout(t *testing.T, local string) string {
 	return dir
 }
 
-func TestParseConfigAcceptsWhatTheScriptsUse(t *testing.T) {
+func TestParseConfigAcceptsConfigEnv(t *testing.T) {
 	f, err := ParseConfig(strings.NewReader(configEnv))
 	if err != nil {
 		t.Fatal(err)
@@ -65,8 +65,8 @@ func TestParseConfigAcceptsWhatTheScriptsUse(t *testing.T) {
 	}
 }
 
-// Anything that is not a plain assignment is refused, so a script's file is
-// never half-read.
+// Anything that is not a plain assignment is refused, so a file with shell
+// code in it is never half-read.
 func TestParseConfigRefusesShell(t *testing.T) {
 	for _, bad := range []string{`echo hi`, `X=$(id)`, `X="$HOME"`, "X=`id`", `X=a b`, `X="open`, `X='a' b`, `f() { :; }`} {
 		if _, err := ParseConfig(strings.NewReader(bad + "\n")); err == nil {
