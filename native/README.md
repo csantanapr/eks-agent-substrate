@@ -9,7 +9,10 @@ upstream's `ate-setup`. No install step runs a shell script or `bash -c`.
 ## What it creates
 
 The wizard runs these steps in order. Each one is idempotent: a rerun creates
-nothing that already exists, and a run that stopped part way is completed.
+nothing that already exists, and a run that stopped part way is completed. A
+step that runs past the end of your AWS session waits, for up to 30 minutes,
+for you to refresh the profile's credentials, then goes on; refreshed
+credentials for another account or role stop it.
 
 | Step | Command | What it creates |
 |---|---|---|
