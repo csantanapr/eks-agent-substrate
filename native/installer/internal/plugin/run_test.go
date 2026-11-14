@@ -252,11 +252,23 @@ func TestRunDeployNeedsAutoMode(t *testing.T) {
 	if len(f.log) != 0 {
 		t.Errorf("ran after the refusal: %q", f.log)
 	}
+	// Verify is gated the same way, so a plugin's own Verify never runs on a
+	// cluster it cannot work on.
+	err = Run(context.Background(), io.Discard, ActionVerify, []string{"iso"}, o)
+	if err == nil || !strings.Contains(err.Error(), "Auto Mode off") {
+		t.Fatalf("verify: want the Auto Mode refusal, got %v", err)
+	}
+	if len(f.log) != 0 {
+		t.Errorf("verify ran after the refusal: %q", f.log)
+	}
 	o.AutoMode = true
 	if err := Run(context.Background(), io.Discard, ActionDeploy, []string{"iso"}, o); err != nil {
 		t.Fatal(err)
 	}
 	if !slices.Contains(f.log, "deploy iso") {
 		t.Errorf("not deployed on Auto Mode: %q", f.log)
+	}
+	if err := Run(context.Background(), io.Discard, ActionVerify, []string{"iso"}, o); err != nil {
+		t.Fatalf("verify on Auto Mode: %v", err)
 	}
 }

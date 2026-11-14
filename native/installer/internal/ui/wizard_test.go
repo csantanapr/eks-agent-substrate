@@ -30,6 +30,7 @@ func init() {
 		{ID: "t-s3files", Title: "S3 Files volumes", Summary: "S3 Files volumes per actor.", Order: 30, Minutes: 7, HourlyUSD: 0.05, Requires: []string{"t-efs"}, SetupAWS: true},
 		{ID: "mode3-iso", Title: "Mode 3 on isolated sandboxes", Summary: "Worker Pods in Nitro sandboxes.", Order: 40, Minutes: 4,
 			NeedsAutoMode: "needs EKS Auto Mode: its isolated-sandbox RuntimeClass and NodePool come from Auto Mode"},
+		{ID: "t-ondemo", Title: "Counter volumes", Summary: "Counter templates with a volume.", Order: 50, Minutes: 2, NeedsDemo: true},
 	} {
 		plugin.Register(p)
 	}
@@ -240,6 +241,32 @@ func TestPluginsDefaultsRequiresAndTheInstallStep(t *testing.T) {
 	}
 }
 
+// Both ways: choosing a plugin that builds on the counter demo turns the
+// demo on and runs it before the plugins; a choice without one leaves the
+// demo off.
+func TestPluginsThatNeedTheDemoTurnItOn(t *testing.T) {
+	for _, tc := range []struct {
+		ids  []string
+		demo bool
+	}{{[]string{"t-ondemo"}, true}, {[]string{"t-gateway"}, false}} {
+		s := newSetup("new")
+		s.Plugins, s.DemoMode = tc.ids, false
+		m := toStep(t, New(testDeps(&recorder{}), s), state.Plugins)
+		m = press(m, "enter")
+		if s.DemoMode != tc.demo {
+			t.Fatalf("%v: DemoMode %v, want %v", tc.ids, s.DemoMode, tc.demo)
+		}
+		o := m.m.Order()
+		d, p := slices.Index(o, state.Demo), slices.Index(o, state.InstallPlugins)
+		if tc.demo && (d < 0 || p < d) {
+			t.Errorf("%v: order %v, want the demo before the plugins", tc.ids, o)
+		}
+		if !tc.demo && d >= 0 {
+			t.Errorf("%v: order %v has the demo", tc.ids, o)
+		}
+	}
+}
+
 func TestPluginsFlagPreselectsInsteadOfTheDefaults(t *testing.T) {
 	s := newSetup("new")
 	s.Plugins = []string{"t-s3files"}
@@ -295,7 +322,7 @@ func TestReviewShowsThePlanTimesAndCost(t *testing.T) {
 	}
 	v := m.View()
 	last := -1
-	for _, want := range []string{"$ create cluster", "$ bootstrap", "$ create rds", "$ deploy --snap-bucket", "$ substrate-eks --plugin-action deploy --plugins t-efs", "$ demo"} {
+	for _, want := range []string{"$ create cluster", "$ bootstrap", "$ create rds", "$ deploy --snap-bucket", "$ demo", "$ substrate-eks --plugin-action deploy --plugins t-efs"} {
 		i := strings.Index(v, want)
 		if i < 0 || i < last {
 			t.Errorf("plan lacks %q, or out of order:\n%s", want, v)
