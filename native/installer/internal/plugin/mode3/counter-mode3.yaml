@@ -1,0 +1,47 @@
+# The counter demo's gVisor Namespace and WorkerPool
+# (demos/counter/counter.yaml.tmpl at the fork's commit) under new names, on
+# the microvm nodes, with the network transport and RuntimeClass kata: the
+# controller runs each worker Pod as a Kata microVM, and atelet reaches the
+# worker over mutual TLS on the Pod network (port 8087, the atelet-workers
+# Service) instead of the node's shared files and Unix sockets.
+#
+# ${WORKER_IMAGE} is the fork's ateworker-gvisor, pinned by digest.
+#
+# Learn more:
+#   https://github.com/csantanapr/substrate/tree/microvm-mode-3
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ate-demo-counter-mode3
+---
+apiVersion: ate.dev/v1
+kind: WorkerPool
+metadata:
+  name: counter-mode3
+  namespace: ate-demo-counter-mode3
+  labels:
+    workload: counter-mode3
+spec:
+  replicas: 2
+  workerImage: ${WORKER_IMAGE}
+  sandboxClasses:
+  - name: gvisor
+  networkTransport:
+    runtimeClassName: kata
+  template:
+    # The worker keeps runtime assets, image layers and actor state on a
+    # tmpfs in the guest, which counts as the worker's memory.
+    resources:
+      limits:
+        cpu: "1"
+        memory: 2Gi
+      requests:
+        cpu: 250m
+        memory: 2Gi
+    nodeSelector:
+      ate.dev/pool: microvm
+    tolerations:
+    - key: ate.dev/sandboxClass
+      operator: Equal
+      value: microvm
+      effect: NoSchedule

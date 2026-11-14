@@ -202,11 +202,11 @@ func (o Options) treeRef() string {
 	return o.Tag
 }
 
-// AteSetupArgs are the `ate-setup deploy ate-system` flags for EKS, the same
-// ones eks-talk's substrate/install.sh passes. The connection strings are not
-// among them: they carry passwords, so they go in the environment.
+// AteSetupArgs are the `ate-setup deploy ate-system` flags for EKS. The
+// connection strings are not among them: they carry passwords, so they go in
+// the environment.
 //
-// Plugin needs (o.Needs) add to them as install.sh's did: more ingress
+// Plugin needs (o.Needs) add to them: more ingress
 // clients, more credential providers after the bundled k8s.io one (one
 // object, or a JSON array of several), and --preview gates.
 func AteSetupArgs(o Options, kubeContext string) []string {
@@ -405,6 +405,9 @@ var checkCommit = func(ctx context.Context, tree, commit string) error {
 // this installer created gets it as its default class with RDS too (R1).
 func install(ctx context.Context, w io.Writer, o Options, kubeContext, kc, tree string) error {
 	env := AteSetupEnv(o, kc)
+	if err := autoNodes(ctx, w, o, kc); err != nil {
+		return err
+	}
 	if o.db() == DatabaseBundled || o.clusterOwned {
 		if err := applyStorageClass(ctx, w, o, kc); err != nil {
 			return err

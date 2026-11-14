@@ -11,10 +11,10 @@ import (
 )
 
 // PinPool sets spec.template.nodeSelector[ate.dev/pool] to pool on every
-// WorkerPool in the manifest at path, the change deploy.sh's pin_pool makes
-// before it applies a pool. The manifest is upstream's demo template in the
-// installer's cached tree, which the deploy renders from that
-// fixed path, so the edit is made in place. It reports whether it changed the
+// WorkerPool in the manifest at path, before the deploy applies the pool.
+// The manifest is upstream's demo template in the installer's cached tree,
+// which the deploy renders from that fixed path, so the edit is made in
+// place. It reports whether it changed the
 // file; a second run changes nothing.
 func PinPool(path, pool string) (bool, error) {
 	data, err := os.ReadFile(path)

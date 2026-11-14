@@ -43,6 +43,7 @@ type clusterFake struct {
 	rts       map[string]*ec2types.RouteTable
 	sgs       map[string]*ec2types.SecurityGroup
 	acls      map[string]*ec2types.NetworkAcl
+	enis      map[string]*ec2types.NetworkInterface
 	lts       map[string]*fakeLT // by id
 	types     map[string]ec2types.InstanceTypeInfo
 	zones     []ec2types.AvailabilityZone
@@ -87,7 +88,7 @@ func newClusterFake() *clusterFake {
 		vpcs: map[string]*ec2types.Vpc{}, dnsHosts: map[string]bool{}, subnets: map[string]*ec2types.Subnet{},
 		igws: map[string]*ec2types.InternetGateway{}, eips: map[string]*ec2types.Address{}, nats: map[string]*ec2types.NatGateway{},
 		rts: map[string]*ec2types.RouteTable{}, sgs: map[string]*ec2types.SecurityGroup{}, acls: map[string]*ec2types.NetworkAcl{},
-		lts: map[string]*fakeLT{}, quotas: map[string]float64{},
+		enis: map[string]*ec2types.NetworkInterface{}, lts: map[string]*fakeLT{}, quotas: map[string]float64{},
 		types: map[string]ec2types.InstanceTypeInfo{
 			"m8i.xlarge": nestedVirtType("m8i.xlarge", true), "m8i.2xlarge": nestedVirtType("m8i.2xlarge", true),
 			"m7i.2xlarge": nestedVirtType("m7i.2xlarge", false)},
@@ -561,9 +562,27 @@ func (e *fcEC2) DescribeNetworkAcls(_ context.Context, in *ec2.DescribeNetworkAc
 	return out, nil
 }
 
+// DescribeNetworkInterfaces lists the network interfaces tests add (the ones
+// AWS makes for a cluster, a NAT gateway or a node), by VPC.
+func (e *fcEC2) DescribeNetworkInterfaces(_ context.Context, in *ec2.DescribeNetworkInterfacesInput, _ ...func(*ec2.Options)) (*ec2.DescribeNetworkInterfacesOutput, error) {
+	if err := e.f().read("DescribeNetworkInterfaces"); err != nil {
+		return nil, err
+	}
+	out := &ec2.DescribeNetworkInterfacesOutput{}
+	for _, id := range sortedKeysOf(e.enis) {
+		n := e.enis[id]
+		if match(in.Filters, n.TagSet, map[string][]string{"vpc-id": {aws.ToString(n.VpcId)}}) {
+			out.NetworkInterfaces = append(out.NetworkInterfaces, *n)
+		}
+	}
+	return out, nil
+}
+
 // tagsOf points at the tags of any taggable resource of the fake.
 func (f *clusterFake) tagsOf(id string) *[]ec2types.Tag {
 	switch {
+	case f.enis[id] != nil:
+		return &f.enis[id].TagSet
 	case f.vpcs[id] != nil:
 		return &f.vpcs[id].Tags
 	case f.rts[id] != nil:
@@ -810,7 +829,7 @@ func (e *fcEKS) DescribeAddon(_ context.Context, in *eks.DescribeAddonInput, _ .
 	}
 	c := *a
 	// The networking add-ons come up on their own; coredns and the EBS CSI
-	// driver stay DEGRADED until there are nodes (create-cluster.sh's trap).
+	// driver stay DEGRADED until there are nodes, as on EKS.
 	if a.Status == ekstypes.AddonStatusCreating || a.Status == ekstypes.AddonStatusDegraded {
 		switch {
 		case aws.ToString(a.AddonName) != "coredns" && aws.ToString(a.AddonName) != "aws-ebs-csi-driver", e.anyNodegroupActive():

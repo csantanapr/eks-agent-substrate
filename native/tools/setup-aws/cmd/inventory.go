@@ -34,12 +34,13 @@ import (
 
 // Tag keys inventory and teardown read besides OwnerTagKey.
 const (
-	// tdCreatedByKey marks a resource setup-aws created itself (the bash
-	// scripts do not set it). Shown by inventory; ownership is OwnerTagKey.
+	// tdCreatedByKey marks a resource setup-aws created itself (a resource
+	// eksctl made does not carry it). Shown by inventory; ownership is
+	// OwnerTagKey.
 	tdCreatedByKey = CreatedByTagKey
 	// tdStackKey is set by CloudFormation on what a stack creates, here
-	// eksctl's stacks from create-cluster.sh. teardown never deletes such a
-	// resource: ./delete-cluster.sh does, through its stack.
+	// the stacks of a cluster eksctl made. teardown never deletes such a
+	// resource: eksctl delete cluster does, through its stack.
 	tdStackKey = "aws:cloudformation:stack-name"
 	// eksClusterNameTag is on every volume EKS Auto Mode creates: its
 	// managed policy allows CreateVolume only with it. pvcNamespaceTag is the
@@ -69,6 +70,7 @@ type (
 		DescribeNetworkInterfaces(context.Context, *ec2.DescribeNetworkInterfacesInput, ...func(*ec2.Options)) (*ec2.DescribeNetworkInterfacesOutput, error)
 		DescribeVolumes(context.Context, *ec2.DescribeVolumesInput, ...func(*ec2.Options)) (*ec2.DescribeVolumesOutput, error)
 		DescribeInstances(context.Context, *ec2.DescribeInstancesInput, ...func(*ec2.Options)) (*ec2.DescribeInstancesOutput, error)
+		DescribeFleets(context.Context, *ec2.DescribeFleetsInput, ...func(*ec2.Options)) (*ec2.DescribeFleetsOutput, error)
 		DeleteVpc(context.Context, *ec2.DeleteVpcInput, ...func(*ec2.Options)) (*ec2.DeleteVpcOutput, error)
 		DeleteSubnet(context.Context, *ec2.DeleteSubnetInput, ...func(*ec2.Options)) (*ec2.DeleteSubnetOutput, error)
 		DeleteSecurityGroup(context.Context, *ec2.DeleteSecurityGroupInput, ...func(*ec2.Options)) (*ec2.DeleteSecurityGroupOutput, error)
@@ -199,11 +201,10 @@ func (e *tdEnv) mask(s string) string {
 	return strings.ReplaceAll(s, a, strings.Repeat("*", len(a)-4)+a[len(a)-4:])
 }
 
-// Derived names, matching lib/common.sh and the create commands.
+// Derived names, matching the create commands.
 func (e *tdEnv) dbID() string { return e.n.Cluster + "-pg" }
 
-// ltNames are the node groups' launch templates create cluster makes (the
-// microvm one is lib/common.sh's LT_NAME).
+// ltNames are the node groups' launch templates create cluster makes.
 func (e *tdEnv) ltNames() []string {
 	c := e.n.Cluster
 	return []string{c + "-microvm-nested-virt", c + "-system-nodes", c + "-gvisor-nodes"}
@@ -238,7 +239,7 @@ func (e *tdEnv) owned(tags map[string]string) bool { return tags[OwnerTagKey] ==
 // stack.
 func (e *tdEnv) refuse(kind, id string, tags map[string]string) string {
 	if s := tags[tdStackKey]; s != "" {
-		return fmt.Sprintf("%s %s belongs to CloudFormation stack %s (eksctl, from create-cluster.sh): delete it with ./delete-cluster.sh, or run teardown --keep-cluster", kind, id, s)
+		return fmt.Sprintf("%s %s belongs to CloudFormation stack %s (made by eksctl): delete the cluster with eksctl delete cluster --name %s --region %s, or run teardown --keep-cluster", kind, id, s, e.n.Cluster, e.n.Region)
 	}
 	if got := tags[OwnerTagKey]; got != e.n.OwnerValue {
 		return fmt.Sprintf("%s %s is not owned by %s (%s=%q); teardown leaves it alone", kind, id, e.n.OwnerValue, OwnerTagKey, got)
@@ -991,12 +992,72 @@ func (e *tdEnv) inventory(ctx context.Context) ([]tdRow, error) {
 				}
 				continue
 			}
-			// eksctl's own stacks go with the cluster (./delete-cluster.sh).
+			// EC2 Fleets: EKS Auto Mode launches each node of a tagged
+			// NodeClass through an instant fleet that carries the tags, and
+			// the fleet outlives its instance (DescribeFleets returns an
+			// instant fleet only by ID). Ask EC2: list one with a live
+			// instance, as cluster infrastructure that goes with the
+			// cluster; skip one whose instances are terminated, or that is
+			// deleted or gone (fleetLive).
+			if svc == "ec2" && rtype == "fleet" {
+				ok, err := e.fleetLive(ctx, id)
+				if err != nil {
+					return nil, err
+				}
+				if ok {
+					add(tdRow{kFleet, id, kvMap(m.Tags, rgtKV), true})
+				}
+				continue
+			}
+			// eksctl's own stacks go with the cluster (eksctl delete cluster).
 			eksctl := svc == "cloudformation" && strings.HasPrefix(id, "eksctl-"+e.n.Cluster+"-")
 			add(tdRow{svc + " " + rtype, id, kvMap(m.Tags, rgtKV), eksctl})
 		}
 	}
 	return rows, nil
+}
+
+// kFleet is an EC2 Fleet's inventory kind.
+const kFleet = "EC2 fleet"
+
+// fleetLive reports whether EC2 Fleet id still holds something: it exists,
+// is not deleted (deleted, deleted_running, deleted_terminating) or failed,
+// and one of its instances is not terminated. An instant fleet stays active
+// after its instances are gone, and only EKS may delete Auto Mode's: its
+// DeleteFleets needs TerminateInstances, which the managed instances'
+// resource policy denies to anyone else (on sub-p13, even once terminated).
+// So a fleet whose instances are all terminated is a record, not a
+// resource left behind.
+func (e *tdEnv) fleetLive(ctx context.Context, id string) (bool, error) {
+	out, err := e.c.EC2.DescribeFleets(ctx, &ec2.DescribeFleetsInput{FleetIds: []string{id}})
+	if tdGone(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("describe EC2 fleet %s: %w", id, err)
+	}
+	var ids []string
+	for _, f := range out.Fleets {
+		if s := string(f.FleetState); strings.HasPrefix(s, "deleted") || s == "failed" {
+			continue
+		}
+		for _, i := range f.Instances {
+			ids = append(ids, i.InstanceIds...)
+		}
+	}
+	if len(ids) == 0 {
+		return false, nil
+	}
+	insts, err := e.ec2List(ctx, kInstance, flt("instance-id", ids...))
+	if err != nil {
+		return false, err
+	}
+	for _, i := range insts {
+		if i.state != "terminated" {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func tdKeys[V any](m map[string]V) []string {

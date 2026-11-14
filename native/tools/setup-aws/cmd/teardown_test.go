@@ -420,8 +420,9 @@ func TestTeardownRefusesAnEksctlCluster(t *testing.T) {
 	e, _, _ := tdTestEnv(t, f, false, false)
 	err := e.teardown(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "EKS cluster demo belongs to CloudFormation stack eksctl-demo-cluster") ||
-		!strings.Contains(err.Error(), "./delete-cluster.sh") {
-		t.Fatalf("want a refusal pointing at delete-cluster.sh, got %v", err)
+		!strings.Contains(err.Error(), "eksctl delete cluster --name demo --region us-west-2") ||
+		strings.Contains(err.Error(), "delete-cluster.sh") {
+		t.Fatalf("want a refusal pointing at eksctl delete cluster, got %v", err)
 	}
 	if len(f.calls) != 0 {
 		t.Errorf("deleted before refusing: %v", f.calls)

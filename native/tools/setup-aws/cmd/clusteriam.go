@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/url"
 	"reflect"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
@@ -59,6 +60,59 @@ func (r *clusterRun) volumeTagPolicy() string {
 	return string(b)
 }
 
+// nodeTagPolicyName is the Auto Mode cluster role's inline policy that lets
+// EKS Auto Mode launch nodes with this deployment's tags (a NodeClass whose
+// spec.tags are the owner tag and TAGS, as the mode3-iso plugin's).
+const nodeTagPolicyName = "auto-mode-node-tags"
+
+// nodeTagPolicy is that policy: the documented compute and networking
+// statements for user defined tags. AmazonEKSComputePolicy and
+// AmazonEKSNetworkingPolicy allow these creates only with Auto Mode's own tag
+// keys, so a tagged NodeClass fails validation ("Controller isn't authorized
+// to call ec2:CreateLaunchTemplate") and launches no node. Like
+// volumeTagPolicy, each statement covers only this account and Region's
+// resources of the kinds the call creates, requested for this cluster and
+// carrying this deployment's owner tag; the other resources a launch names
+// (subnets, security groups, images) stay with the managed policies.
+//
+//	https://docs.aws.amazon.com/eks/latest/userguide/auto-cluster-iam-role.html (Custom AWS tags for EKS Auto resources)
+func (r *clusterRun) nodeTagPolicy() string {
+	n := r.e.names
+	arn := func(kinds ...string) []string {
+		var out []string
+		for _, k := range kinds {
+			out = append(out, fmt.Sprintf("arn:%s:ec2:%s:%s:%s/*", n.Partition, n.Region, n.Account, k))
+		}
+		return out
+	}
+	cond := func(like map[string]string) map[string]any {
+		return map[string]any{
+			"StringEquals": map[string]string{
+				"aws:RequestTag/eks:eks-cluster-name": "${aws:PrincipalTag/eks:eks-cluster-name}",
+				"aws:RequestTag/" + OwnerTagKey:       n.OwnerValue,
+			},
+			"StringLike": like,
+		}
+	}
+	doc := map[string]any{"Version": "2012-10-17", "Statement": []any{
+		map[string]any{"Sid": "LaunchNodesWithDeploymentTags", "Effect": "Allow",
+			"Action":   []string{"ec2:CreateFleet", "ec2:RunInstances", "ec2:CreateLaunchTemplate"},
+			"Resource": arn("fleet", "instance", "launch-template", "network-interface", "volume"),
+			"Condition": cond(map[string]string{"aws:RequestTag/eks:kubernetes-node-class-name": "*",
+				"aws:RequestTag/eks:kubernetes-node-pool-name": "*"})},
+		map[string]any{"Sid": "NodeInterfacesWithDeploymentTags", "Effect": "Allow",
+			"Action": "ec2:CreateNetworkInterface", "Resource": arn("network-interface"),
+			"Condition": cond(map[string]string{"aws:RequestTag/eks:kubernetes-cni-node-name": "*"})},
+	}}
+	b, _ := json.Marshal(doc)
+	return string(b)
+}
+
+// autoInline are the Auto Mode cluster role's inline policies.
+func (r *clusterRun) autoInline() map[string]string {
+	return map[string]string{volumeTagPolicyName: r.volumeTagPolicy(), nodeTagPolicyName: r.nodeTagPolicy()}
+}
+
 // shortcut: the service principals are the aws partition's; aws-cn spells
 // ec2's differently. Upgrade if this tool is used in China Regions.
 const (
@@ -79,7 +133,8 @@ func (r *clusterRun) ebsRoleName() string      { return r.roleName("ebs-csi-driv
 
 // neededRoles are the roles of what this run still has to create: the
 // cluster (and Auto Mode's node role), a node group, the EBS CSI add-on. A
-// complete deployment needs none, so a rerun reads no IAM at all.
+// complete deployment needs none; a rerun then reads only an Auto Mode
+// cluster's role, for its inline policies (reconcileClusterRole).
 func (r *clusterRun) neededRoles() []clusterRole {
 	var out []clusterRole
 	if r.cluster == nil {
@@ -89,7 +144,7 @@ func (r *clusterRun) neededRoles() []clusterRole {
 		}
 		cr := clusterRole{name: r.clusterRoleName(), trust: eksTrustPolicy, policies: p}
 		if r.auto {
-			cr.inline = map[string]string{volumeTagPolicyName: r.volumeTagPolicy()}
+			cr.inline = r.autoInline()
 		}
 		out = append(out, cr)
 		if r.auto {
@@ -120,6 +175,49 @@ func (r *clusterRun) ensureRoles(ctx context.Context) error {
 		if err := r.ensureRole(ctx, role); err != nil {
 			return fmt.Errorf("IAM role %s: %w", role.name, err)
 		}
+	}
+	return r.reconcileClusterRole(ctx)
+}
+
+// reconcileClusterRole puts a missing or different inline policy of an
+// existing Auto Mode cluster's role, so a rerun brings a cluster made by an
+// older setup-aws up to date. Only a role carrying this deployment's owner
+// tag is changed; any other is refused (logged and left alone), since the
+// cluster may be one setup-aws did not create (create-cluster.sh's).
+func (r *clusterRun) reconcileClusterRole(ctx context.Context) error {
+	if r.cluster == nil || !r.auto {
+		return nil
+	}
+	arn := aws.ToString(r.cluster.RoleArn)
+	role := arn[strings.LastIndex(arn, "/")+1:]
+	if role == "" {
+		return nil
+	}
+	got, err := r.c.IAM.GetRole(ctx, &iam.GetRoleInput{RoleName: aws.String(role)})
+	if isNotFound(err) {
+		slog.Warn("the cluster's IAM role is gone; its inline policies are not reconciled", "role", role)
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("IAM role %s: get role: %w", role, err)
+	}
+	tags, err := r.c.IAM.ListRoleTags(ctx, &iam.ListRoleTagsInput{RoleName: got.Role.RoleName})
+	if err != nil {
+		return fmt.Errorf("IAM role %s: read tags: %w", role, err)
+	}
+	owner := ""
+	for _, t := range tags.Tags {
+		if aws.ToString(t.Key) == OwnerTagKey {
+			owner = aws.ToString(t.Value)
+		}
+	}
+	if owner != r.e.names.OwnerValue {
+		slog.Warn("refused: the cluster's IAM role is not owned by this deployment, so its inline policies are left alone (tagged NodeClasses and StorageClasses get no deployment tags)",
+			"role", role, "owner", owner, "want", r.e.names.OwnerValue)
+		return nil
+	}
+	if err := r.putInline(ctx, role, r.autoInline(), true); err != nil {
+		return fmt.Errorf("IAM role %s: %w", role, err)
 	}
 	return nil
 }
@@ -191,10 +289,16 @@ func (r *clusterRun) ensureRole(ctx context.Context, role clusterRole) error {
 			return err
 		}
 	}
-	for _, name := range sortedKeys(role.inline) {
-		doc := role.inline[name]
+	return r.putInline(ctx, role.name, role.inline, exists)
+}
+
+// putInline puts each inline policy of role; on an existing role only one
+// that is missing or different, as a change.
+func (r *clusterRun) putInline(ctx context.Context, role string, inline map[string]string, exists bool) error {
+	for _, name := range sortedKeys(inline) {
+		doc := inline[name]
 		if exists {
-			got, err := r.c.IAM.GetRolePolicy(ctx, &iam.GetRolePolicyInput{RoleName: aws.String(role.name), PolicyName: aws.String(name)})
+			got, err := r.c.IAM.GetRolePolicy(ctx, &iam.GetRolePolicyInput{RoleName: aws.String(role), PolicyName: aws.String(name)})
 			if err != nil && !isNotFound(err) {
 				return fmt.Errorf("get inline policy %s: %w", name, err)
 			}
@@ -203,10 +307,11 @@ func (r *clusterRun) ensureRole(ctx context.Context, role clusterRole) error {
 			}
 		}
 		do := func() error {
-			_, err := r.c.IAM.PutRolePolicy(ctx, &iam.PutRolePolicyInput{RoleName: aws.String(role.name), PolicyName: aws.String(name), PolicyDocument: aws.String(doc)})
+			_, err := r.c.IAM.PutRolePolicy(ctx, &iam.PutRolePolicyInput{RoleName: aws.String(role), PolicyName: aws.String(name), PolicyDocument: aws.String(doc)})
 			return err
 		}
-		what := "put inline policy " + name + " on " + role.name
+		what := "put inline policy " + name + " on " + role
+		var err error
 		if exists {
 			err = r.change(what, do)
 		} else {

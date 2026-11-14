@@ -1,9 +1,8 @@
-// Package demo deploys the counter demo and checks it, the native form of
-// eks-talk's demos/counter/deploy.sh and verify.sh, and the EKS counterpart of
-// substrate-gke's Demo step (make run-demo).
+// Package demo deploys the counter demo and checks it, the EKS counterpart
+// of substrate-gke's Demo step (make run-demo).
 //
-// Deploy does what deploy.sh does. Releases publish the worker images but not
-// the counter's, so `ate-setup deploy demo --image-repo` cannot install it:
+// Releases publish the worker images but not the counter's, so
+// `ate-setup deploy demo --image-repo` cannot install it:
 // Deploy builds the counter image from the cached Substrate tree and pushes
 // it to the private ECR repository <cluster>/counter (image.go), renders
 // upstream's WorkerPool and ActorTemplate templates with that image and the
@@ -255,18 +254,18 @@ func (e *env) nodeArch(ctx context.Context, kubectl func(...string) []string, cl
 	case 1:
 		return archs[0], nil
 	}
-	// shortcut: one single-architecture image, as deploy.sh builds; push an
+	// shortcut: one single-architecture image; push an
 	// index if the node groups ever need to differ.
 	return "", fmt.Errorf("the nodes labeled %s are %s: the counter image is built for one architecture", sel, strings.Join(archs, " and "))
 }
 
-// deployClass is deploy.sh's deploy for one class: the Namespace and the
+// deployClass deploys one class: the Namespace and the
 // WorkerPool pinned to the class's node group, the atespace, the
 // ActorTemplate, then its golden snapshot.
 func (e *env) deployClass(ctx context.Context, w io.Writer, k ate, kubectl func(...string) []string, tree, dir string, c class, images map[string]string) error {
 	// Upstream's WorkerPools carry no nodeSelector. On EKS an unpinned
 	// gVisor pool can land on a node with no atelet (an Auto Mode or system
-	// node) and never come up, so pin it to its node group, as deploy.sh does.
+	// node) and never come up, so pin it to its node group.
 	changed, err := PinPool(filepath.Join(tree, c.pool), c.name)
 	if err != nil {
 		return err
@@ -344,9 +343,8 @@ func templateImage(out []byte) (string, error) {
 	return cs[0].Image, nil
 }
 
-// Poll bounds at the 2s interval: waitGolden waits 15 minutes, deploy.sh's
-// wait for the golden snapshot, and the snapshot's S3 copy is waited for 10
-// minutes, verify.sh's wait.
+// Poll bounds at the 2s interval: waitGolden waits 15 minutes for the golden
+// snapshot, and the snapshot's S3 copy is waited for 10 minutes.
 const (
 	goldenTries = 450
 	s3Tries     = 300
@@ -529,7 +527,7 @@ func (e *env) waitState(ctx context.Context, k ate, c class, want string, tries 
 	return a, fmt.Errorf("actor %s is %s, not %s", c.actor, a.Status.State, want)
 }
 
-// roundtrip is verify.sh's roundtrip for one class.
+// roundtrip suspends and resumes one class's actor and checks its counters.
 func (e *env) roundtrip(ctx context.Context, w io.Writer, k ate, c class, bucket string) (string, error) {
 	a, err := k.get(ctx, c)
 	if err != nil {
@@ -606,7 +604,7 @@ func (e *env) roundtrip(ctx context.Context, w io.Writer, k ate, c class, bucket
 
 	// The resume can use the node's copy while the S3 upload of the same
 	// snapshot finishes in the background, minutes later: 4.5 to 6 minutes
-	// on sub-nt6. Wait at least verify.sh's 10 minutes.
+	// on sub-nt6. Wait at least 10 minutes.
 	var snap snapshot
 	if !e.poll(ctx, s3Tries, func() bool {
 		a, err = k.get(ctx, c)

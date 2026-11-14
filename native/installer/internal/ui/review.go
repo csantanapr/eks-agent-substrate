@@ -29,7 +29,7 @@ var stepMinutes = map[state.Step]int{
 }
 
 // Hourly on-demand list prices in us-west-2 (AWS Price List API,
-// 2026-11-05), the cost model of eks-talk's first installer.
+// 2026-11-05).
 var ec2Price = map[string]float64{
 	"m8i.large": 0.10584, "m8i.xlarge": 0.21168, "m8i.2xlarge": 0.42336, "m8i.4xlarge": 0.84672, "m8i.8xlarge": 1.69344,
 }

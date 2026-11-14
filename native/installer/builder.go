@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -27,6 +28,9 @@ import (
 // reads written in front (an empty value is left out: it means the default).
 type builder struct {
 	self, setupAWS, overlay, cwd, exeDir, treeRoot string
+	// stepEnv is state.Config.StepEnv: settings from the config files that
+	// the steps read from their environment. Every Spec carries it.
+	stepEnv []string
 }
 
 // findSetupAWS returns native/tools/setup-aws, searched above cwd and the
@@ -78,7 +82,9 @@ func (b builder) setupAWSSpec(s *state.Setup, label string, env []string, sim []
 	dir := b.findSetupAWS()
 	argv := append([]string{"go", "-C", dir, "run", "."}, args...)
 	var shown []string
-	for _, e := range b.env(s) {
+	// The step settings are shown too, so the pasted command runs the same
+	// step: setup-aws reads no config file.
+	for _, e := range append(slices.Clone(b.stepEnv), b.env(s)...) {
 		if k, v, _ := strings.Cut(e, "="); v != "" && k != "TAGS" && k != "PLAN" && k != "KEEP_CLUSTER" {
 			shown = append(shown, k+"="+shellQuote(v))
 		}
@@ -88,7 +94,7 @@ func (b builder) setupAWSSpec(s *state.Setup, label string, env []string, sim []
 		Label:    label,
 		Display:  strings.Join(append(shown, args...), " "),
 		Argv:     argv,
-		Env:      append(b.env(s), env...),
+		Env:      append(append(slices.Clone(b.stepEnv), b.env(s)...), env...),
 		SimLines: sim,
 	}
 }
@@ -172,7 +178,7 @@ func (b builder) selfSpec(s *state.Setup, cluster, label string, sim []string, f
 		// The control plane's StorageClass and the plugins tag what they
 		// make with TAGS, read from the environment: pin it to the run's
 		// answer, which Settings may have changed.
-		Env:      []string{"TAGS=" + s.Tags},
+		Env:      append(slices.Clone(b.stepEnv), "TAGS="+s.Tags),
 		SimLines: sim,
 	}
 }

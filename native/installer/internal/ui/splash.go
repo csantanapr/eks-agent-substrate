@@ -12,11 +12,10 @@ import (
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/theme"
 )
 
-// The splash before Welcome, ported from eks-talk's first installer: the
-// Agent Substrate mascot, a hooded octopus holding three robot puppets, in
-// half-block pixels; the title; and four small robots (actors) landing on
-// gVisor, microVM and AWS Nitro Sandbox nodes in an Amazon EKS cluster.
-// About 3.6 seconds; any key skips it.
+// The splash before Welcome: the Agent Substrate mascot, a hooded octopus
+// holding three robot puppets, in half-block pixels; the title; and four
+// small robots (actors) landing on gVisor, microVM and AWS Nitro Sandbox
+// nodes in an Amazon EKS cluster. About 3.6 seconds; any key skips it.
 
 const (
 	splashFrames = 36
@@ -277,8 +276,8 @@ func (c *canvas) text(x, y int, s string, fg uint32, bold bool) int {
 
 func hex(c uint32) string { return fmt.Sprintf("#%06X", c&0xFFFFFF) }
 
-// render draws the canvas in the terminal's colors, through lipgloss (the
-// first installer called termenv itself, which this module does not import).
+// render draws the canvas in the terminal's colors, through lipgloss (this
+// module does not import termenv).
 func (c *canvas) render() string {
 	type cell struct {
 		r      rune

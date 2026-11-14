@@ -3,11 +3,12 @@ package state
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
 
-const configEnv = `# Settings for every script.
+const configEnv = `# Settings for every install.
 
 # --- Cluster ---
 # 2-28 characters of a-z, 0-9 and '-'.
@@ -49,7 +50,7 @@ func checkout(t *testing.T, local string) string {
 	return dir
 }
 
-func TestParseConfigAcceptsWhatTheScriptsUse(t *testing.T) {
+func TestParseConfigAcceptsConfigEnv(t *testing.T) {
 	f, err := ParseConfig(strings.NewReader(configEnv))
 	if err != nil {
 		t.Fatal(err)
@@ -65,8 +66,8 @@ func TestParseConfigAcceptsWhatTheScriptsUse(t *testing.T) {
 	}
 }
 
-// Anything that is not a plain assignment is refused, so a script's file is
-// never half-read.
+// Anything that is not a plain assignment is refused, so a file with shell
+// code in it is never half-read.
 func TestParseConfigRefusesShell(t *testing.T) {
 	for _, bad := range []string{`echo hi`, `X=$(id)`, `X="$HOME"`, "X=`id`", `X=a b`, `X="open`, `X='a' b`, `f() { :; }`} {
 		if _, err := ParseConfig(strings.NewReader(bad + "\n")); err == nil {
@@ -186,5 +187,32 @@ func TestValidateConfigBothWays(t *testing.T) {
 		if bad := ValidateConfig(good); (len(bad) == 0) != ok {
 			t.Errorf("EKS_PUBLIC_ACCESS_CIDRS=%q: findings %v, want accepted=%v", value, bad, ok)
 		}
+	}
+}
+
+// Both ways: a step setting in config.local.env (over config.env) reaches
+// the steps; an exported value wins and is not repeated; an empty value and
+// a key that is not a step setting are left out.
+func TestStepEnv(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string) {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("config.env", "DB_MULTI_AZ=false\nDB_STORAGE_GB=20\nEFS_ADDON_VERSION=\nCLUSTER_NAME=x\n")
+	write("config.local.env", "DB_MULTI_AZ=true\nBEDROCK_INFERENCE_PROFILE='us.anthropic.claude-haiku-5-5'\n")
+	env := map[string]string{"DB_STORAGE_GB": "50"}
+	c, err := LoadConfig(dir, func(k string) (string, bool) { v, ok := env[k]; return v, ok })
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := c.StepEnv()
+	want := []string{"DB_MULTI_AZ=true", "BEDROCK_INFERENCE_PROFILE=us.anthropic.claude-haiku-5-5"}
+	if !slices.Equal(got, want) {
+		t.Errorf("StepEnv = %q, want %q", got, want)
+	}
+	if (Config{}).StepEnv() != nil {
+		t.Error("outside a checkout StepEnv is not empty")
 	}
 }
