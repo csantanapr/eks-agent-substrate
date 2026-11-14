@@ -70,6 +70,8 @@ type (
 		DescribeNetworkInterfaces(context.Context, *ec2.DescribeNetworkInterfacesInput, ...func(*ec2.Options)) (*ec2.DescribeNetworkInterfacesOutput, error)
 		DescribeVolumes(context.Context, *ec2.DescribeVolumesInput, ...func(*ec2.Options)) (*ec2.DescribeVolumesOutput, error)
 		DescribeInstances(context.Context, *ec2.DescribeInstancesInput, ...func(*ec2.Options)) (*ec2.DescribeInstancesOutput, error)
+		DescribeFleets(context.Context, *ec2.DescribeFleetsInput, ...func(*ec2.Options)) (*ec2.DescribeFleetsOutput, error)
+		DeleteFleets(context.Context, *ec2.DeleteFleetsInput, ...func(*ec2.Options)) (*ec2.DeleteFleetsOutput, error)
 		DeleteVpc(context.Context, *ec2.DeleteVpcInput, ...func(*ec2.Options)) (*ec2.DeleteVpcOutput, error)
 		DeleteSubnet(context.Context, *ec2.DeleteSubnetInput, ...func(*ec2.Options)) (*ec2.DeleteSubnetOutput, error)
 		DeleteSecurityGroup(context.Context, *ec2.DeleteSecurityGroupInput, ...func(*ec2.Options)) (*ec2.DeleteSecurityGroupOutput, error)
@@ -996,12 +998,48 @@ func (e *tdEnv) inventory(ctx context.Context) ([]tdRow, error) {
 				}
 				continue
 			}
+			// EC2 Fleets: EKS Auto Mode launches each node of a tagged
+			// NodeClass through an instant fleet that carries the tags, and
+			// the fleet outlives its instance (DescribeFleets returns an
+			// instant fleet only by ID). Ask EC2: list one that is live, skip
+			// one deleted or gone. A live one is cluster infrastructure.
+			if svc == "ec2" && rtype == "fleet" {
+				ok, err := e.fleetLive(ctx, id)
+				if err != nil {
+					return nil, err
+				}
+				if ok {
+					add(tdRow{kFleet, id, kvMap(m.Tags, rgtKV), true})
+				}
+				continue
+			}
 			// eksctl's own stacks go with the cluster (./delete-cluster.sh).
 			eksctl := svc == "cloudformation" && strings.HasPrefix(id, "eksctl-"+e.n.Cluster+"-")
 			add(tdRow{svc + " " + rtype, id, kvMap(m.Tags, rgtKV), eksctl})
 		}
 	}
 	return rows, nil
+}
+
+// kFleet is an EC2 Fleet's inventory kind.
+const kFleet = "EC2 fleet"
+
+// fleetLive reports whether EC2 Fleet id exists in a state other than
+// deleted (deleted, deleted_running, deleted_terminating) or failed.
+func (e *tdEnv) fleetLive(ctx context.Context, id string) (bool, error) {
+	out, err := e.c.EC2.DescribeFleets(ctx, &ec2.DescribeFleetsInput{FleetIds: []string{id}})
+	if tdGone(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("describe EC2 fleet %s: %w", id, err)
+	}
+	for _, f := range out.Fleets {
+		if s := string(f.FleetState); !strings.HasPrefix(s, "deleted") && s != "failed" {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func tdKeys[V any](m map[string]V) []string {

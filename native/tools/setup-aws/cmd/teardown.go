@@ -16,6 +16,8 @@ import (
 	ekstypes "github.com/aws/aws-sdk-go-v2/service/eks/types"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	"github.com/aws/aws-sdk-go-v2/service/rds"
+	rgt "github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi"
+	rgttypes "github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi/types"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
@@ -100,7 +102,7 @@ func (e *tdEnv) teardownPhases() []tdPhase {
 		{cluster: true, steps: []tdStep{e.stepCluster, e.stepClusterRoles}},
 		// An available network interface holds its subnet and security
 		// groups, so it goes before both; the VPC goes last.
-		{cluster: true, steps: []tdStep{e.stepLaunchTemplates, e.stepVolumes, e.stepNATs, e.stepEIPs,
+		{cluster: true, steps: []tdStep{e.stepFleets, e.stepLaunchTemplates, e.stepVolumes, e.stepNATs, e.stepEIPs,
 			e.stepIGWs, e.stepENIs, e.stepVPCSecurityGroups, e.stepSubnets, e.stepRouteTables, e.stepVPCs}},
 	}
 }
@@ -659,6 +661,42 @@ func (e *tdEnv) stepClusterRoles(ctx context.Context) ([]tdTarget, []string, err
 }
 
 // ---- phase 7: launch template, volumes, network --------------------------------
+
+// stepFleets deletes the live EC2 Fleets carrying the owner tag: the instant
+// fleets EKS Auto Mode launched nodes of a tagged NodeClass through, which
+// outlive their instances. They are found through the tagging API, since
+// DescribeFleets returns an instant fleet only by ID. An instant fleet is
+// deleted with TerminateInstances, which EC2 requires; its instances went
+// with the cluster in the phase before.
+func (e *tdEnv) stepFleets(ctx context.Context) ([]tdTarget, []string, error) {
+	p := rgt.NewGetResourcesPaginator(e.c.Tag, &rgt.GetResourcesInput{ResourceTypeFilters: []string{"ec2:fleet"},
+		TagFilters: []rgttypes.TagFilter{{Key: aws.String(OwnerTagKey), Values: []string{e.n.OwnerValue}}}})
+	var ts []tdTarget
+	for p.HasMorePages() {
+		page, err := p.NextPage(ctx)
+		if err != nil {
+			return nil, nil, fmt.Errorf("list EC2 fleets tagged %s=%s: %w", OwnerTagKey, e.n.OwnerValue, err)
+		}
+		for _, m := range page.ResourceTagMappingList {
+			svc, rtype, id := arnType(aws.ToString(m.ResourceARN))
+			if svc != "ec2" || rtype != "fleet" || !e.owned(kvMap(m.Tags, rgtKV)) {
+				continue
+			}
+			live, err := e.fleetLive(ctx, id)
+			if err != nil {
+				return nil, nil, err
+			}
+			if !live {
+				continue
+			}
+			ts = append(ts, tdTarget{kind: kFleet, id: id, del: func(ctx context.Context) error {
+				_, err := e.c.EC2.DeleteFleets(ctx, &ec2.DeleteFleetsInput{FleetIds: []string{id}, TerminateInstances: aws.Bool(true)})
+				return err
+			}})
+		}
+	}
+	return ts, nil, nil
+}
 
 // stepLaunchTemplates deletes the node groups' launch templates: those with
 // the derived names (one of another owner is a refusal) and every other one

@@ -97,3 +97,66 @@ func TestTerminatedAutoModeNodesListedByTaggingDoNotFailTheTeardown(t *testing.T
 		}
 	}
 }
+
+// autoFleets adds the instant fleets Auto Mode leaves for tagged NodeClasses
+// (found only through the tagging API): one live, one already deleted, and
+// one EC2 no longer knows.
+func autoFleets(f *tdFake) {
+	f.put(&tdObj{kind: "fleet", id: "fleet-live", state: "active", tags: own()})
+	f.put(&tdObj{kind: "fleet", id: "fleet-deleted", state: "deleted", tags: own()})
+	for _, id := range []string{"fleet-live", "fleet-deleted", "fleet-gone"} {
+		f.tagged = append(f.tagged, rgttypes.ResourceTagMapping{ResourceARN: aws.String("arn:aws:ec2:us-west-2:111122223333:fleet/" + id),
+			Tags: []rgttypes.Tag{{Key: aws.String(OwnerTagKey), Value: aws.String(tdOwner)}}})
+	}
+}
+
+// Both directions for Auto Mode's instant fleets: the full teardown deletes
+// the live one (with TerminateInstances), leaves the deleted and unknown
+// ones alone, and ends with nothing left; a refused delete fails it; with
+// --keep-cluster the live fleet is a kept cluster row.
+func TestAutoModeFleetsAreDeletedAndLeaveNoRow(t *testing.T) {
+	f := fullDeployment()
+	autoFleets(f)
+	e, _, logs := tdTestEnv(t, f, false, false)
+	rows, err := e.inventory(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fleets []string
+	for _, r := range rows {
+		if r.Kind == kFleet {
+			fleets = append(fleets, r.ID)
+			if !r.Cluster {
+				t.Errorf("fleet %s is not a cluster row", r.ID)
+			}
+		}
+	}
+	if len(fleets) != 1 || fleets[0] != "fleet-live" {
+		t.Errorf("fleet rows %v, want only fleet-live", fleets)
+	}
+	if err := e.teardown(context.Background()); err != nil {
+		t.Fatalf("teardown: %v\n%s", err, logs)
+	}
+	if countCalls(f.calls, "DeleteFleets fleet-live") != 1 || countCalls(f.calls, "DeleteFleets fleet-deleted") != 0 || countCalls(f.calls, "DeleteFleets fleet-gone") != 0 {
+		t.Errorf("calls %v", f.calls)
+	}
+	before(t, f.calls, "DeleteCluster demo", "DeleteFleets fleet-live")
+
+	f = fullDeployment()
+	autoFleets(f)
+	f.deny["DeleteFleets"] = true
+	e, _, _ = tdTestEnv(t, f, false, false)
+	if err := e.teardown(context.Background()); err == nil || !strings.Contains(err.Error(), "AccessDenied") {
+		t.Errorf("a refused fleet delete: %v", err)
+	}
+
+	f = fullDeployment()
+	autoFleets(f)
+	e, _, logs = tdTestEnv(t, f, false, true)
+	if err := e.teardown(context.Background()); err != nil {
+		t.Fatalf("teardown --keep-cluster: %v\n%s", err, logs)
+	}
+	if countCalls(f.calls, "DeleteFleets fleet-live") != 0 {
+		t.Errorf("--keep-cluster deleted the fleet: %v", f.calls)
+	}
+}

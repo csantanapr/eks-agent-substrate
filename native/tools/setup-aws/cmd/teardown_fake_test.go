@@ -856,6 +856,43 @@ func (t *tfEC2) DescribeVolumes(_ context.Context, in *ec2.DescribeVolumesInput,
 	}
 	return out, nil
 }
+
+// DescribeFleets answers by ID only, as EC2 does for instant fleets; an
+// unknown ID is InvalidFleetId.NotFound.
+func (t *tfEC2) DescribeFleets(_ context.Context, in *ec2.DescribeFleetsInput, _ ...func(*ec2.Options)) (*ec2.DescribeFleetsOutput, error) {
+	f := t.f()
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := &ec2.DescribeFleetsOutput{}
+	for _, id := range in.FleetIds {
+		o := f.get("fleet", id)
+		if o == nil {
+			return nil, apiErr("InvalidFleetId.NotFound")
+		}
+		out.Fleets = append(out.Fleets, ec2types.FleetData{FleetId: aws.String(id), FleetState: ec2types.FleetStateCode(o.state), Type: ec2types.FleetTypeInstant})
+	}
+	return out, nil
+}
+
+// DeleteFleets marks an instant fleet deleted; EC2 requires TerminateInstances.
+func (t *tfEC2) DeleteFleets(_ context.Context, in *ec2.DeleteFleetsInput, _ ...func(*ec2.Options)) (*ec2.DeleteFleetsOutput, error) {
+	f := t.f()
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, id := range in.FleetIds {
+		if err := f.write("DeleteFleets", id, "fleet", "InvalidFleetId.NotFound"); err != nil {
+			return nil, err
+		}
+		if !aws.ToBool(in.TerminateInstances) {
+			return nil, apiErr("InvalidParameterCombination")
+		}
+		if o := f.objs["fleet|"+id]; o != nil {
+			o.state = "deleted"
+		}
+	}
+	return &ec2.DeleteFleetsOutput{}, nil
+}
+
 func (t *tfEC2) DescribeInstances(_ context.Context, in *ec2.DescribeInstancesInput, _ ...func(*ec2.Options)) (*ec2.DescribeInstancesOutput, error) {
 	defer t.lock()()
 	if !aws.ToBool(in.IncludeManagedResources) {
