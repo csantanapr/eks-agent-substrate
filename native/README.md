@@ -114,12 +114,13 @@ were, and keeps the previous file as a backup under
 `~/.cache/substrate-eks/config-backups/`. The next run starts from them. The
 wizard reads `config.env`, then `config.local.env`; the environment wins over
 both. A setting a step reads itself reaches that step from the files too,
-and no other step: the `DB_*` six reach `setup-aws create rds`, whose command
-on the Review screen shows them, and `BEDROCK_INFERENCE_PROFILE`,
+and no other step: the wizard passes the `DB_*` six to `setup-aws create
+rds`, whose command on the Review screen shows them. The installer's
+`--plugin-action` and `--remove-control-plane` read `BEDROCK_INFERENCE_PROFILE`,
 `EFS_ADDON_VERSION`, the `OPENCLAW_*` images and workers and `WHATSAPP_PEER`
-reach the plugins step, whose command shows none of them (`WHATSAPP_PEER` is
-a phone number). Outside a checkout it uses built-in defaults and writes
-nothing.
+from the files themselves (an exported value wins), so no command, screen or
+log line carries them (`WHATSAPP_PEER` is a phone number). Outside a checkout
+it uses built-in defaults and writes nothing.
 
 Press `s` on any screen (`ctrl+s` where you type text) to save it as `.ansi`,
 `.txt` and `.html` under `--snapshot-dir` (default

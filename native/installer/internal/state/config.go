@@ -208,16 +208,17 @@ func (c Config) Lookup(key string) (string, bool) {
 }
 
 // StepKeys are settings the steps read from their own environment, not the
-// wizard. StepEnv hands the config files' values for them to the wizard,
-// which gives each to the one step that reads it (review N2), so setting one
-// in config.env or config.local.env works like exporting it:
-//   - RDSKeys, the RDS instance's, to `setup-aws create rds`, whose shown
+// wizard. Setting one in config.env or config.local.env works like
+// exporting it, and only the step that reads it gets it (review N2):
+//   - RDSKeys, the RDS instance's: the wizard passes them (StepEnv) to
+//     `setup-aws create rds`, which reads no config file, and its shown
 //     command carries them;
 //   - PluginKeys, the LLM gateway's Bedrock profile, the EFS add-on version,
-//     and OpenClaw's images, workers and WhatsApp peer, to the plugins step
-//     (--plugin-action deploy, and the `setup-aws plugin <id>` it runs),
-//     whose shown command is the installer's flags only. WHATSAPP_PEER is a
-//     phone number, so it is never shown.
+//     and OpenClaw's images, workers and WhatsApp peer: the installer's
+//     subcommands that run plugins read them from the files themselves, at
+//     start, and set them in their own environment (so the `setup-aws
+//     plugin <id>` they run inherits them). The wizard passes none, so no
+//     command, Review screen or log line holds WHATSAPP_PEER, a phone number.
 var (
 	RDSKeys = []string{
 		"DB_ENGINE_VERSION", "DB_INSTANCE_CLASS", "DB_STORAGE_GB", "DB_MULTI_AZ", "DB_BACKUP_DAYS", "DB_DELETION_PROTECTION",
@@ -229,12 +230,12 @@ var (
 	StepKeys = append(slices.Clone(RDSKeys), PluginKeys...)
 )
 
-// StepEnv is KEY=value for each of StepKeys set, non-empty, in
-// config.local.env or config.env and not in the environment: a child step
-// inherits the environment already, and an exported value wins.
-func (c Config) StepEnv() []string {
+// StepEnv is KEY=value for each of keys (RDSKeys, PluginKeys) set,
+// non-empty, in config.local.env or config.env and not in the environment:
+// a child step inherits the environment already, and an exported value wins.
+func (c Config) StepEnv(keys []string) []string {
 	var out []string
-	for _, k := range StepKeys {
+	for _, k := range keys {
 		if c.Env != nil {
 			if _, ok := c.Env(k); ok {
 				continue

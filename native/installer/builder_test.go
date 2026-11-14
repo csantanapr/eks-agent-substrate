@@ -269,12 +269,12 @@ func TestDisplayIsThePasteableCommand(t *testing.T) {
 	}
 }
 
-// Both ways (review N2): each config-file step setting reaches only the step
-// that reads it. `create rds` carries and shows the DB_* ones; the plugins
-// step carries the plugin ones, WHATSAPP_PEER among them, and shows none;
-// every other step (create cluster, bootstrap, teardown, inventory, and the
-// installer's other subcommands) carries none. The phone number is in no
-// Display, and the run's TAGS still wins over a TAGS of the same name.
+// Both ways (review N2): `create rds` carries and shows the DB_* settings;
+// no other step carries or shows any, the plugins step included, even with
+// plugin settings among the config files' values: --plugin-action reads
+// those itself (TestPluginActionReadsPluginSettingsFromTheConfigFiles), so
+// WHATSAPP_PEER is in no Spec's Env or Display, and so in no log line. The
+// run's TAGS still wins over a TAGS of the same name.
 func TestStepSettingsReachOnlyTheirSteps(t *testing.T) {
 	const peer = "+15555550100"
 	b, s := testBuilder()
@@ -293,18 +293,16 @@ func TestStepSettingsReachOnlyTheirSteps(t *testing.T) {
 			}
 		}
 		var want []string
-		switch name {
-		case "rds":
+		if name == "rds" {
 			want = []string{"DB_MULTI_AZ=true", "DB_INSTANCE_CLASS=db.r8g.large"}
-		case "plugins":
-			want = []string{"BEDROCK_INFERENCE_PROFILE=us.example.model", "EFS_ADDON_VERSION=v9.9.9-eksbuild.1",
-				"OPENCLAW_GATEWAY_IMAGE=example.com/gw@sha256:00", "OPENCLAW_WORKERS=2", "WHATSAPP_PEER=" + peer}
 		}
 		if !slices.Equal(carried, want) {
 			t.Errorf("%s: carries step settings %q, want %q", name, carried, want)
 		}
-		if strings.Contains(spec.Display, "WHATSAPP_PEER") || strings.Contains(spec.Display, peer) {
-			t.Errorf("%s: Display shows the phone number: %s", name, spec.Display)
+		for what, s := range map[string]string{"Env": strings.Join(spec.Env, " "), "Display": spec.Display} {
+			if strings.Contains(s, "WHATSAPP_PEER") || strings.Contains(s, peer) {
+				t.Errorf("%s: %s holds the phone number: %s", name, what, s)
+			}
 		}
 		shows := strings.Contains(spec.Display, "DB_MULTI_AZ=true") && strings.Contains(spec.Display, "DB_INSTANCE_CLASS=db.r8g.large")
 		if shows != (name == "rds") || strings.Contains(spec.Display, "BEDROCK_") || strings.Contains(spec.Display, "EFS_ADDON") || strings.Contains(spec.Display, "OPENCLAW_") {

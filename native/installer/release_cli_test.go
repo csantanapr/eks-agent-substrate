@@ -49,6 +49,13 @@ func cluster(record, installed string) string {
 // its exit error and output.
 func runMain(t *testing.T, answers string, args ...string) (error, string) {
 	t.Helper()
+	return runMainIn(t, "", nil, answers, args...)
+}
+
+// runMainIn is runMain with the child working in cwd ("" this test's own)
+// and extra added to its environment, last, so it wins.
+func runMainIn(t *testing.T, cwd string, extra []string, answers string, args ...string) (error, string) {
+	t.Helper()
 	self, err := filepath.Abs(os.Args[0])
 	if err != nil {
 		t.Fatal(err)
@@ -73,6 +80,7 @@ func runMain(t *testing.T, answers string, args ...string) (error, string) {
 		"AWS_ACCESS_KEY_ID=placeholder", "AWS_SECRET_ACCESS_KEY=placeholder", "AWS_SESSION_TOKEN=",
 		"AWS_EC2_METADATA_DISABLED=true", "AWS_ENDPOINT_URL="+srv.URL, "XDG_CACHE_HOME="+dir,
 		"PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), kubectlAnswers+"="+answers)
+	cmd.Env, cmd.Dir = append(cmd.Env, extra...), cwd
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
 	done := make(chan error, 1)

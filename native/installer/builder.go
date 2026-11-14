@@ -28,15 +28,15 @@ import (
 // reads written in front (an empty value is left out: it means the default).
 type builder struct {
 	self, setupAWS, overlay, cwd, exeDir, treeRoot string
-	// stepEnv is state.Config.StepEnv: settings from the config files that
-	// the steps read from their environment. A Spec carries only the ones
-	// its step reads (settings).
+	// stepEnv is state.Config.StepEnv(state.RDSKeys): settings from the
+	// config files that `setup-aws create rds` reads from its environment.
+	// A Spec carries only the ones its step reads (settings).
 	stepEnv []string
 }
 
 // settings are the entries of stepEnv whose key is one of keys
-// (state.RDSKeys, state.PluginKeys): a step gets only what it reads, so no
-// other step's command shows it (review N2).
+// (state.RDSKeys): a step gets only what it reads, so no other step's
+// command shows it (review N2).
 func (b builder) settings(keys []string) []string {
 	var out []string
 	for _, e := range b.stepEnv {
@@ -194,8 +194,7 @@ func (b builder) selfSpec(s *state.Setup, cluster, label string, sim []string, f
 		Argv:    append([]string{b.self}, args...),
 		// The control plane's StorageClass and the plugins tag what they
 		// make with TAGS, read from the environment: pin it to the run's
-		// answer, which Settings may have changed. The plugins step adds the
-		// step settings it reads in front.
+		// answer, which Settings may have changed.
 		Env:      []string{"TAGS=" + s.Tags},
 		SimLines: sim,
 	}
@@ -294,12 +293,10 @@ func (b builder) plugins(s *state.Setup) execx.Spec {
 	for _, id := range resolvedIDs(s.Plugins) {
 		sim = append(sim, plugin.DeployLine+id, plugin.VerifyLine+id, plugin.ReadyLine+id)
 	}
-	spec := b.selfSpec(s, s.ClusterName, "plugins", sim, append([]string{"--plugin-action", plugin.ActionDeploy}, releaseFlags(s)...)...)
-	// The plugins read their settings (state.PluginKeys) themselves, and
-	// so does the `setup-aws plugin <id>` they run; the shown command is
-	// the flags only, so WHATSAPP_PEER, a phone number, is never shown.
-	spec.Env = append(b.settings(state.PluginKeys), spec.Env...)
-	return spec
+	// No plugin settings (state.PluginKeys) in its Env: --plugin-action
+	// reads them from the config files itself (loadPluginSettings), so the
+	// log, which prints each Spec's Env, never holds WHATSAPP_PEER.
+	return b.selfSpec(s, s.ClusterName, "plugins", sim, append([]string{"--plugin-action", plugin.ActionDeploy}, releaseFlags(s)...)...)
 }
 
 // demoStep re-executes the installer with --deploy-demo --verify: the counter
