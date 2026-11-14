@@ -16,11 +16,11 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/awsx"
+	"github.com/csantanapr/eks-agent-substrate/native/tools/setup-aws/awsload"
 )
 
 // newReal is env backed by os/exec, net/http and the AWS SDK.
@@ -32,11 +32,8 @@ func newReal(o Options) *env {
 	)
 	awsConfig := func(ctx context.Context) (aws.Config, error) {
 		once.Do(func() {
-			opts := []func(*awsconfig.LoadOptions) error{awsconfig.WithRegion(o.Region)}
-			if o.Profile != "" {
-				opts = append(opts, awsconfig.WithSharedConfigProfile(o.Profile))
-			}
-			cfg, cfgErr = awsconfig.LoadDefaultConfig(ctx, opts...)
+			// awsload: the demo step's checks run past the end of a session.
+			cfg, cfgErr = awsload.Config(ctx, o.Region, o.Profile)
 		})
 		return cfg, cfgErr
 	}
