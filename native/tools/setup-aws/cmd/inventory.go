@@ -71,7 +71,6 @@ type (
 		DescribeVolumes(context.Context, *ec2.DescribeVolumesInput, ...func(*ec2.Options)) (*ec2.DescribeVolumesOutput, error)
 		DescribeInstances(context.Context, *ec2.DescribeInstancesInput, ...func(*ec2.Options)) (*ec2.DescribeInstancesOutput, error)
 		DescribeFleets(context.Context, *ec2.DescribeFleetsInput, ...func(*ec2.Options)) (*ec2.DescribeFleetsOutput, error)
-		DeleteFleets(context.Context, *ec2.DeleteFleetsInput, ...func(*ec2.Options)) (*ec2.DeleteFleetsOutput, error)
 		DeleteVpc(context.Context, *ec2.DeleteVpcInput, ...func(*ec2.Options)) (*ec2.DeleteVpcOutput, error)
 		DeleteSubnet(context.Context, *ec2.DeleteSubnetInput, ...func(*ec2.Options)) (*ec2.DeleteSubnetOutput, error)
 		DeleteSecurityGroup(context.Context, *ec2.DeleteSecurityGroupInput, ...func(*ec2.Options)) (*ec2.DeleteSecurityGroupOutput, error)
@@ -1001,8 +1000,10 @@ func (e *tdEnv) inventory(ctx context.Context) ([]tdRow, error) {
 			// EC2 Fleets: EKS Auto Mode launches each node of a tagged
 			// NodeClass through an instant fleet that carries the tags, and
 			// the fleet outlives its instance (DescribeFleets returns an
-			// instant fleet only by ID). Ask EC2: list one that is live, skip
-			// one deleted or gone. A live one is cluster infrastructure.
+			// instant fleet only by ID). Ask EC2: list one with a live
+			// instance, as cluster infrastructure that goes with the
+			// cluster; skip one whose instances are terminated, or that is
+			// deleted or gone (fleetLive).
 			if svc == "ec2" && rtype == "fleet" {
 				ok, err := e.fleetLive(ctx, id)
 				if err != nil {
@@ -1024,8 +1025,14 @@ func (e *tdEnv) inventory(ctx context.Context) ([]tdRow, error) {
 // kFleet is an EC2 Fleet's inventory kind.
 const kFleet = "EC2 fleet"
 
-// fleetLive reports whether EC2 Fleet id exists in a state other than
-// deleted (deleted, deleted_running, deleted_terminating) or failed.
+// fleetLive reports whether EC2 Fleet id still holds something: it exists,
+// is not deleted (deleted, deleted_running, deleted_terminating) or failed,
+// and one of its instances is not terminated. An instant fleet stays active
+// after its instances are gone, and only EKS may delete Auto Mode's: its
+// DeleteFleets needs TerminateInstances, which the managed instances'
+// resource policy denies to anyone else (on sub-p13, even once terminated).
+// So a fleet whose instances are all terminated is a record, not a
+// resource left behind.
 func (e *tdEnv) fleetLive(ctx context.Context, id string) (bool, error) {
 	out, err := e.c.EC2.DescribeFleets(ctx, &ec2.DescribeFleetsInput{FleetIds: []string{id}})
 	if tdGone(err) {
@@ -1034,8 +1041,24 @@ func (e *tdEnv) fleetLive(ctx context.Context, id string) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("describe EC2 fleet %s: %w", id, err)
 	}
+	var ids []string
 	for _, f := range out.Fleets {
-		if s := string(f.FleetState); !strings.HasPrefix(s, "deleted") && s != "failed" {
+		if s := string(f.FleetState); strings.HasPrefix(s, "deleted") || s == "failed" {
+			continue
+		}
+		for _, i := range f.Instances {
+			ids = append(ids, i.InstanceIds...)
+		}
+	}
+	if len(ids) == 0 {
+		return false, nil
+	}
+	insts, err := e.ec2List(ctx, kInstance, flt("instance-id", ids...))
+	if err != nil {
+		return false, err
+	}
+	for _, i := range insts {
+		if i.state != "terminated" {
 			return true, nil
 		}
 	}

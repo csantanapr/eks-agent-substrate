@@ -739,7 +739,7 @@ func (t *tfEC2) find(kind string, filters []ec2types.Filter) []*tdObj {
 				v = o.name
 			case name == "status":
 				v = o.state
-			case name == "nat-gateway-id":
+			case name == "nat-gateway-id", name == "instance-id":
 				v = o.id
 			case strings.HasPrefix(name, "tag:"):
 				v = o.tags[strings.TrimPrefix(name, "tag:")]
@@ -869,28 +869,11 @@ func (t *tfEC2) DescribeFleets(_ context.Context, in *ec2.DescribeFleetsInput, _
 		if o == nil {
 			return nil, apiErr("InvalidFleetId.NotFound")
 		}
-		out.Fleets = append(out.Fleets, ec2types.FleetData{FleetId: aws.String(id), FleetState: ec2types.FleetStateCode(o.state), Type: ec2types.FleetTypeInstant})
+		// A fleet's name field holds the instance it launched.
+		out.Fleets = append(out.Fleets, ec2types.FleetData{FleetId: aws.String(id), FleetState: ec2types.FleetStateCode(o.state), Type: ec2types.FleetTypeInstant,
+			Instances: []ec2types.DescribeFleetsInstances{{InstanceIds: []string{o.name}}}})
 	}
 	return out, nil
-}
-
-// DeleteFleets marks an instant fleet deleted; EC2 requires TerminateInstances.
-func (t *tfEC2) DeleteFleets(_ context.Context, in *ec2.DeleteFleetsInput, _ ...func(*ec2.Options)) (*ec2.DeleteFleetsOutput, error) {
-	f := t.f()
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	for _, id := range in.FleetIds {
-		if err := f.write("DeleteFleets", id, "fleet", "InvalidFleetId.NotFound"); err != nil {
-			return nil, err
-		}
-		if !aws.ToBool(in.TerminateInstances) {
-			return nil, apiErr("InvalidParameterCombination")
-		}
-		if o := f.objs["fleet|"+id]; o != nil {
-			o.state = "deleted"
-		}
-	}
-	return &ec2.DeleteFleetsOutput{}, nil
 }
 
 func (t *tfEC2) DescribeInstances(_ context.Context, in *ec2.DescribeInstancesInput, _ ...func(*ec2.Options)) (*ec2.DescribeInstancesOutput, error) {
