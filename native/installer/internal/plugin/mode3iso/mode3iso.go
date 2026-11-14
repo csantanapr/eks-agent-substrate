@@ -87,19 +87,14 @@ func init() {
 		// One node for the two worker Pods, launched by Auto Mode (an
 		// m8a.large on-demand, with the Auto Mode fee).
 		HourlyUSD: 0.12,
-		Deploy:    deploy, Verify: verify, Remove: remove,
+		Deploy:    deploy, Verify: Iso.Verify, Remove: remove,
 	})
 }
 
 // needsAutoMode is why the plugin needs EKS Auto Mode (Plugin.NeedsAutoMode):
-// the wizard offers it only there, and Run refuses it anywhere else.
+// the wizard offers it only there, and Run refuses its deploy and verify
+// anywhere else, so Deploy and Verify do not check it again.
 const needsAutoMode = "needs EKS Auto Mode: its isolated-sandbox RuntimeClass and NodePool come from Auto Mode"
-
-// errNoAutoMode is the same refusal from Verify, which Run does not gate:
-// on a standard cluster it would otherwise fail on the missing worker Pods.
-func errNoAutoMode(cluster string) error {
-	return fmt.Errorf("plugin %s %s; %s has EKS Auto Mode off", ID, needsAutoMode, cluster)
-}
 
 // createdHere reports a cluster `setup-aws create cluster` made: its role
 // carries the auto-mode-node-tags policy, which lets Auto Mode launch nodes
@@ -265,13 +260,6 @@ func mode3Counter(ctx context.Context, do demo.Options) (string, error) {
 		return "", fmt.Errorf("read mode 3's actor-template %s/%s: %w", mode3.Kata.Namespace, mode3.Kata.Name, err)
 	}
 	return img, nil
-}
-
-func verify(ctx context.Context, w io.Writer, o plugin.Options) error {
-	if !o.AutoMode {
-		return errNoAutoMode(o.Cluster)
-	}
-	return Iso.Verify(ctx, w, o)
 }
 
 // nodesTries bounds the wait for Auto Mode to remove the NodePool's nodes,

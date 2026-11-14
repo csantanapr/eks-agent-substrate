@@ -296,21 +296,18 @@ func TestRegistered(t *testing.T) {
 // with it the NodePool, atelet-iso and the pool go in, the template with
 // mode 3's counter image once the worker Pods and atelet-iso are up.
 func TestDeploy(t *testing.T) {
-	// Without Auto Mode, Run refuses the deploy through NeedsAutoMode (only
-	// the record is read), and Verify refuses on its own.
-	f := newFake(t)
-	f.out["-n kube-system get configmap substrate-eks-plugins"] = []string{"mode3"} // the control plane carries mode 3
-	err := plugin.Run(context.Background(), io.Discard, plugin.ActionDeploy, []string{ID}, testOptions(t, false))
-	if err == nil || !strings.Contains(err.Error(), needsAutoMode) || !strings.Contains(err.Error(), "c1 has EKS Auto Mode off") || len(f.applies) != 0 {
-		t.Errorf("Run deploy without Auto Mode: err = %v, ran %q", err, f.log)
-	}
-	f = newFake(t)
-	err = verify(context.Background(), io.Discard, testOptions(t, false))
-	if err == nil || !strings.Contains(err.Error(), "c1 has EKS Auto Mode off") || len(f.log) != 0 {
-		t.Errorf("verify without Auto Mode: err = %v, ran %q", err, f.log)
+	// Without Auto Mode, Run refuses deploy and verify through the
+	// registration's NeedsAutoMode, before anything runs.
+	var err error
+	for _, action := range []string{plugin.ActionDeploy, plugin.ActionVerify} {
+		f := newFake(t)
+		err = plugin.Run(context.Background(), io.Discard, action, []string{ID}, testOptions(t, false))
+		if err == nil || !strings.Contains(err.Error(), needsAutoMode) || !strings.Contains(err.Error(), "c1 has EKS Auto Mode off") || len(f.log) != 0 {
+			t.Errorf("Run %s without Auto Mode: err = %v, ran %q", action, err, f.log)
+		}
 	}
 
-	f = newFake(t)
+	f := newFake(t)
 	f.out["get runtimeclass isolated-sandbox"] = []string{"sandbox"}
 	f.out["get nodepool general-purpose"] = []string{testGeneralPurpose}
 	f.out["get nodeclass default"] = []string{testNodeClass}
