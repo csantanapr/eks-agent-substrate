@@ -16,10 +16,14 @@ github.com/aws/aws-sdk-go-v2/internal/v4a v1.5.12 h1:uvX2yaL+aMjkmnrLPPlR/zwjoKF
 github.com/aws/aws-sdk-go-v2/internal/v4a v1.5.12/go.mod h1:dicT+2eNhHHqGkxHO7LoXw3QghIUGuzgdmFqaSTopgI=
 github.com/aws/aws-sdk-go-v2/service/autoscaling v1.82.0 h1:7wV/kVAJ60MmIyuphnKxuWK1mhBbU5poIhI1vFwfV2Y=
 github.com/aws/aws-sdk-go-v2/service/autoscaling v1.82.0/go.mod h1:etSpJIFdB1KtzvovEmoM0o4aRGbiA4LLN9MEIcUIdys=
+github.com/aws/aws-sdk-go-v2/service/cloudformation v1.84.0 h1:ap0xq0413jOFrQZVs318qjtnXSAVAf/RNBzPZK1aP8A=
+github.com/aws/aws-sdk-go-v2/service/cloudformation v1.84.0/go.mod h1:rLE+2UUfZLqdNwDCQDFses1yeON3u1qeJvUUkd6bUOk=
 github.com/aws/aws-sdk-go-v2/service/ec2 v1.346.0 h1:mVKNHBeByAci4VyF3a72tihL6hHCB8x7Q8/yIcmDgFQ=
 github.com/aws/aws-sdk-go-v2/service/ec2 v1.346.0/go.mod h1:uMJiOkxaT3pV+LAeAvEaXToZ2x3nEnN53HnPdj+pcNo=
 github.com/aws/aws-sdk-go-v2/service/ecr v1.67.6 h1:BHIggVj5wNU993bDiyv0AsVgCPXhgm79AR+2eeIMG+4=
 github.com/aws/aws-sdk-go-v2/service/ecr v1.67.6/go.mod h1:dzXWWHKZNbZlbuRu5AFyGbs9JDJ85wVvnn/Ahgu+4eU=
+github.com/aws/aws-sdk-go-v2/service/efs v1.51.6 h1:tPvdIpAa+LSTnLZLb4sZTiudD9tHu3VnL4bcV5eJmSw=
+github.com/aws/aws-sdk-go-v2/service/efs v1.51.6/go.mod h1:Kcd1q35bDkyRJU2c412VludShqjkbnfqqX7xYVuFIMM=
 github.com/aws/aws-sdk-go-v2/service/eks v1.105.6 h1:Uy58lpLYdqznK5ozOITAyGfQOfmYmWw2SxPVZj/FQ9I=
 github.com/aws/aws-sdk-go-v2/service/eks v1.105.6/go.mod h1:494vYQNNS0SK+FQUw8PHIUISgxSerulBuvNVUPeXvx0=
 github.com/aws/aws-sdk-go-v2/service/iam v1.65.0 h1:Xcpcm1NLM93YeDWEuZIItwiCwVWgZxawFHXjsfKTk7M=
@@ -38,6 +42,8 @@ github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi v1.42.0 h1:C5MObSL
 github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi v1.42.0/go.mod h1:j8qpULzMbJIUNh9S5aAM5SVldIxb/pYMpis+cGBhOpA=
 github.com/aws/aws-sdk-go-v2/service/s3 v1.114.10 h1:WBJb2VxRzzKnuN94YWqZPiu5a5zc3IleFqgZnmVCyvU=
 github.com/aws/aws-sdk-go-v2/service/s3 v1.114.10/go.mod h1:8NhAIBVYkVHq0hIbbzujdoou0VkKwMdG+De9e5oX6qI=
+github.com/aws/aws-sdk-go-v2/service/s3files v1.10.5 h1:79kk/U42Wj6+HxaT/LOzsdAOygTiF8sS2Ztfuuead9I=
+github.com/aws/aws-sdk-go-v2/service/s3files v1.10.5/go.mod h1:ncltuxJfMCGu8Xp1uRsVP8BlbVDXjNBK1srOuVA5fFE=
 github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.51.0 h1:caWOS7HN0IKMRSuxxcScg39MxIg4/DgFQbW6xNjQN1I=
 github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.51.0/go.mod h1:pvkKaFkbMw9ehRD+fraRB1pdNyIFMeMOOo5Y4+NWB58=
 github.com/aws/aws-sdk-go-v2/service/servicequotas v1.43.12 h1:gxMPx0ZFxIOZUO30v+Lp/hpifZQC42FuTTXGe1wiVyY=

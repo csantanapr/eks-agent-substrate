@@ -6,13 +6,16 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.48.0
 	github.com/aws/aws-sdk-go-v2/config v1.33.18
 	github.com/aws/aws-sdk-go-v2/service/autoscaling v1.82.0
+	github.com/aws/aws-sdk-go-v2/service/cloudformation v1.84.0
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.346.0
 	github.com/aws/aws-sdk-go-v2/service/ecr v1.67.6
+	github.com/aws/aws-sdk-go-v2/service/efs v1.51.6
 	github.com/aws/aws-sdk-go-v2/service/eks v1.105.6
 	github.com/aws/aws-sdk-go-v2/service/iam v1.65.0
 	github.com/aws/aws-sdk-go-v2/service/rds v1.133.0
 	github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi v1.42.0
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.10
+	github.com/aws/aws-sdk-go-v2/service/s3files v1.10.5
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.51.0
 	github.com/aws/aws-sdk-go-v2/service/servicequotas v1.43.12
 	github.com/aws/aws-sdk-go-v2/service/sts v1.52.0
