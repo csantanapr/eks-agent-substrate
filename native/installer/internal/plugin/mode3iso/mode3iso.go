@@ -9,13 +9,16 @@
 //   - Requires mode3, whose control plane (the fork, with NetworkWorkers) and
 //     counter image it uses, and an Auto Mode cluster.
 //   - Deploy: NodePool ate-isolated (a copy of general-purpose, labeled and
-//     tainted), atelet-iso (a copy of atelet for those Bottlerocket nodes),
-//     and the counter pool counter-iso on RuntimeClass isolated-sandbox.
+//     tainted) with NodeClass ate-isolated (a copy of its NodeClass that tags
+//     the instances with the owner tag and TAGS), atelet-iso (a copy of
+//     atelet for those Bottlerocket nodes), and the counter pool counter-iso
+//     on RuntimeClass isolated-sandbox.
 //   - Verify: every worker Pod runs under isolated-sandbox on an ate-isolated
 //     node, the counter continues across a suspend and resume, and deleting
 //     an actor tears its sandbox down in the guest.
 //   - Remove: the pool, atelet-iso and its ConfigMap, then the NodePool,
-//     whose nodes Auto Mode drains and terminates; it waits for them.
+//     whose nodes Auto Mode drains and terminates; it waits for them, then
+//     deletes the NodeClass.
 //
 // It makes no AWS resources of its own (Auto Mode owns the nodes), so it has
 // no setup-aws half.
@@ -114,17 +117,31 @@ func deploy(ctx context.Context, w io.Writer, o plugin.Options) error {
 	}
 	fmt.Fprintf(w, "RuntimeClass %s -> handler %s\n", RuntimeClass, handler.String())
 
-	fmt.Fprintln(w, "NodePool "+NodePoolName+" (a copy of general-purpose, labeled and tainted)")
-	var gp bytes.Buffer
+	fmt.Fprintln(w, "NodePool "+NodePoolName+" (a copy of general-purpose, labeled and tainted) and its NodeClass (tagged)")
+	var gp, src bytes.Buffer
 	if err := plugin.Kubectl(ctx, w, o, nil, &gp, "get", "nodepool", "general-purpose", "-o", "json"); err != nil {
 		return err
 	}
-	np, err := NodePool(gp.Bytes())
+	np, srcClass, err := NodePool(gp.Bytes())
 	if err != nil {
 		return err
 	}
-	if err := plugin.Kubectl(ctx, w, o, np, nil, "apply", "-f", "-"); err != nil {
+	if err := plugin.Kubectl(ctx, w, o, nil, &src, "get", "nodeclass", srcClass, "-o", "json"); err != nil {
 		return err
+	}
+	tags, err := o.OwnerTags()
+	if err != nil {
+		return err
+	}
+	nc, err := NodeClass(src.Bytes(), tags)
+	if err != nil {
+		return err
+	}
+	// The NodeClass first: the NodePool names it.
+	for _, m := range [][]byte{nc, np} {
+		if err := plugin.Kubectl(ctx, w, o, m, nil, "apply", "-f", "-"); err != nil {
+			return err
+		}
 	}
 
 	fmt.Fprintln(w, AteletName+" on the isolated nodes")
@@ -217,7 +234,12 @@ func remove(ctx context.Context, w io.Writer, o plugin.Options) error {
 	if err := plugin.Kubectl(ctx, w, o, nil, nil, "delete", "nodepool", NodePoolName, "--ignore-not-found", "--wait=true", "--timeout=10m"); err != nil {
 		return err
 	}
-	return waitNoNodes(ctx, w, o)
+	if err := waitNoNodes(ctx, w, o); err != nil {
+		return err
+	}
+	// Its nodes are gone, so the NodeClass's finalizer lets it go.
+	fmt.Fprintln(w, "Deleting NodeClass "+NodePoolName)
+	return plugin.Kubectl(ctx, w, o, nil, nil, "delete", "nodeclass", NodePoolName, "--ignore-not-found", "--wait=true", "--timeout=5m")
 }
 
 // waitNoNodes waits until no node carries the NodePool's label.

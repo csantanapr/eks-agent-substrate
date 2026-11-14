@@ -69,9 +69,9 @@ func decode(t *testing.T, b []byte) obj {
 // requirements, and adds the label, the taint and the slower consolidation;
 // anything but a NodePool is refused.
 func TestNodePool(t *testing.T) {
-	b, err := NodePool([]byte(testGeneralPurpose))
-	if err != nil {
-		t.Fatal(err)
+	b, src, err := NodePool([]byte(testGeneralPurpose))
+	if err != nil || src != "default" {
+		t.Fatalf("NodePool: source class %q, %v", src, err)
 	}
 	np := decode(t, b)
 	if get(t, np, "metadata", "name") != "ate-isolated" || get(t, np, "metadata", "uid") != nil || np["status"] != nil {
@@ -87,11 +87,44 @@ func TestNodePool(t *testing.T) {
 	if get(t, np, "spec", "disruption", "consolidationPolicy") != "WhenEmpty" || get(t, np, "spec", "disruption", "consolidateAfter") != "300s" {
 		t.Errorf("disruption = %v", get(t, np, "spec", "disruption"))
 	}
-	if get(t, np, "spec", "template", "spec", "nodeClassRef", "name") != "default" || !strings.Contains(string(b), `"kubernetes.io/arch"`) {
-		t.Errorf("node class or requirements lost:\n%s", b)
+	if get(t, np, "spec", "template", "spec", "nodeClassRef", "name") != "ate-isolated" ||
+		get(t, np, "spec", "template", "spec", "nodeClassRef", "group") != "eks.amazonaws.com" || !strings.Contains(string(b), `"kubernetes.io/arch"`) {
+		t.Errorf("node class or requirements wrong:\n%s", b)
 	}
-	for _, bad := range []string{`{"kind":"Deployment","spec":{}}`, `{"kind":"NodePool"}`, `not json`} {
-		if _, err := NodePool([]byte(bad)); err == nil {
+	noClass := strings.Replace(testGeneralPurpose, `"name":"default"`, `"name":""`, 1)
+	for _, bad := range []string{`{"kind":"Deployment","spec":{}}`, `{"kind":"NodePool"}`, `not json`, noClass} {
+		if _, _, err := NodePool([]byte(bad)); err == nil {
+			t.Errorf("%s accepted", bad)
+		}
+	}
+}
+
+// testNodeClass is the shape of Auto Mode's default NodeClass.
+const testNodeClass = `{"apiVersion":"eks.amazonaws.com/v1","kind":"NodeClass",
+ "metadata":{"name":"default","finalizers":["eks.amazonaws.com/termination"],"annotations":{"eks.amazonaws.com/nodeclass-hash":"1"}},
+ "spec":{"role":"c1-eks-auto-node","subnetSelectorTerms":[{"id":"subnet-1"}],"securityGroupSelectorTerms":[{"id":"sg-1"}],
+  "tags":{"team":"a","auto-delete":"yes"}},
+ "status":{"conditions":[]}}`
+
+// Both directions: the copy keeps the role, subnets and security groups and
+// adds the owner tags over the source's; anything but a NodeClass is refused.
+func TestNodeClass(t *testing.T) {
+	b, err := NodeClass([]byte(testNodeClass), map[string]string{"agent-substrate-on-eks/deployment": "c1.us-east-1", "auto-delete": "no"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	nc := decode(t, b)
+	meta, _ := json.Marshal(nc["metadata"])
+	tags, _ := json.Marshal(get(t, nc, "spec", "tags"))
+	if string(meta) != `{"name":"ate-isolated"}` || nc["status"] != nil ||
+		string(tags) != `{"agent-substrate-on-eks/deployment":"c1.us-east-1","auto-delete":"no","team":"a"}` {
+		t.Errorf("metadata %s, tags %s, status %v", meta, tags, nc["status"])
+	}
+	if get(t, nc, "spec", "role") != "c1-eks-auto-node" || !strings.Contains(string(b), `"subnet-1"`) || !strings.Contains(string(b), `"sg-1"`) {
+		t.Errorf("role, subnets or security groups lost:\n%s", b)
+	}
+	for _, bad := range []string{testGeneralPurpose, `{"kind":"NodeClass"}`, `{"kind":"NodeClass","spec":{"tags":"x"}}`} {
+		if _, err := NodeClass([]byte(bad), nil); err == nil {
 			t.Errorf("%s accepted", bad)
 		}
 	}
@@ -145,7 +178,9 @@ type fake struct {
 	log   []string
 	out   map[string][]string // kubectl argv prefix -> successive answers
 	stdin map[string]string
-	tmpls map[string]string
+	// applies is the stdin of every `kubectl apply -f -`, in order.
+	applies []string
+	tmpls   map[string]string
 }
 
 func newFake(t *testing.T) *fake {
@@ -161,6 +196,9 @@ func newFake(t *testing.T) *fake {
 		f.log = append(f.log, "kubectl "+args)
 		if c.Stdin != nil {
 			f.stdin[args] = string(c.Stdin)
+			if args == "apply -f -" {
+				f.applies = append(f.applies, string(c.Stdin))
+			}
 		}
 		for k, v := range f.out {
 			if strings.HasPrefix(args, k) && len(v) > 0 {
@@ -215,7 +253,7 @@ func testOptions(t *testing.T, autoMode bool) plugin.Options {
 	if err := os.MkdirAll(filepath.Join(controlplane.TreeDir(root, mode3.Tag), "demos", "counter"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	return plugin.Options{Cluster: "c1", Region: "us-east-1", TreeRoot: root, Kubeconfig: "/kc", AutoMode: autoMode}
+	return plugin.Options{Cluster: "c1", Region: "us-east-1", TreeRoot: root, Kubeconfig: "/kc", AutoMode: autoMode, Tags: "auto-delete=no"}
 }
 
 func (f *fake) has(entries ...string) error {
@@ -256,13 +294,21 @@ func TestDeploy(t *testing.T) {
 	f = newFake(t)
 	f.out["get runtimeclass isolated-sandbox"] = []string{"sandbox"}
 	f.out["get nodepool general-purpose"] = []string{testGeneralPurpose}
+	f.out["get nodeclass default"] = []string{testNodeClass}
 	f.out["-n ate-system get ds atelet"] = []string{testAtelet}
 	var out bytes.Buffer
 	if err := deploy(context.Background(), &out, testOptions(t, true)); err != nil {
 		t.Fatalf("%v\n%s", err, out.String())
 	}
-	if err := f.has("kubectl get runtimeclass isolated-sandbox", "kubectl get nodepool general-purpose -o json", "kubectl apply -f -",
-		"kubectl apply -f -", "kubectl -n ate-system get ds atelet -o json", "kubectl apply -f -", "build kubectl-ate",
+	// The NodeClass, tagged with the owner tag and TAGS, before the NodePool
+	// that names it.
+	if len(f.applies) < 2 || !strings.Contains(f.applies[0], `"kind":"NodeClass"`) ||
+		!strings.Contains(f.applies[0], `"tags":{"agent-substrate-on-eks/deployment":"c1.us-east-1","auto-delete":"no","team":"a"}`) ||
+		!strings.Contains(f.applies[1], `"kind":"NodePool"`) || !strings.Contains(f.applies[1], `"name":"ate-isolated"},"requirements"`) {
+		t.Errorf("first applies:\n%s", strings.Join(f.applies[:min(2, len(f.applies))], "\n"))
+	}
+	if err := f.has("kubectl get runtimeclass isolated-sandbox", "kubectl get nodepool general-purpose -o json", "kubectl get nodeclass default -o json",
+		"kubectl apply -f -", "kubectl apply -f -", "kubectl apply -f -", "kubectl -n ate-system get ds atelet -o json", "kubectl apply -f -", "build kubectl-ate",
 		"ate get actor-template counter-mode3 -a ate-demo-counter-mode3", "kubectl apply -f -", "ate create atespace ate-demo-counter-iso",
 		"ate get actor-template counter-iso", "kubectl -n ate-demo-counter-iso rollout status deploy/counter-iso --timeout=10m",
 		"kubectl -n ate-system rollout status ds/atelet-iso --timeout=5m", "ate create actor-template -f", "golden"); err != nil {
@@ -281,6 +327,7 @@ func TestDeploy(t *testing.T) {
 	f = newFake(t)
 	delete(f.tmpls, "counter-mode3")
 	f.out["get nodepool general-purpose"] = []string{testGeneralPurpose}
+	f.out["get nodeclass default"] = []string{testNodeClass}
 	f.out["-n ate-system get ds atelet"] = []string{testAtelet}
 	if err := deploy(context.Background(), io.Discard, testOptions(t, true)); err == nil || !strings.Contains(err.Error(), "deploy mode3 first") {
 		t.Errorf("no mode 3: %v", err)
@@ -301,7 +348,7 @@ func TestRemove(t *testing.T) {
 		"kubectl -n ate-system delete daemonset atelet-iso --ignore-not-found --wait=true", "kubectl delete -f - --ignore-not-found",
 		"kubectl get crd nodepools.karpenter.sh", "kubectl delete nodepool ate-isolated --ignore-not-found --wait=true",
 		"kubectl get nodes -l karpenter.sh/nodepool=ate-isolated", "kubectl get nodes -l karpenter.sh/nodepool=ate-isolated",
-		"kubectl get nodes -l karpenter.sh/nodepool=ate-isolated"); err != nil {
+		"kubectl get nodes -l karpenter.sh/nodepool=ate-isolated", "kubectl delete nodeclass ate-isolated --ignore-not-found --wait=true"); err != nil {
 		t.Error(err)
 	}
 	if f.stdin["delete -f - --ignore-not-found"] != string(providerManifest) {

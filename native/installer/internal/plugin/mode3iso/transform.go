@@ -38,34 +38,75 @@ func path(m obj, keys ...string) (obj, error) {
 
 // NodePool is demos/mode3-iso/deploy.sh's NodePool ate-isolated, made from
 // Auto Mode's built-in general-purpose NodePool (`kubectl get nodepool
-// general-purpose -o json`): the same node class and requirements, its nodes
-// labeled ate.dev/pool=isolated and tainted ate.dev/sandboxClass=isolated, so
-// only the worker Pods and atelet-iso run there. An empty node is kept a few
-// minutes, so a resume rarely waits for a new one.
-func NodePool(generalPurpose []byte) ([]byte, error) {
+// general-purpose -o json`): the same requirements, its nodes labeled
+// ate.dev/pool=isolated and tainted ate.dev/sandboxClass=isolated, so only the
+// worker Pods and atelet-iso run there. An empty node is kept a few minutes,
+// so a resume rarely waits for a new one. Its nodes come from NodeClass
+// ate-isolated (NodeClass), which tags them; NodePool also returns the name
+// of the NodeClass general-purpose uses, which that one copies.
+func NodePool(generalPurpose []byte) (np []byte, nodeClass string, err error) {
 	var gp obj
 	if err := json.Unmarshal(generalPurpose, &gp); err != nil {
-		return nil, fmt.Errorf("read NodePool general-purpose: %w", err)
+		return nil, "", fmt.Errorf("read NodePool general-purpose: %w", err)
 	}
 	if gp["kind"] != "NodePool" {
-		return nil, fmt.Errorf("general-purpose is a %v, not a NodePool", gp["kind"])
+		return nil, "", fmt.Errorf("general-purpose is a %v, not a NodePool", gp["kind"])
 	}
 	spec, ok := gp["spec"].(obj)
 	if !ok {
-		return nil, errors.New("NodePool general-purpose has no spec")
+		return nil, "", errors.New("NodePool general-purpose has no spec")
 	}
 	labels, err := path(spec, "template", "metadata", "labels")
 	if err != nil {
-		return nil, fmt.Errorf("NodePool general-purpose: %w", err)
+		return nil, "", fmt.Errorf("NodePool general-purpose: %w", err)
 	}
 	labels[PoolLabel] = PoolValue
 	tspec, err := path(spec, "template", "spec")
 	if err != nil {
-		return nil, fmt.Errorf("NodePool general-purpose: %w", err)
+		return nil, "", fmt.Errorf("NodePool general-purpose: %w", err)
 	}
 	tspec["taints"] = []any{obj{"key": TaintKey, "value": PoolValue, "effect": "NoSchedule"}}
+	ref, err := child(tspec, "nodeClassRef")
+	if err != nil {
+		return nil, "", fmt.Errorf("NodePool general-purpose: %w", err)
+	}
+	nodeClass, _ = ref["name"].(string)
+	if nodeClass == "" {
+		return nil, "", errors.New("NodePool general-purpose names no NodeClass")
+	}
+	ref["name"] = NodePoolName
 	spec["disruption"] = obj{"consolidationPolicy": "WhenEmpty", "consolidateAfter": "300s", "budgets": []any{obj{"nodes": "10%"}}}
-	return json.Marshal(obj{"apiVersion": gp["apiVersion"], "kind": "NodePool",
+	np, err = json.Marshal(obj{"apiVersion": gp["apiVersion"], "kind": "NodePool",
+		"metadata": obj{"name": NodePoolName}, "spec": spec})
+	return np, nodeClass, err
+}
+
+// NodeClass is NodeClass ate-isolated: a copy of the Auto Mode NodeClass
+// general-purpose uses (`kubectl get nodeclass <name> -o json`), with the
+// same node role, subnets and security groups, that adds tags (the
+// deployment's owner tag and TAGS) to the EC2 instances and volumes Auto Mode
+// launches for NodePool ate-isolated. Tags the source sets are kept unless
+// tags names them.
+func NodeClass(source []byte, tags map[string]string) ([]byte, error) {
+	var nc obj
+	if err := json.Unmarshal(source, &nc); err != nil {
+		return nil, fmt.Errorf("read the NodeClass: %w", err)
+	}
+	if nc["kind"] != "NodeClass" {
+		return nil, fmt.Errorf("the NodeClass is a %v", nc["kind"])
+	}
+	spec, ok := nc["spec"].(obj)
+	if !ok {
+		return nil, errors.New("the NodeClass has no spec")
+	}
+	t, err := child(spec, "tags")
+	if err != nil {
+		return nil, fmt.Errorf("the NodeClass: %w", err)
+	}
+	for k, v := range tags {
+		t[k] = v
+	}
+	return json.Marshal(obj{"apiVersion": nc["apiVersion"], "kind": "NodeClass",
 		"metadata": obj{"name": NodePoolName}, "spec": spec})
 }
 
