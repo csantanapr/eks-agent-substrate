@@ -141,6 +141,17 @@ func (m *Model) pluginsKey(msg tea.KeyMsg) tea.Cmd {
 		m.setPlugin(p.ID, !pl.chosen[p.ID])
 	case "enter":
 		m.s.Plugins = m.chosenIDs()
+		// A plugin built on the counter demo's templates needs the demo,
+		// which then runs before the plugins (state.InstallOrder).
+		if !m.s.DemoMode {
+			for _, p := range resolved(m.s.Plugins) {
+				if p.NeedsDemo {
+					m.s.DemoMode = true
+					m.notice = p.Title + " builds on the counter demo, so the demo is turned on"
+					break
+				}
+			}
+		}
 		return m.commit()
 	case "esc", "b":
 		m.m.Prev()
