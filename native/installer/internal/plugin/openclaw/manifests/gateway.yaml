@@ -14,16 +14,16 @@
 # The always-on OpenClaw gateway on EKS with Agent Substrate v1.0.0.
 #
 # Nothing here is reachable from outside the cluster: the Service is ClusterIP
-# and the Control UI is reached with `kubectl port-forward`. manifests/ingress.yaml
-# is GKE-only and is not used on EKS.
+# and the Control UI is reached with `kubectl port-forward`. There is no
+# Ingress on EKS.
 #
-# How the gateway talks to Substrate, and what differs from ../gateway.yaml:
+# How the gateway talks to Substrate on EKS:
 #   - ateapi: kubectl-ate dials api.ate-system.svc:443 directly. The install's
 #     NetworkPolicy admits that only from namespaces labeled
 #     ate.dev/api-access=true, hence the label below. kubectl-ate presents the
 #     projected ServiceAccount token in /var/run/ate-api/token, so ateapi sees
-#     system:serviceaccount:openclaw:openclaw-gateway, which deploy-demo.sh makes
-#     an editor of the openclaw-demo atespace. No ate-client token is minted, so
+#     system:serviceaccount:openclaw:openclaw-gateway, which the plugin's deploy
+#     makes an editor of the openclaw-demo atespace. No ate-client token is minted, so
 #     there is no Role in ate-system and no port-forward RBAC.
 #   - atenet-router: v1.0 serves it over mTLS on port 443 only. The gateway
 #     presents a podidentity pod certificate, which carries
@@ -115,11 +115,11 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       initContainers:
-        # Same sequence as ../gateway.yaml, which explains the ordering: refresh
-        # the substrate plugin's schema, copy the config, then register the
-        # plugin against it. The WhatsApp plugin is only installed when the
-        # deploy script was given WHATSAPP_PEER, because the config only names
-        # the channel then.
+        # The order matters: refresh the substrate plugin's schema, copy the
+        # config, then register the plugin against it. The WhatsApp plugin is
+        # installed only when INSTALL_WHATSAPP is true, which the installer
+        # sets when WHATSAPP_PEER names a number, because only then does the
+        # config name the channel.
         - name: config-and-plugin-init
           image: REPLACE_WITH_GATEWAY_IMAGE@REPLACE_WITH_GATEWAY_DIGEST
           command: ["sh", "-c"]
@@ -292,8 +292,8 @@ metadata:
   namespace: openclaw
 spec:
   accessModes: ["ReadWriteOnce"]
-  # Removed by deploy-demo.sh when STORAGE_CLASS is unset, so the claim uses
-  # the cluster's default StorageClass.
+  # The openclaw plugin fills in its StorageClass, efs-openclaw, on the efs
+  # plugin's file system.
   storageClassName: REPLACE_WITH_STORAGE_CLASS
   resources:
     requests:

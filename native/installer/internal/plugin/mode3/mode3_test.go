@@ -17,6 +17,7 @@ import (
 	ecrtypes "github.com/aws/aws-sdk-go-v2/service/ecr/types"
 	"sigs.k8s.io/kustomize/kyaml/kio"
 
+	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/awsx"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/controlplane"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/demo"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin"
@@ -49,7 +50,7 @@ type fake struct {
 func newFake(t *testing.T) *fake {
 	f := &fake{t: t, out: map[string]string{}, stdin: map[string]string{}, atespaces: map[string]bool{},
 		templates: map[string]string{}, created: map[string]string{}, actors: map[string]string{}, ateErr: map[string]error{},
-		ecr: &fakeECR{}}
+		ecr: &fakeECR{owner: "c1.us-east-1"}}
 	prevExec, prevDemo, prevInterval, prevECR := plugin.Exec, Demo, Interval, ecrFor
 	t.Cleanup(func() { plugin.Exec, Demo, Interval, ecrFor = prevExec, prevDemo, prevInterval, prevECR })
 	plugin.Exec = f.exec
@@ -189,10 +190,37 @@ func (f *fake) has(entries ...string) error {
 	return nil
 }
 
+// fakeECR is the counter repository: owner is its owner tag (newFake makes
+// it c1.us-east-1's), descErr what DescribeRepositories fails with.
 type fakeECR struct {
-	in  *ecr.BatchDeleteImageInput
-	out *ecr.BatchDeleteImageOutput
-	err error
+	in      *ecr.BatchDeleteImageInput
+	out     *ecr.BatchDeleteImageOutput
+	err     error
+	owner   string
+	descErr error
+}
+
+const counterARN = "arn:aws:ecr:us-east-1:111122223333:repository/c1/counter"
+
+func (e *fakeECR) DescribeRepositories(_ context.Context, in *ecr.DescribeRepositoriesInput, _ ...func(*ecr.Options)) (*ecr.DescribeRepositoriesOutput, error) {
+	if e.descErr != nil {
+		return nil, e.descErr
+	}
+	if !slices.Equal(in.RepositoryNames, []string{"c1/counter"}) {
+		return nil, fmt.Errorf("described %v", in.RepositoryNames)
+	}
+	return &ecr.DescribeRepositoriesOutput{Repositories: []ecrtypes.Repository{{RepositoryArn: aws.String(counterARN)}}}, nil
+}
+
+func (e *fakeECR) ListTagsForResource(_ context.Context, in *ecr.ListTagsForResourceInput, _ ...func(*ecr.Options)) (*ecr.ListTagsForResourceOutput, error) {
+	if aws.ToString(in.ResourceArn) != counterARN {
+		return nil, fmt.Errorf("tags of %s", aws.ToString(in.ResourceArn))
+	}
+	tags := []ecrtypes.Tag{{Key: aws.String("auto-delete"), Value: aws.String("no")}}
+	if e.owner != "" {
+		tags = append(tags, ecrtypes.Tag{Key: aws.String(awsx.OwnerTagKey), Value: aws.String(e.owner)})
+	}
+	return &ecr.ListTagsForResourceOutput{Tags: tags}, nil
 }
 
 func (e *fakeECR) BatchDeleteImage(_ context.Context, in *ecr.BatchDeleteImageInput, _ ...func(*ecr.Options)) (*ecr.BatchDeleteImageOutput, error) {
@@ -493,18 +521,42 @@ func TestDeleteCounterImage(t *testing.T) {
 	for name, c := range map[string]struct {
 		out     *ecr.BatchDeleteImageOutput
 		err     error
+		descErr error
 		wantErr bool
 	}{
-		"deleted":  {&ecr.BatchDeleteImageOutput{}, nil, false},
-		"no repo":  {nil, &ecrtypes.RepositoryNotFoundException{}, false},
-		"no image": {&ecr.BatchDeleteImageOutput{Failures: []ecrtypes.ImageFailure{{FailureCode: ecrtypes.ImageFailureCodeImageNotFound}}}, nil, false},
-		"denied":   {nil, errors.New("AccessDenied"), true},
-		"failure":  {&ecr.BatchDeleteImageOutput{Failures: []ecrtypes.ImageFailure{{FailureCode: ecrtypes.ImageFailureCodeKmsError}}}, nil, true},
+		"deleted":            {&ecr.BatchDeleteImageOutput{}, nil, nil, false},
+		"no repo":            {nil, nil, &ecrtypes.RepositoryNotFoundException{}, false},
+		"repo gone mid-call": {nil, &ecrtypes.RepositoryNotFoundException{}, nil, false},
+		"no image":           {&ecr.BatchDeleteImageOutput{Failures: []ecrtypes.ImageFailure{{FailureCode: ecrtypes.ImageFailureCodeImageNotFound}}}, nil, nil, false},
+		"denied":             {nil, errors.New("AccessDenied"), nil, true},
+		"describe denied":    {nil, nil, errors.New("AccessDenied"), true},
+		"failure":            {&ecr.BatchDeleteImageOutput{Failures: []ecrtypes.ImageFailure{{FailureCode: ecrtypes.ImageFailureCodeKmsError}}}, nil, nil, true},
 	} {
 		f := newFake(t)
-		f.ecr.out, f.ecr.err = c.out, c.err
+		f.ecr.out, f.ecr.err, f.ecr.descErr = c.out, c.err, c.descErr
 		if err := deleteCounterImage(context.Background(), io.Discard, o); (err != nil) != c.wantErr {
 			t.Errorf("%s: err = %v", name, err)
+		}
+	}
+}
+
+// Review R9, both ways: the image is deleted from a repository carrying
+// this deployment's owner tag, and left alone in one of the same name with
+// another owner or none.
+func TestDeleteCounterImageOnlyFromAnOwnedRepository(t *testing.T) {
+	o := testOptions(t)
+	for owner, deletes := range map[string]bool{"c1.us-east-1": true, "c1.us-west-2": false, "other.us-east-1": false, "": false} {
+		f := newFake(t)
+		f.ecr.owner = owner
+		var out bytes.Buffer
+		if err := deleteCounterImage(context.Background(), &out, o); err != nil {
+			t.Fatalf("owner %q: %v", owner, err)
+		}
+		if (f.ecr.in != nil) != deletes {
+			t.Errorf("owner %q: deleted %v, want %v\n%s", owner, f.ecr.in != nil, deletes, out.String())
+		}
+		if !deletes && !strings.Contains(out.String(), "is not owned by c1.us-east-1") {
+			t.Errorf("owner %q: no reason given:\n%s", owner, out.String())
 		}
 	}
 }

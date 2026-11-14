@@ -356,29 +356,34 @@ func bootstrapSchema(ctx context.Context, w io.Writer, kc, overlay, tree string,
 	return kubectl(nil, "-n", bootstrapNS, "logs", "job/bootstrap")
 }
 
-// bootstrapCleanup bounds removeBootstrap, which runs with a context of its
-// own because the deploy's may be what ended the bootstrap.
-var bootstrapCleanup = 3 * time.Minute
+// BootstrapCleanup bounds removeBootstrap, which runs with a context of its
+// own because the deploy's may be what ended the bootstrap. The wizard's
+// stop (ui.StopProcessTree) gives the step's own process longer than this
+// before it kills it.
+const BootstrapCleanup = 3 * time.Minute
 
-// removeBootstrap deletes the Secret with the logins first, then the Job
-// with its pod (foreground), then their namespace. After a success it waits
-// for the namespace to go; after a failure or a cancel it does not, so the
-// installer exits soon.
+// removeBootstrap deletes the Secret with the logins first, then issues the
+// namespace delete without waiting, so the API server removes the Job, its
+// pod and the ConfigMap even if this process is killed during what follows;
+// then it waits for the Job and its pod (foreground). After a success it
+// also waits for the namespace to go; after a failure or a cancel it does
+// not, so the installer exits soon.
 func removeBootstrap(w io.Writer, kc string, failed bool) error {
-	ctx, cancel := context.WithTimeout(context.Background(), bootstrapCleanup)
+	ctx, cancel := context.WithTimeout(context.Background(), BootstrapCleanup)
 	defer cancel()
 	kubectl := func(args ...string) error {
 		return runCommand(ctx, w, command{Env: []string{"KUBECONFIG=" + kc}, Argv: append([]string{"kubectl"}, args...)})
 	}
-	ns := []string{"delete", "namespace", bootstrapNS, "--timeout=2m"}
-	if failed {
-		ns = []string{"delete", "namespace", bootstrapNS, "--ignore-not-found", "--wait=false"}
-	}
-	return errors.Join(
+	errs := []error{
 		kubectl("-n", bootstrapNS, "delete", "secret", "creds", "--ignore-not-found"),
+		kubectl("delete", "namespace", bootstrapNS, "--ignore-not-found", "--wait=false"),
 		kubectl("-n", bootstrapNS, "delete", "job", "bootstrap", "--ignore-not-found", "--cascade=foreground", "--timeout=1m"),
-		kubectl(ns...),
-	)
+	}
+	if !failed {
+		// --for=delete succeeds at once when the namespace is already gone.
+		errs = append(errs, kubectl("wait", "--for=delete", "namespace/"+bootstrapNS, "--timeout=2m"))
+	}
+	return errors.Join(errs...)
 }
 
 // renderJob fills the Job's three placeholders, the only ones it has.

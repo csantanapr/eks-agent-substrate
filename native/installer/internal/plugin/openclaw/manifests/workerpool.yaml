@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # WorkerPool for the OpenClaw agent actors on EKS, Agent Substrate v1.0.0
-# (ate.dev/v1). Applied with `kubectl apply` by demo/eks/deploy-demo.sh, which
-# substitutes the replica count. The ActorTemplate's workerSelector matches the
+# (ate.dev/v1). Applied with `kubectl apply` by the openclaw plugin
+# (openclaw.go), which substitutes the replica count (OPENCLAW_WORKERS). The ActorTemplate's workerSelector matches the
 # workload label below.
 #
 # What changed from the v1alpha1 pool in ../workerpool.yaml:
@@ -24,7 +24,7 @@
 #     must match the control plane release. No ko build of a local checkout.
 #   - A worker can host several actors now, up to its capacity, which comes from
 #     the worker container's limits below. The limits are sized for exactly one
-#     2 GiB OpenClaw actor (manifests/eks/actortemplate.yaml), so the demo keeps
+#     2 GiB OpenClaw actor (actortemplate.yaml beside this file), so the demo keeps
 #     the one-actor-per-worker behavior the dashboard and the recording show.
 apiVersion: ate.dev/v1
 kind: WorkerPool

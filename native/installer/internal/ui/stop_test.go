@@ -65,6 +65,12 @@ func TestCtrlCStopsARunningStep(t *testing.T) {
 	if stop == nil || !m.tasks[state.Provision].stopped || !strings.Contains(m.View(), "Stopping") {
 		t.Fatal("y did not stop the step")
 	}
+	// Review R7: ctrl+c while the stop is still ending the tree neither
+	// quits nor asks again, and says the stop is in progress.
+	m = press(m, "ctrl+c")
+	if m.quitting || m.stopAsk || !strings.Contains(m.View(), "stopping…") {
+		t.Fatalf("ctrl+c during the stop: quitting %v, asking %v:\n%s", m.quitting, m.stopAsk, m.View())
+	}
 	stop()
 	next, _ = m.Update(pending()) // the runner's channel closes
 	m = next.(Model)

@@ -421,7 +421,13 @@ func (m *Model) key(msg tea.KeyMsg) tea.Cmd {
 	if k == "ctrl+c" {
 		// A running step is stopped, after a confirmation, rather than left
 		// running behind a closed wizard (review F10).
-		if t := m.runningTask(); t != nil && !t.stopped {
+		if t := m.runningTask(); t != nil {
+			if t.stopped {
+				// The stop is still ending the tree: quitting now would leave
+				// frozen processes behind, or survivors never killed (review R7).
+				m.notice, m.noticeUntil = "stopping… the wizard quits with ctrl+c once the step has ended", time.Time{}
+				return nil
+			}
 			m.stopAsk = true
 			return nil
 		}

@@ -82,6 +82,20 @@ func main() {
 		snapDir = flag.String("snapshot-dir", "", "where s saves the screen as .ansi, .txt and .html (default: under the user cache dir)")
 	)
 	flag.Parse()
+	// One identity for the whole run (review R15): every child (setup-aws,
+	// kubectl's `aws eks get-token`, ate-setup, the aws CLI) and every
+	// in-process AWS SDK load inherit AWS_PROFILE, so it is set to --profile,
+	// or unset when --profile is empty, before anything runs. Otherwise
+	// --profile "" with AWS_PROFILE exported ran setup-aws as the default
+	// profile and everything else as the exported one. The aws CLI reads
+	// AWS_DEFAULT_PROFILE before AWS_PROFILE, so a --profile drops it too;
+	// with no --profile it stays, as the SDK and the CLI then both use it.
+	if *profile == "" {
+		exitOn(os.Unsetenv("AWS_PROFILE"))
+	} else {
+		exitOn(os.Setenv("AWS_PROFILE", *profile))
+		exitOn(os.Unsetenv("AWS_DEFAULT_PROFILE"))
+	}
 
 	if *database != controlplane.DatabaseRDS && *database != controlplane.DatabaseBundled {
 		exitOn(fmt.Errorf("--database is %q; want %s or %s", *database, controlplane.DatabaseRDS, controlplane.DatabaseBundled))

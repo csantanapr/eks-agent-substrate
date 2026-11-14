@@ -3,15 +3,18 @@
 package ui
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
 
+	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/controlplane"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/execx"
 )
 
@@ -31,6 +34,30 @@ func TestMain(m *testing.M) {
 		time.Sleep(time.Minute)
 		os.Exit(0)
 	case "child":
+		time.Sleep(time.Minute)
+		os.Exit(0)
+	case "slowclean":
+		// A step that, like the re-executed installer, cleans up on SIGTERM,
+		// for longer than treeGrace, and has a child that ignores SIGTERM.
+		term := make(chan os.Signal, 1)
+		signal.Notify(term, syscall.SIGTERM)
+		g := exec.Command(os.Args[0], "-test.run=^$")
+		g.Env = append(os.Environ(), "UI_STOP_HELPER=stubborn")
+		r, err := g.StdoutPipe()
+		if err != nil || g.Start() != nil {
+			os.Exit(3)
+		}
+		if !bufio.NewScanner(r).Scan() { // "ready": SIGTERM is ignored
+			os.Exit(3)
+		}
+		fmt.Printf("pids %d %d\n", os.Getpid(), g.Process.Pid)
+		<-term
+		time.Sleep(treeGrace + 1500*time.Millisecond)
+		fmt.Println("cleaned up")
+		os.Exit(0)
+	case "stubborn":
+		signal.Ignore(syscall.SIGTERM)
+		fmt.Println("ready")
 		time.Sleep(time.Minute)
 		os.Exit(0)
 	case "spawn":
@@ -84,7 +111,7 @@ func TestStopTreeCatchesChildrenStartedWhileListing(t *testing.T) {
 		t.Fatal("the spawner did not start")
 	}
 	time.Sleep(100 * time.Millisecond)
-	stopTree(os.Getpid(), 5*time.Second)
+	stopTree(os.Getpid(), stepGrace, treeGrace)
 	cancel()
 	drained(ch, 10*time.Second)
 	time.Sleep(300 * time.Millisecond)
@@ -141,7 +168,7 @@ func TestStopTreeEndsTheStepAndItsChildren(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	ch, both := startHelper(t, ctx)
-	stopTree(os.Getpid(), 5*time.Second)
+	stopTree(os.Getpid(), stepGrace, treeGrace)
 	cancel()
 	if !drained(ch, 10*time.Second) {
 		t.Fatal("the step's output stayed open after stopTree")
@@ -166,6 +193,80 @@ func TestStopTreeEndsTheStepAndItsChildren(t *testing.T) {
 	}
 	if !drained(ch, 10*time.Second) {
 		t.Error("the output stayed open after the child was killed")
+	}
+}
+
+// Review R6, on real processes, both ways: the step's own process cleans up
+// after SIGTERM for longer than treeGrace and survives to finish (it exits
+// 0 having printed its last line), while its child, which ignores SIGTERM,
+// is still killed once treeGrace is up.
+func TestStopTreeLetsTheStepFinishItsCleanup(t *testing.T) {
+	if _, err := exec.LookPath("ps"); err != nil {
+		t.Skip("no ps")
+	}
+	c := exec.Command(os.Args[0], "-test.run=^$")
+	c.Env = append(os.Environ(), "UI_STOP_HELPER=slowclean")
+	r, err := c.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Start(); err != nil {
+		t.Fatal(err)
+	}
+	out := bufio.NewScanner(r)
+	var step, child int
+	if !out.Scan() {
+		t.Fatal("the step did not start")
+	}
+	if _, err := fmt.Sscanf(out.Text(), "pids %d %d", &step, &child); err != nil {
+		t.Fatalf("the step said %q: %v", out.Text(), err)
+	}
+	procs, err := listProcs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stubborn := map[int]proc{child: procs[child]}
+	defer func() {
+		for _, p := range alive(stubborn) {
+			_ = syscall.Kill(p.pid, syscall.SIGKILL)
+		}
+	}()
+	lines := make(chan string, 4)
+	go func() {
+		for out.Scan() {
+			lines <- out.Text()
+		}
+		close(lines)
+	}()
+	stopped := make(chan struct{})
+	go func() { stopTree(os.Getpid(), stepGrace, treeGrace); close(stopped) }()
+
+	time.Sleep(treeGrace + 700*time.Millisecond)
+	if left := alive(stubborn); len(left) > 0 {
+		t.Errorf("the step's child, which ignores SIGTERM, outlived treeGrace: %+v", left)
+	}
+	if len(alive(map[int]proc{step: procs[step]})) == 0 {
+		t.Error("the step was ended before its cleanup finished")
+	}
+	select {
+	case <-stopped:
+	case <-time.After(30 * time.Second):
+		t.Fatal("stopTree did not return")
+	}
+	last := ""
+	for l := range lines {
+		last = l
+	}
+	if err := c.Wait(); err != nil || last != "cleaned up" {
+		t.Errorf("the step did not finish its cleanup: %v, last line %q", err, last)
+	}
+}
+
+// The step's own process gets at least the database bootstrap's cleanup
+// bound; the rest of the tree keeps 5 s.
+func TestStopGracesCoverTheBootstrapCleanup(t *testing.T) {
+	if stepGrace < controlplane.BootstrapCleanup || treeGrace != 5*time.Second {
+		t.Errorf("stepGrace %v (bootstrap cleanup %v), treeGrace %v", stepGrace, controlplane.BootstrapCleanup, treeGrace)
 	}
 }
 

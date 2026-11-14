@@ -125,5 +125,5 @@ func remove(ctx context.Context, w io.Writer, o plugin.Options) error {
 	} else if err := efs.DeleteTemplates(ctx, w, k, Template); err != nil {
 		return err
 	}
-	return efs.Run(ctx, w, o, "delete", "storageclass", StorageClass, "--ignore-not-found")
+	return efs.DeleteStorageClass(ctx, w, o, StorageClass)
 }

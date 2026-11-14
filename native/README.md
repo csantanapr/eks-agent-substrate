@@ -9,10 +9,17 @@ upstream's `ate-setup`. No install step runs a shell script or `bash -c`.
 ## What it creates
 
 The wizard runs these steps in order. Each one is idempotent: a rerun creates
-nothing that already exists, and a run that stopped part way is completed. A
-step that runs past the end of your AWS session waits, for up to 30 minutes,
-for you to refresh the profile's credentials, then goes on; refreshed
-credentials for another account or role stop it.
+nothing that already exists, and a run that stopped part way is completed.
+When your AWS session ends in the middle of a step, the setup-aws steps wait,
+for up to 30 minutes, for you to refresh the profile's credentials, then go
+on; refreshed credentials for another account or role stop them. So do the
+AWS SDK calls the installer makes while it installs the database schema, the
+demo and the plugins. The rest do not wait and fail at once on an expired
+session: the installer's quick reads of the cluster (the wizard's cluster
+list, the describe at the start of a step), kubectl's token (`aws eks
+get-token`), `ate-setup` and the `aws` CLI commands it runs. Refresh the
+credentials and press enter in the wizard (or run the command again) to
+rerun the failed step.
 
 | Step | Command | What it creates |
 |---|---|---|
@@ -181,7 +188,10 @@ deploy the control plane with it first (`--deploy-control-plane --plugins
 <ids>`, as the wizard does). `remove` goes in reverse order: the Kubernetes
 objects, then `setup-aws plugin <id> --delete`, then the record; with no
 `--plugins` it removes every recorded plugin, and it stops when a recorded
-plugin still requires one being removed.
+plugin still requires one being removed. Before it removes anything it runs
+`setup-aws plugin <id> --delete --plan` for every plugin with AWS resources,
+and a refusal there (a resource of the plugin's name with another owner)
+stops it with nothing removed.
 
 The Makefile and `install.sh` run Go with `GOTOOLCHAIN=local` and
 `GOPROXY=direct`, so module downloads go straight to their source.

@@ -185,7 +185,7 @@ func remove(ctx context.Context, w io.Writer, o plugin.Options) error {
 	} else if err := DeleteTemplates(ctx, w, k, Template); err != nil {
 		return err
 	}
-	if err := Run(ctx, w, o, "delete", "storageclass", StorageClass, "--ignore-not-found"); err != nil {
+	if err := DeleteStorageClass(ctx, w, o, StorageClass); err != nil {
 		return err
 	}
 	if crd, err := Out(ctx, o, "get", "crd", "csidriverconfigs.ate.dev", "--ignore-not-found", "-o", "name"); err != nil {
