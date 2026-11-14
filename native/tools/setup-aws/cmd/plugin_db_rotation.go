@@ -430,7 +430,11 @@ func (e *env) rotationStack(ctx context.Context, rc *rotClients, t rotationTarge
 	default:
 		return fmt.Errorf("CloudFormation stack %s is %s; delete it with `setup-aws plugin %s --delete` and run this again", name, s.StackStatus, dbRotationID)
 	}
-	return e.act("update CloudFormation stack "+name+" if it changed", func() error {
+	// Every update runs the transform again, which re-renders the nested
+	// stacks of the AWS-maintained functions (about 30 seconds, measured on
+	// a rerun with nothing changed): that is how the 2024-09-16 transform
+	// keeps their runtime current, so a rerun updates them on purpose.
+	return e.act("update CloudFormation stack "+name+" (the transform refreshes the AWS-maintained rotation functions)", func() error {
 		_, err := rc.CFN.UpdateStack(ctx, &cloudformation.UpdateStackInput{
 			StackName: aws.String(name), TemplateBody: aws.String(rotationTemplate), Parameters: params,
 			Capabilities: caps, Tags: e.cfnTags(),
