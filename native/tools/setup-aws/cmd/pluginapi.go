@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/efs"
@@ -15,6 +14,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3files"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
+
+	"github.com/csantanapr/eks-agent-substrate/native/tools/setup-aws/awsload"
 )
 
 // pluginClients are the AWS clients plugins use, beyond Clients and
@@ -49,12 +50,10 @@ var newPluginClients = func(ctx context.Context, c Config) (*pluginClients, erro
 	}, nil
 }
 
+// loadAWSConfig is every setup-aws client's config: awsload's, whose
+// clients outlive the session they start with (BUG5).
 func loadAWSConfig(ctx context.Context, c Config) (aws.Config, error) {
-	opts := []func(*awsconfig.LoadOptions) error{awsconfig.WithRegion(c.Region)}
-	if c.Profile != "" {
-		opts = append(opts, awsconfig.WithSharedConfigProfile(c.Profile))
-	}
-	ac, err := awsconfig.LoadDefaultConfig(ctx, opts...)
+	ac, err := awsload.Config(ctx, c.Region, c.Profile)
 	if err != nil {
 		return aws.Config{}, fmt.Errorf("load AWS config: %w", err)
 	}
