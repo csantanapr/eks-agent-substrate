@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
+	"net/http"
+	"net/netip"
 	"os"
 	"regexp"
 	"slices"
@@ -40,7 +43,8 @@ type clusterConfig struct {
 	// AutoMode is "on", or "" / "off" for a standard cluster (config.env:
 	// AUTO_MODE empty means no Auto Mode).
 	AutoMode string
-	// PublicAccessCIDRs is EKS_PUBLIC_ACCESS_CIDRS, space separated.
+	// PublicAccessCIDRs is EKS_PUBLIC_ACCESS_CIDRS, space separated, or
+	// publicAccessAuto (the default): this machine's address as a /32.
 	PublicAccessCIDRs                                           string
 	SystemInstanceType, GvisorInstanceType, MicrovmInstanceType string
 	SystemNodes, GvisorNodes, MicrovmNodes                      int
@@ -54,7 +58,10 @@ var createClusterCmd = &cobra.Command{
 	Long: `Creates what create-cluster.sh creates, through the AWS SDK: a VPC with
 public and private subnets in 2-3 Availability Zones and one NAT gateway; the
 cluster and node IAM roles; the EKS cluster (Auto Mode on by default) with its
-API endpoint limited to EKS_PUBLIC_ACCESS_CIDRS; a cluster-admin access entry
+API endpoint limited to EKS_PUBLIC_ACCESS_CIDRS (by default "auto": this
+machine's public address, a /32, looked up at https://checkip.amazonaws.com
+for a new cluster; an explicit value is applied to an existing one), and a
+check that this machine reaches it; a cluster-admin access entry
 for the caller; the add-ons; the node launch templates (IMDSv2 only, hop limit
 1, encrypted gp3, nested virtualization on microvm); and the system, gvisor
 and microvm managed node groups. Idempotent: a rerun creates only what is
@@ -76,7 +83,7 @@ func init() {
 	f := createClusterCmd.Flags()
 	f.StringVar(&ccfg.KubernetesVersion, "kubernetes-version", getEnv("KUBERNETES_VERSION", "1.37"), "EKS version of a new cluster (KUBERNETES_VERSION)")
 	f.StringVar(&ccfg.AutoMode, "auto-mode", autoModeDefault(), `"on": EKS Auto Mode with the general-purpose and system NodePools next to the node groups; "off" or empty: a standard cluster (AUTO_MODE)`)
-	f.StringVar(&ccfg.PublicAccessCIDRs, "public-access-cidrs", getEnv("EKS_PUBLIC_ACCESS_CIDRS", "0.0.0.0/0"), "space-separated address ranges allowed to reach the public API endpoint (EKS_PUBLIC_ACCESS_CIDRS)")
+	f.StringVar(&ccfg.PublicAccessCIDRs, "public-access-cidrs", getEnv("EKS_PUBLIC_ACCESS_CIDRS", publicAccessAuto), `space-separated address ranges allowed to reach the public API endpoint, or "auto": this machine's public address as a /32 (EKS_PUBLIC_ACCESS_CIDRS)`)
 	f.StringVar(&ccfg.SystemInstanceType, "system-instance-type", getEnv("SYSTEM_INSTANCE_TYPE", "m8i.xlarge"), "instance type of the system node group (SYSTEM_INSTANCE_TYPE)")
 	f.StringVar(&ccfg.GvisorInstanceType, "gvisor-instance-type", getEnv("GVISOR_INSTANCE_TYPE", "m8i.2xlarge"), "instance type of the gvisor node group (GVISOR_INSTANCE_TYPE)")
 	f.StringVar(&ccfg.MicrovmInstanceType, "microvm-instance-type", getEnv("MICROVM_INSTANCE_TYPE", "m8i.2xlarge"), "instance type of the microvm node group; needs nested virtualization (MICROVM_INSTANCE_TYPE)")
@@ -102,6 +109,9 @@ type clusterRun struct {
 	c    *ClusterClients
 	cfg  clusterConfig
 	auto bool
+	// autoCIDRs is EKS_PUBLIC_ACCESS_CIDRS=auto: a new cluster gets this
+	// machine's /32 (resolvePublicAccess), an existing one keeps its ranges.
+	autoCIDRs bool
 	// tags are the owner tag, TAGS and the created-by tag.
 	tags map[string]string
 
@@ -125,6 +135,7 @@ func newClusterRun(e *env, c *ClusterClients, cfg clusterConfig) *clusterRun {
 		tags[k] = v
 	}
 	return &clusterRun{e: e, c: c, cfg: cfg, auto: cfg.AutoMode == "on", tags: tags,
+		autoCIDRs:  strings.TrimSpace(cfg.PublicAccessCIDRs) == publicAccessAuto,
 		nodegroups: map[string]*ekstypes.Nodegroup{}, addons: map[string]*ekstypes.Addon{},
 		amiTypes: map[string]ekstypes.AMITypes{}, templates: map[string]ltRef{}}
 }
@@ -209,6 +220,11 @@ func (r *clusterRun) preflight(ctx context.Context) error {
 		return err
 	}
 	if r.cluster == nil {
+		// auto picks a new cluster's ranges only; an existing cluster's
+		// stay as they are (ensurePublicAccess).
+		if err := r.resolvePublicAccess(ctx); err != nil {
+			return err
+		}
 		if err := r.pickAZs(ctx); err != nil {
 			return err
 		}
@@ -239,7 +255,7 @@ func (r *clusterRun) validate() error {
 		return errors.New("EKS_PUBLIC_ACCESS_CIDRS is empty; give at least one address range")
 	}
 	for _, c := range cidrs {
-		if _, _, err := net.ParseCIDR(c); err != nil {
+		if _, _, err := net.ParseCIDR(c); err != nil && !r.autoCIDRs {
 			return fmt.Errorf("EKS_PUBLIC_ACCESS_CIDRS: %q is not an address range", c)
 		}
 	}
@@ -249,6 +265,94 @@ func (r *clusterRun) validate() error {
 		}
 	}
 	return nil
+}
+
+// publicAccessAuto is EKS_PUBLIC_ACCESS_CIDRS's default: only this machine
+// may reach the Kubernetes API, from the address it has when this runs.
+const publicAccessAuto = "auto"
+
+// cidrsFix is how to fix a refused auto or an unreachable API.
+const cidrsFix = "set EKS_PUBLIC_ACCESS_CIDRS to your network's egress ranges (for example 203.0.113.0/24), or to 0.0.0.0/0 (IAM still authenticates every call)"
+
+// Replaced in tests.
+var (
+	checkIPURL     = "https://checkip.amazonaws.com"
+	checkIPTimeout = 5 * time.Second
+	// checkIPSamples lookups, each on a new connection, must agree.
+	checkIPSamples = 5
+)
+
+// resolvePublicAccess turns EKS_PUBLIC_ACCESS_CIDRS=auto into this
+// machine's public IPv4 address as a /32, for a cluster this run creates. A
+// failed lookup stops the run: it never falls back to 0.0.0.0/0.
+//
+// A NAT with several public addresses picks one per connection, so the API
+// would see this machine from any of them: the lookup is made
+// checkIPSamples times on new connections, and answers that differ refuse
+// auto. A network may still reach AWS from yet another address (a separate
+// route to AWS); probeAPI catches that once the cluster is up.
+//
+// When this machine's address changes later (another network, a new DHCP
+// lease), kubectl and the installer time out reaching the API, while the EKS
+// API itself, which these ranges do not limit, still works. auto never
+// changes an existing cluster's ranges: set EKS_PUBLIC_ACCESS_CIDRS and
+// rerun `setup-aws create cluster`, and ensurePublicAccess applies it.
+func (r *clusterRun) resolvePublicAccess(ctx context.Context) error {
+	if !r.autoCIDRs {
+		return nil
+	}
+	// Go's client, like kubectl and the AWS SDK, honours HTTPS_PROXY.
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.DisableKeepAlives = true
+	client := &http.Client{Transport: t}
+	seen := map[string]bool{}
+	var addrs []string
+	for range checkIPSamples {
+		a, err := callerAddress(ctx, client)
+		if err != nil {
+			return fmt.Errorf("EKS_PUBLIC_ACCESS_CIDRS=auto: %w; %s", err, cidrsFix)
+		}
+		if !seen[a] {
+			seen[a] = true
+			addrs = append(addrs, a)
+		}
+	}
+	if len(addrs) > 1 {
+		return fmt.Errorf("EKS_PUBLIC_ACCESS_CIDRS=auto: this network reaches the internet from %d addresses (%s in %d lookups at %s), so no single /32 lets this machine reach the Kubernetes API; %s",
+			len(addrs), strings.Join(addrs, ", "), checkIPSamples, checkIPURL, cidrsFix)
+	}
+	r.cfg.PublicAccessCIDRs = addrs[0]
+	slog.Info("the Kubernetes API will accept connections from this machine's address only; set EKS_PUBLIC_ACCESS_CIDRS to allow more", "address", addrs[0])
+	return nil
+}
+
+// callerAddress asks checkIPURL for this machine's public IPv4 address and
+// returns it as a /32.
+func callerAddress(ctx context.Context, client *http.Client) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, checkIPTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, checkIPURL, nil)
+	if err != nil {
+		return "", err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("look up this machine's public address: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("look up this machine's public address at %s: %s", checkIPURL, resp.Status)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 64))
+	if err != nil {
+		return "", fmt.Errorf("look up this machine's public address: %w", err)
+	}
+	// An IPv4 cluster's endpoint takes IPv4 ranges only.
+	ip, err := netip.ParseAddr(strings.TrimSpace(string(body)))
+	if err != nil || !ip.Is4() || !ip.IsGlobalUnicast() || ip.IsPrivate() {
+		return "", fmt.Errorf("%s did not answer with a public IPv4 address", checkIPURL)
+	}
+	return netip.PrefixFrom(ip, 32).String(), nil
 }
 
 // readCluster reads an existing cluster, its node groups and add-ons. The

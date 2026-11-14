@@ -26,7 +26,49 @@ func allSpecs(b builder, s *state.Setup) map[string]execx.Spec {
 		"create cluster": b.createCluster(s), "bootstrap": b.bootstrap(s), "rds": b.rds(s),
 		"control plane": b.controlPlane(s), "demo": b.demoStep(s), "verify": b.verify(s),
 		"remove": b.removeControlPlane(s), "teardown": b.teardown(s), "inventory": b.inventory(s),
-		"probe": b.probe("other", s),
+		"probe": b.probe("other", s), "plugins": b.plugins(s),
+	}
+}
+
+// Settings' release answers reach the children that install or read the
+// release: --image-repo and --sandbox-classes on the control plane, demo and
+// verify steps when they are not the defaults, and on no other step; the
+// defaults add nothing, so the shown command stays short (both directions).
+func TestReleaseFlagsReachTheReleaseSteps(t *testing.T) {
+	for _, custom := range []bool{false, true} {
+		b, s := testBuilder()
+		if custom {
+			s.ImageRepo, s.SandboxClasses = "registry.example.com/substrate", "gvisor"
+		}
+		for name, spec := range allSpecs(b, s) {
+			wants := custom && (name == "control plane" || name == "demo" || name == "verify")
+			i := slices.Index(spec.Argv, "--image-repo")
+			j := slices.Index(spec.Argv, "--sandbox-classes")
+			if (i >= 0) != wants || (j >= 0) != wants {
+				t.Errorf("custom=%v %s: argv %q", custom, name, spec.Argv)
+				continue
+			}
+			if wants && (spec.Argv[i+1] != s.ImageRepo || spec.Argv[j+1] != "gvisor") {
+				t.Errorf("%s: argv %q", name, spec.Argv)
+			}
+		}
+	}
+}
+
+// The control plane and plugin children read TAGS from their environment,
+// so each re-executed step pins it to the run's answer, which Settings may
+// have changed from the inherited one.
+func TestSelfSpecsPinTags(t *testing.T) {
+	b, s := testBuilder()
+	s.Tags = "team=a auto-delete=no"
+	for name, spec := range allSpecs(b, s) {
+		if spec.Argv[0] == b.self && !slices.Contains(spec.Env, "TAGS=team=a auto-delete=no") {
+			t.Errorf("%s: env %q", name, spec.Env)
+		}
+	}
+	s.Tags = ""
+	if env := b.plugins(s).Env; !slices.Contains(env, "TAGS=") {
+		t.Errorf("empty TAGS not pinned: %q", env)
 	}
 }
 

@@ -17,6 +17,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -294,8 +295,8 @@ $$;
 // bootstrapSchema runs pkg/postgressetup/setup.sql from a Job inside the
 // cluster (the database has no public endpoint), as db-bootstrap.sh does.
 // The master password lives only in a Secret in a throwaway namespace for
-// the length of the Job, and the namespace is deleted afterwards, also on
-// failure.
+// the length of the Job; removeBootstrap deletes the Secret, the Job and the
+// namespace afterwards, also on failure and when ctx is cancelled.
 func bootstrapSchema(ctx context.Context, w io.Writer, kc, overlay, tree string, db rdsDB, ca []byte) (err error) {
 	setupSQL, err := os.ReadFile(filepath.Join(tree, "pkg", "postgressetup", "setup.sql"))
 	if err != nil {
@@ -313,14 +314,19 @@ func bootstrapSchema(ctx context.Context, w io.Writer, kc, overlay, tree string,
 		return runCommand(ctx, w, command{Env: []string{"KUBECONFIG=" + kc}, Stdin: stdin, Argv: append([]string{"kubectl"}, args...)})
 	}
 	fmt.Fprintln(w, BootstrapLine+bootstrapNS)
-	// The namespace holds the master password: remove it however this ends,
-	// with a context of its own, since ctx may be what ended it.
+	// The Secret holds the logins and the Job's pod reads them: remove both
+	// and the namespace however this ends, also when ctx was cancelled
+	// mid-run (ctrl+c or SIGTERM, see main.go), since a create kubectl was
+	// killed in may still have been stored.
 	defer func() {
-		if err != nil {
-			c, cancel := context.WithTimeout(context.Background(), time.Minute)
-			defer cancel()
-			_ = runCommand(c, w, command{Env: []string{"KUBECONFIG=" + kc},
-				Argv: []string{"kubectl", "delete", "namespace", bootstrapNS, "--ignore-not-found", "--wait=false"}})
+		cerr := removeBootstrap(w, kc, err != nil)
+		switch {
+		case err != nil:
+			err = errors.Join(err, cerr)
+		case cerr != nil:
+			err = cerr
+		default:
+			fmt.Fprintln(w, BootstrapDone+bootstrapNS)
 		}
 	}()
 	if err := kubectl(manifest("Namespace", "", bootstrapNS, nil), "apply", "-f", "-"); err != nil {
@@ -351,14 +357,32 @@ func bootstrapSchema(ctx context.Context, w io.Writer, kc, overlay, tree string,
 		_ = kubectl(nil, "-n", bootstrapNS, "logs", "job/bootstrap")
 		return fmt.Errorf("database bootstrap Job did not complete: %w", err)
 	}
-	if err := kubectl(nil, "-n", bootstrapNS, "logs", "job/bootstrap"); err != nil {
-		return err
+	return kubectl(nil, "-n", bootstrapNS, "logs", "job/bootstrap")
+}
+
+// bootstrapCleanup bounds removeBootstrap, which runs with a context of its
+// own because the deploy's may be what ended the bootstrap.
+var bootstrapCleanup = 3 * time.Minute
+
+// removeBootstrap deletes the Secret with the logins first, then the Job
+// with its pod (foreground), then their namespace. After a success it waits
+// for the namespace to go; after a failure or a cancel it does not, so the
+// installer exits soon.
+func removeBootstrap(w io.Writer, kc string, failed bool) error {
+	ctx, cancel := context.WithTimeout(context.Background(), bootstrapCleanup)
+	defer cancel()
+	kubectl := func(args ...string) error {
+		return runCommand(ctx, w, command{Env: []string{"KUBECONFIG=" + kc}, Argv: append([]string{"kubectl"}, args...)})
 	}
-	if err := kubectl(nil, "delete", "namespace", bootstrapNS, "--timeout=2m"); err != nil {
-		return err
+	ns := []string{"delete", "namespace", bootstrapNS, "--timeout=2m"}
+	if failed {
+		ns = []string{"delete", "namespace", bootstrapNS, "--ignore-not-found", "--wait=false"}
 	}
-	fmt.Fprintln(w, BootstrapDone+bootstrapNS)
-	return nil
+	return errors.Join(
+		kubectl("-n", bootstrapNS, "delete", "secret", "creds", "--ignore-not-found"),
+		kubectl("-n", bootstrapNS, "delete", "job", "bootstrap", "--ignore-not-found", "--cascade=foreground", "--timeout=1m"),
+		kubectl(ns...),
+	)
 }
 
 // renderJob fills the Job's three placeholders, the only ones it has.

@@ -20,6 +20,10 @@ const (
 	ReadyLine   = "Plugin ready: "
 	RemoveLine  = "Removing plugin "
 	RemovedLine = "Plugin removed: "
+	// NeedsKeptLine follows RemovedLine for a plugin with Needs: the running
+	// control plane still carries them (a preview gate, a credential
+	// provider, ingress clients, another release) until it is deployed again.
+	NeedsKeptLine = "The control plane still carries the needs of "
 )
 
 // Actions for Run (--plugin-action).
@@ -172,6 +176,9 @@ func Run(ctx context.Context, w io.Writer, action string, ids []string, o Option
 			return err
 		}
 		for _, p := range ps {
+			if p.NeedsAutoMode != "" && !o.AutoMode {
+				return fmt.Errorf("plugin %s %s; %s has EKS Auto Mode off", p.ID, p.NeedsAutoMode, o.Cluster)
+			}
 			if hasNeeds(p) && !slices.Contains(rec, p.ID) {
 				return fmt.Errorf("plugin %s changes the control plane install, which does not carry it yet: run --deploy-control-plane --plugins %s first", p.ID, p.ID)
 			}
@@ -266,6 +273,11 @@ func remove(ctx context.Context, w io.Writer, ids []string, o Options) error {
 			return err
 		}
 		fmt.Fprintln(w, RemovedLine+p.ID)
+		if hasNeeds(p) {
+			// Run has no buckets or database to reinstall the control plane
+			// with, so it says what still runs and how to drop it.
+			fmt.Fprintf(w, NeedsKeptLine+"%s; run --deploy-control-plane again to drop them (the record no longer lists %s)\n", p.ID, p.ID)
+		}
 	}
 	return nil
 }

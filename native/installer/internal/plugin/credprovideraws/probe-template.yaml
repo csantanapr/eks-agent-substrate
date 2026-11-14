@@ -1,0 +1,41 @@
+# ActorTemplate (protojson-shaped ateapi.ActorTemplate, created with
+# `kubectl ate create actor-template -f -`) for the probe actor: Substrate's
+# e2e probe, whose /fetch makes an HTTPS request with the headers it is given
+# and returns the response. The plugin fills in the atespace and the image.
+#
+# The actor trusts the egress gateway's CA through the projected trust bundle:
+# for the names an https rule lists, the gateway terminates the actor's TLS,
+# injects the credential and opens a new TLS connection upstream. The actor
+# holds no secret and no AWS identity.
+metadata:
+  atespace: REPLACE_WITH_ATESPACE
+  name: probe
+workerSelector:
+  matchLabels:
+    workload: credprovider-probe
+containers:
+- name: probe
+  image: REPLACE_WITH_PROBE_IMAGE
+  command: [/ko-app/probe]
+  volumeMounts:
+  - name: system-info
+    mountPath: /run/ate
+  wakeupProbe:
+    httpGet: { path: /healthz, port: 80 }
+volumes:
+- name: system-info
+  systemInfo:
+    dataSources:
+    - actorMetadata:
+        items:
+        - { field: ACTOR_METADATA_FIELD_NAME, path: actor-id }
+        - { field: ACTOR_METADATA_FIELD_ATESPACE, path: atespace }
+        - { field: ACTOR_METADATA_FIELD_UID, path: actor-uid }
+    # /run/ate/trust-bundle.pem, which the probe's fetches trust.
+    - trustBundle:
+        names: [egress-mitm.ate.dev, system-roots.ate.dev]
+        path: trust-bundle.pem
+resources:
+  limits:
+    cpuMillicores: 1000
+    memoryBytes: 536870912
