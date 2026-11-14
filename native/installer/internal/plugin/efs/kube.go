@@ -161,21 +161,67 @@ func podsWithoutPodIdentity(ctx context.Context, o plugin.Options, ns, selector 
 	return missing, nil
 }
 
+// The label StorageTmpl puts on every StorageClass the plugins make: the
+// installer replaces or deletes only a class that carries it.
+const (
+	managedByKey = "app.kubernetes.io/managed-by"
+	managedBy    = "substrate-eks"
+)
+
+// storageClass reads StorageClass name: whether it exists, whether it
+// carries the installer's managed-by label, and its parameters.
+func storageClass(ctx context.Context, o plugin.Options, name string) (exists, ours bool, params map[string]string, err error) {
+	have, err := Out(ctx, o, "get", "storageclass", name, "--ignore-not-found", "-o", "json")
+	if err != nil || strings.TrimSpace(have) == "" {
+		return false, false, nil, err
+	}
+	var sc struct {
+		Metadata struct {
+			Labels map[string]string `json:"labels"`
+		} `json:"metadata"`
+		Parameters map[string]string `json:"parameters"`
+	}
+	if err := json.Unmarshal([]byte(have), &sc); err != nil {
+		return false, false, nil, fmt.Errorf("read StorageClass %s: %w", name, err)
+	}
+	return true, sc.Metadata.Labels[managedByKey] == managedBy, sc.Parameters, nil
+}
+
 // ApplyStorageClass applies manifest, a StorageClass named name whose
 // fileSystemId is fs, first deleting one of that name that has another
-// fileSystemId or uid (StorageClass parameters cannot change).
+// fileSystemId or uid (StorageClass parameters cannot change). A class of
+// that name without the installer's label is someone else's: it is refused,
+// by name, and left as it is (review R10).
 func ApplyStorageClass(ctx context.Context, w io.Writer, o plugin.Options, name, fs, uid string, manifest []byte) error {
-	have, err := Out(ctx, o, "get", "storageclass", name, "--ignore-not-found", "-o", "jsonpath={.parameters.fileSystemId} {.parameters.uid}")
+	exists, ours, p, err := storageClass(ctx, o, name)
 	if err != nil {
 		return err
 	}
-	if f := strings.Fields(have); len(f) > 0 && (f[0] != fs || (uid != "" && (len(f) < 2 || f[1] != uid))) {
-		fmt.Fprintf(w, "Replacing StorageClass %s (it was for %s)\n", name, strings.TrimSpace(have))
+	if exists && !ours {
+		return fmt.Errorf("StorageClass %s exists without the label %s=%s, so the installer did not make it and will not replace it: "+
+			"delete or rename it, then deploy the plugin again", name, managedByKey, managedBy)
+	}
+	if exists && (p["fileSystemId"] != fs || (uid != "" && p["uid"] != uid)) {
+		fmt.Fprintf(w, "Replacing StorageClass %s (it was for %s %s)\n", name, p["fileSystemId"], p["uid"])
 		if err := Run(ctx, w, o, "delete", "storageclass", name); err != nil {
 			return err
 		}
 	}
 	return Apply(ctx, w, o, manifest)
+}
+
+// DeleteStorageClass deletes StorageClass name when it carries the
+// installer's label; one someone else made is left alone, and said so.
+func DeleteStorageClass(ctx context.Context, w io.Writer, o plugin.Options, name string) error {
+	exists, ours, _, err := storageClass(ctx, o, name)
+	if err != nil || !exists {
+		return err
+	}
+	if !ours {
+		fmt.Fprintf(w, "StorageClass %s has no %s=%s label: the installer did not make it, so it is left alone\n", name, managedByKey, managedBy)
+		return nil
+	}
+	return Run(ctx, w, o, "delete", "storageclass", name, "--ignore-not-found")
 }
 
 // OwnerTagsArg is the EFS CSI driver's --tags value: space-separated

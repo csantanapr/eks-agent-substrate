@@ -144,11 +144,19 @@ func TestFileCounter(t *testing.T) {
 	}
 }
 
+// classJSON is `kubectl get storageclass -o json` for a class with the
+// given labels and parameters.
+func classJSON(labels, fs, uid string) string {
+	return `{"metadata":{"name":"efs-ate","labels":{` + labels + `}},"parameters":{"fileSystemId":"` + fs + `","uid":"` + uid + `"}}`
+}
+
+const ours = `"app.kubernetes.io/managed-by":"substrate-eks"`
+
 func TestApplyStorageClassReplacesOnlyAChangedClass(t *testing.T) {
 	for _, tc := range []struct {
 		have        string
 		wantReplace bool
-	}{{"", false}, {"fs-1 0", false}, {"fs-2 0", true}, {"fs-1 1000", true}} {
+	}{{"", false}, {classJSON(ours, "fs-1", "0"), false}, {classJSON(ours, "fs-2", "0"), true}, {classJSON(ours, "fs-1", "1000"), true}} {
 		f := &fakeKube{answers: map[string]string{"kubectl --kubeconfig /kc get storageclass efs-ate": tc.have}}
 		o := install(t, f)
 		if err := ApplyStorageClass(context.Background(), io.Discard, o, "efs-ate", "fs-1", "0", []byte("sc")); err != nil {
@@ -158,6 +166,58 @@ func TestApplyStorageClassReplacesOnlyAChangedClass(t *testing.T) {
 		if deleted != tc.wantReplace {
 			t.Errorf("have %q: replaced=%v, want %v (%v)", tc.have, deleted, tc.wantReplace, f.log)
 		}
+	}
+}
+
+// Review R10, both ways: a class of the same name without the installer's
+// managed-by label (none, or another manager's) is refused by name and
+// neither replaced nor applied over, even with the same parameters; the
+// installer's own is replaced or kept as above.
+func TestApplyStorageClassRefusesAClassItDidNotMake(t *testing.T) {
+	for _, labels := range []string{"", `"app.kubernetes.io/managed-by":"Helm"`} {
+		for _, fs := range []string{"fs-1", "fs-2"} {
+			f := &fakeKube{answers: map[string]string{"kubectl --kubeconfig /kc get storageclass efs-ate": classJSON(labels, fs, "0")}}
+			o := install(t, f)
+			err := ApplyStorageClass(context.Background(), io.Discard, o, "efs-ate", "fs-1", "0", []byte("sc"))
+			if err == nil || !strings.Contains(err.Error(), "StorageClass efs-ate exists without the label "+managedByKey+"="+managedBy) {
+				t.Errorf("labels {%s}, %s: want the refusal, got %v", labels, fs, err)
+			}
+			if l := strings.Join(f.log, "\n"); strings.Contains(l, "delete storageclass") || strings.Contains(l, "apply") {
+				t.Errorf("labels {%s}, %s: touched the class:\n%s", labels, fs, l)
+			}
+		}
+	}
+}
+
+// Both ways: Remove's DeleteStorageClass deletes the installer's class and
+// leaves one without its label, saying so; a missing class is done.
+func TestDeleteStorageClassOnlyTheInstallers(t *testing.T) {
+	for have, wantDelete := range map[string]bool{classJSON(ours, "fs-1", "0"): true, classJSON("", "fs-1", "0"): false, "": false} {
+		f := &fakeKube{answers: map[string]string{"kubectl --kubeconfig /kc get storageclass efs-ate": have}}
+		o := install(t, f)
+		var out strings.Builder
+		if err := DeleteStorageClass(context.Background(), &out, o, "efs-ate"); err != nil {
+			t.Fatal(err)
+		}
+		deleted := strings.Contains(strings.Join(f.log, "\n"), "delete storageclass efs-ate --ignore-not-found")
+		if deleted != wantDelete {
+			t.Errorf("have %q: deleted=%v, want %v", have, deleted, wantDelete)
+		}
+		if have != "" && !wantDelete && !strings.Contains(out.String(), "left alone") {
+			t.Errorf("have %q: no reason given:\n%s", have, out.String())
+		}
+	}
+}
+
+// Every class the plugins render carries the label the two functions above
+// look for.
+func TestStorageTmplCarriesTheManagedByLabel(t *testing.T) {
+	sc, err := Render(StorageTmpl, StorageArgs{Name: "efs-ate", Mode: "efs-ap", FileSystem: "fs-1", UID: UID, GID: GID, BasePath: "/ate"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(sc), "\n    "+managedByKey+": "+managedBy+"\n") {
+		t.Errorf("rendered StorageClass lacks %s: %s:\n%s", managedByKey, managedBy, sc)
 	}
 }
 

@@ -924,7 +924,7 @@ func remove(ctx context.Context, w io.Writer, o plugin.Options) error {
 	}) {
 		fmt.Fprintf(w, "WARNING: volume %s of StorageClass %s is still there\n", strings.TrimSpace(left), StorageClass)
 	}
-	return efs.Run(ctx, w, o, "delete", "storageclass", StorageClass, "--ignore-not-found")
+	return efs.DeleteStorageClass(ctx, w, o, StorageClass)
 }
 
 func removeActors(ctx context.Context, w io.Writer, k efs.Ate) error {
