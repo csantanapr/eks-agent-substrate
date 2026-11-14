@@ -198,9 +198,14 @@ func planned(id string) bool { return strings.HasPrefix(id, plannedPrefix) }
 
 // --- phase 1: preflight -------------------------------------------------------
 
-// clusterNameRE is the CLUSTER_NAME rule: every derived name (buckets with
-// account and region, IAM roles, launch templates) stays valid.
-var clusterNameRE = regexp.MustCompile(`^[a-z][a-z0-9-]{0,26}[a-z0-9]$`)
+// clusterNameRE is the CLUSTER_NAME rule, 2-21 characters. IAM role names
+// are the binding limit: <cluster>-<region>-<suffix> must fit IAM's 64
+// characters, and 21 + 1 + 15 + 1 + 26 = 64 for the longest suffix
+// (aws-sm-credential-provider) in the longest Region code the SDK's
+// partitions list (us-isof-south-1). Buckets (63, with the 12-digit account
+// and the Region) and the other derived names then fit too;
+// TestDerivedNamesFitForTheLongestClusterName checks every one.
+var clusterNameRE = regexp.MustCompile(`^[a-z][a-z0-9-]{0,19}[a-z0-9]$`)
 
 // eksUnsupportedAZIDs are the zones EKS refuses cluster subnets in.
 // https://docs.aws.amazon.com/eks/latest/userguide/network-reqs.html
@@ -240,7 +245,7 @@ func (r *clusterRun) preflight(ctx context.Context) error {
 
 func (r *clusterRun) validate() error {
 	if !clusterNameRE.MatchString(r.e.names.Cluster) {
-		return fmt.Errorf("cluster name %q must be 2-28 characters of a-z, 0-9 and '-', starting with a letter", r.e.names.Cluster)
+		return fmt.Errorf("cluster name %q must be 2-21 characters of a-z, 0-9 and '-', starting with a letter", r.e.names.Cluster)
 	}
 	switch r.cfg.AutoMode {
 	case "on", "off", "":

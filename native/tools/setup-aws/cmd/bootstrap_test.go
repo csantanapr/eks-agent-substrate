@@ -145,6 +145,7 @@ func TestDeniedReadStopsInsteadOfCreating(t *testing.T) {
 func TestAssociationToAnotherRoleIsRepointed(t *testing.T) {
 	f := newFake()
 	f.assocs["ate-system/atelet"] = "arn:aws:iam::111122223333:role/old"
+	f.assocTag["ate-system/atelet"] = map[string]string{OwnerTagKey: "demo.us-west-2"}
 	if err := testEnv(t, f, false).bootstrap(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -153,6 +154,22 @@ func TestAssociationToAnotherRoleIsRepointed(t *testing.T) {
 	}
 	if count(f.writes, "UpdatePodIdentityAssociation ") != 1 {
 		t.Errorf("want one update: %v", f.writes)
+	}
+}
+
+// The other direction: an association of a fixed namespace and
+// ServiceAccount that someone else made is never repointed at this
+// deployment's role, and the step stops before it writes anything.
+func TestForeignAssociationIsNotRepointed(t *testing.T) {
+	f := newFake()
+	f.assocs["ate-system/atelet"] = "arn:aws:iam::111122223333:role/theirs"
+	f.assocTag["ate-system/atelet"] = map[string]string{"auto-delete": "no"}
+	err := testEnv(t, f, false).roleForSA(context.Background(), PodIdentity{"ate-system", "atelet", "{}"})
+	if err == nil || !strings.Contains(err.Error(), "Pod Identity association ate-system/atelet (ate-system/atelet) exists but is not owned by demo.us-west-2") {
+		t.Fatalf("want the refusal naming the association, got %v", err)
+	}
+	if f.assocs["ate-system/atelet"] != "arn:aws:iam::111122223333:role/theirs" || len(f.writes) > 0 {
+		t.Errorf("association now %q, writes %v; want it untouched and nothing written", f.assocs["ate-system/atelet"], f.writes)
 	}
 }
 

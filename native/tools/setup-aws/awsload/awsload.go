@@ -12,7 +12,11 @@
 //
 // This is a credential path, so the identity is pinned: the account and
 // principal of the first load. Refreshed credentials for anyone else stop
-// the step at once; it never switches identity silently.
+// the step at once; it never switches identity silently. Config returns the
+// same config for a region and profile for the life of the process, so every
+// client of a setup-aws run or of the installer shares that one pin: a
+// profile re-vended for someone else mid-run cannot become a second identity
+// for the clients made after it.
 package awsload
 
 import (
@@ -38,11 +42,34 @@ var (
 	maxWait   = 30 * time.Minute
 )
 
+// configs are the configs Config made, by region and profile.
+var (
+	configsMu sync.Mutex
+	configs   = map[[2]string]aws.Config{}
+)
+
 // Config loads the config the way the AWS CLI does: region, then profile,
 // then the default credential chain. It reads the caller identity once, to
 // pin it, and its clients survive the end of the credentials' session, as
-// the package comment says.
+// the package comment says. A later call for the same region and profile
+// returns the same config, pin and credentials; a failed load is not kept.
 func Config(ctx context.Context, region, profile string) (aws.Config, error) {
+	configsMu.Lock()
+	defer configsMu.Unlock()
+	k := [2]string{region, profile}
+	if cfg, ok := configs[k]; ok {
+		return cfg, nil
+	}
+	cfg, err := newConfig(ctx, region, profile)
+	if err != nil {
+		return aws.Config{}, err
+	}
+	configs[k] = cfg
+	return cfg, nil
+}
+
+// newConfig is Config's first load for a region and profile.
+func newConfig(ctx context.Context, region, profile string) (aws.Config, error) {
 	load := func(ctx context.Context) (aws.Config, error) {
 		opts := []func(*awsconfig.LoadOptions) error{awsconfig.WithRegion(region)}
 		if profile != "" {

@@ -152,6 +152,37 @@ func TestInventoryCommandExitCodes(t *testing.T) {
 	}
 }
 
+// The core inventory lists every owner-tagged role that is not a Substrate
+// role as a cluster row, and a plugin lists its own role again as a
+// non-cluster row. Under --keep-cluster, a plugin role left behind must fail
+// the final check, while the cluster's own roles (only the core lists them)
+// are kept.
+func TestKeepClusterSeesALeftoverPluginRole(t *testing.T) {
+	const leftover = "demo-us-west-2-efs-csi-controller-sa"
+	for _, left := range []bool{false, true} {
+		f := fullDeployment()
+		e, out, logs := tdTestEnv(t, f, false, true)
+		if left {
+			f.put(&tdObj{kind: "role", id: leftover, tags: own()})
+			// A plugin whose teardown left its role behind.
+			pluginDefs["leaky"] = pluginDef{ID: "leaky", Inventory: func(ctx context.Context, e *tdEnv) ([]tdRow, error) {
+				return e.ownedRoles(ctx, leftover)
+			}}
+		}
+		err := e.teardown(context.Background())
+		switch {
+		case !left && err != nil:
+			t.Errorf("only the cluster's own roles are left: teardown --keep-cluster failed: %v\n%s", err, logs)
+		case left && (err == nil || !strings.Contains(err.Error(), "1 resources of demo.us-west-2 are left") ||
+			!strings.Contains(out.String()[strings.LastIndex(out.String(), "TYPE"):], leftover)):
+			t.Errorf("plugin role %s left: teardown --keep-cluster returned %v, want the final check to fail naming it", leftover, err)
+		}
+		if f.get("role", "demo-us-west-2-eks-cluster") == nil {
+			t.Error("--keep-cluster deleted the cluster's role")
+		}
+	}
+}
+
 // AC2.3: a denied read stops the inventory; it never reads as "nothing left".
 func TestInventoryDeniedReadIsAnError(t *testing.T) {
 	e, _, _ := tdTestEnv(t, newTDFake(), false, false)

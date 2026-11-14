@@ -55,13 +55,14 @@ func (c Cluster) CreatedByInstaller(region string) bool {
 }
 
 // clusterNameRE is the rule for CLUSTER_NAME: S3, IAM, RDS and ECR names
-// derive from it, so it is stricter than EKS's own.
-var clusterNameRE = regexp.MustCompile(`^[a-z][a-z0-9-]{0,26}[a-z0-9]$`)
+// derive from it, so it is stricter than EKS's own. It is setup-aws's rule
+// (tools/setup-aws/cmd/cluster_create.go, which says why 21).
+var clusterNameRE = regexp.MustCompile(`^[a-z][a-z0-9-]{0,19}[a-z0-9]$`)
 
 // ValidClusterName is the rule a new cluster's name must meet.
 func ValidClusterName(name string) error {
 	if !clusterNameRE.MatchString(name) {
-		return fmt.Errorf("a cluster name is 2-28 characters of a-z, 0-9 and '-', starting with a letter and ending with a letter or digit")
+		return fmt.Errorf("a cluster name is 2-21 characters of a-z, 0-9 and '-', starting with a letter and ending with a letter or digit")
 	}
 	return nil
 }

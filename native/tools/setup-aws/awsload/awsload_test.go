@@ -122,6 +122,14 @@ func setup(t *testing.T, key string) (write func(string), f *fakeSTS) {
 	poll, wait := pollEvery, maxWait
 	pollEvery, maxWait = 20*time.Millisecond, 5*time.Second
 	t.Cleanup(func() { pollEvery, maxWait = poll, wait })
+	// Each test is a new process as far as Config's configs go.
+	forget := func() {
+		configsMu.Lock()
+		defer configsMu.Unlock()
+		clear(configs)
+	}
+	forget()
+	t.Cleanup(forget)
 	return write, f
 }
 
@@ -243,6 +251,43 @@ func TestRefreshedCredentialsForAnotherIdentityAreRefused(t *testing.T) {
 				t.Fatalf("sent %v, want %v", got, want)
 			}
 		})
+	}
+}
+
+// One pin per process (review R4): a plugin step that loads its own config
+// after the profile was re-vended for another account must not pin that
+// account while the clients made before it still sign as the first. A second
+// Config call for the region and profile shares the first one's pin, so once
+// the first session ends both refuse the other identity; a call for another
+// profile is its own load.
+func TestConfigCallsShareOnePin(t *testing.T) {
+	write, f := setup(t, "AKIDOLD")
+	ctx := context.Background()
+	first, err := Config(ctx, "us-west-2", "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	write("AKIDACCOUNT") // re-vended for another account mid-run
+	second, err := Config(ctx, "us-west-2", "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := f.seen(); !slices.Equal(got, []string{"AKIDOLD"}) {
+		t.Fatalf("sent %v; want the first call's pin only (the second call loads nothing)", got)
+	}
+	// Until the first session ends, both still sign as the pinned identity.
+	if arn, err := caller(ctx, second); err != nil || arn != fakeCallers["AKIDOLD"] {
+		t.Fatalf("second config: caller %q, err %v; want the pinned identity", arn, err)
+	}
+	f.expire("AKIDOLD")
+	for name, cfg := range map[string]aws.Config{"first": first, "second": second} {
+		arn, err := caller(ctx, cfg)
+		if err == nil || !strings.Contains(err.Error(), "refusing to continue") {
+			t.Errorf("%s config: caller %q, err %v; want the refusal of the other identity", name, arn, err)
+		}
+	}
+	if _, err := Config(ctx, "us-west-2", ""); err == nil {
+		t.Error("the default chain (no profile, no credentials) shared profile p's config")
 	}
 }
 

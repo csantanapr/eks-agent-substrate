@@ -137,6 +137,45 @@ func TestDeletePluginS3FilesRefusesForeignBucket(t *testing.T) {
 	}
 }
 
+// A file system ListFileSystems still returns but GetFileSystem reports gone
+// (its delete just finished) is dropped: not refused as another owner's, not
+// listed. One GetFileSystem returns with another owner's tag still refuses.
+func TestS3FileSystemsDropsOneThatIsGone(t *testing.T) {
+	for _, tc := range []struct {
+		name, refusal string
+		vanished      bool
+	}{
+		{"gone", "", true},
+		{"another owner's", "S3 file system fs-x is not owned by demo.us-west-2", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d := pluginDefs["s3files"]
+			td, f := s3filesDeployed(tdOwner)
+			e, _, logs := tdTestEnv(t, td, false, false)
+			installNFS(t, f, newFakeDB())
+			f.s3fss["fs-x"] = &nfsFS{id: "fs-x", bucket: "arn:aws:s3:::" + s3fBucket, state: "available", tags: map[string]string{OwnerTagKey: "other.us-west-2"}}
+			f.s3Vanished = map[string]bool{"fs-x": tc.vanished}
+			rows, err := s3filesInventory(context.Background(), e)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if hasRow(rows, "S3 file system fs-x") == tc.vanished {
+				t.Errorf("inventory lists fs-x: %v; want %v", hasRow(rows, "S3 file system fs-x"), !tc.vanished)
+			}
+			err = e.deletePlugin(context.Background(), d)
+			switch {
+			case tc.refusal == "" && err != nil:
+				t.Fatalf("delete: %v\n%s", err, logs)
+			case tc.refusal != "" && (err == nil || !strings.Contains(err.Error(), tc.refusal)):
+				t.Fatalf("want %q, got %v", tc.refusal, err)
+			}
+			if strings.Contains(strings.Join(f.writes, ","), "DeleteFileSystem fs-x") {
+				t.Errorf("deleted fs-x: %v", f.writes)
+			}
+		})
+	}
+}
+
 func TestS3FilesInventory(t *testing.T) {
 	td, f := s3filesDeployed(tdOwner)
 	e, _, _ := tdTestEnv(t, td, false, false)

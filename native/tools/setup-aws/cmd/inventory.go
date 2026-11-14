@@ -818,12 +818,20 @@ func arnType(arn string) (service, rtype, id string) {
 // records the roles the cluster points at (refRoles). Read-only.
 func (e *tdEnv) inventory(ctx context.Context) ([]tdRow, error) {
 	var rows []tdRow
-	seen := map[string]bool{}
+	seen := map[string]int{} // Kind+ID -> index in rows
 	add := func(r tdRow) {
-		if k := r.Kind + " " + r.ID; !seen[k] {
-			seen[k] = true
+		k := r.Kind + " " + r.ID
+		i, ok := seen[k]
+		if !ok {
+			seen[k] = len(rows)
 			rows = append(rows, r)
+			return
 		}
+		// Listed twice (a plugin's role is also an owner-tagged role): it is
+		// cluster infrastructure only if every lister says so, or a plugin's
+		// leftover would hide behind the core's cluster row under
+		// --keep-cluster.
+		rows[i].Cluster = rows[i].Cluster && r.Cluster
 	}
 
 	cl, err := e.cluster(ctx)

@@ -38,6 +38,9 @@ type fakeNFS struct {
 	// s3CreateFails makes the first N S3 Files CreateFileSystem calls fail,
 	// as they do while a new role cannot be assumed yet.
 	s3CreateFails int
+	// s3Vanished are S3 file systems ListFileSystems still returns and
+	// GetFileSystem reports gone: a delete that just finished.
+	s3Vanished map[string]bool
 }
 
 type nfsFS struct {
@@ -299,7 +302,7 @@ func (f *fS3F) ListFileSystems(_ context.Context, in *s3files.ListFileSystemsInp
 }
 func (f *fS3F) GetFileSystem(_ context.Context, in *s3files.GetFileSystemInput, _ ...func(*s3files.Options)) (*s3files.GetFileSystemOutput, error) {
 	x := settleFS(f.s3fss, aws.ToString(in.FileSystemId))
-	if x == nil {
+	if x == nil || f.s3Vanished[aws.ToString(in.FileSystemId)] {
 		return nil, apiErr("ResourceNotFoundException")
 	}
 	return &s3files.GetFileSystemOutput{FileSystemId: aws.String(x.id), FileSystemArn: aws.String("arn:aws:s3files:us-west-2:111122223333:file-system/" + x.id),
@@ -454,35 +457,53 @@ func TestCreateEFSPlanWritesNothing(t *testing.T) {
 	}
 }
 
-// Both directions of reuse: an owned file system, group and add-on are kept
-// (the rerun above); one with the same name and another owner stops the run
-// before anything is made.
+// Both directions of reuse: an owned file system, group, add-on and
+// association are kept (the rerun above, and the owned add-on below); one
+// with the same name and another owner stops the run. The add-on and the
+// controllers' association have fixed names, so the user's own EFS CSI
+// driver stops it before anything is made, named, and is never taken over.
 func TestCreateEFSRefusesForeign(t *testing.T) {
+	usersAddon := func(f *fakeNFS, _ *fakeAWS) {
+		f.addons[efsAddon] = &ekstypes.Addon{AddonName: aws.String(efsAddon), Status: ekstypes.AddonStatusActive, Tags: map[string]string{"auto-delete": "no"}}
+	}
+	usersAssoc := func(_ *fakeNFS, a *fakeAWS) {
+		a.assocs["kube-system/efs-csi-controller-sa"] = "arn:aws:iam::111122223333:role/theirs"
+		a.assocTag["kube-system/efs-csi-controller-sa"] = map[string]string{"auto-delete": "no"}
+	}
+	const addonRefusal = "EKS add-on aws-efs-csi-driver exists but is not owned by demo.us-west-2"
+	const assocRefusal = "Pod Identity association kube-system/efs-csi-controller-sa (kube-system/efs-csi-controller-sa) exists but is not owned by demo.us-west-2"
 	for _, tc := range []struct {
-		name  string
-		setup func(f *fakeNFS, db *fakeDB)
-		want  string
+		name    string
+		setup   func(f *fakeNFS, db *fakeDB, a *fakeAWS)
+		want    []string
+		noWrite bool // refused before anything is made
 	}{
-		{"file system", func(f *fakeNFS, _ *fakeDB) {
+		{"file system", func(f *fakeNFS, _ *fakeDB, _ *fakeAWS) {
 			f.fss["fs-x"] = &nfsFS{id: "fs-x", token: "demo-actors", state: "available", tags: map[string]string{OwnerTagKey: "other.us-west-2"}}
-		}, "EFS file system fs-x (demo-actors) exists but is not owned"},
-		{"security group", func(_ *fakeNFS, db *fakeDB) {
+		}, []string{"EFS file system fs-x (demo-actors) exists but is not owned"}, false},
+		{"security group", func(_ *fakeNFS, db *fakeDB, _ *fakeAWS) {
 			db.sgs["demo-efs"] = &ec2types.SecurityGroup{GroupId: aws.String("sg-x"), GroupName: aws.String("demo-efs")}
-		}, "security group demo-efs (sg-x) exists but is not owned"},
-		{"add-on", func(f *fakeNFS, _ *fakeDB) {
-			f.addons[efsAddon] = &ekstypes.Addon{AddonName: aws.String(efsAddon), Status: ekstypes.AddonStatusActive}
-		}, "EKS add-on aws-efs-csi-driver exists but is not owned"},
+		}, []string{"security group demo-efs (sg-x) exists but is not owned"}, false},
+		{"add-on", func(f *fakeNFS, _ *fakeDB, a *fakeAWS) { usersAddon(f, a) }, []string{addonRefusal}, true},
+		{"association", func(f *fakeNFS, _ *fakeDB, a *fakeAWS) { usersAssoc(f, a) }, []string{assocRefusal}, true},
+		{"add-on and association", func(f *fakeNFS, _ *fakeDB, a *fakeAWS) { usersAddon(f, a); usersAssoc(f, a) },
+			[]string{addonRefusal, assocRefusal}, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f, db, aws_ := newFakeNFS(), newFakeDB(), newFake()
-			tc.setup(f, db)
+			tc.setup(f, db, aws_)
 			installNFS(t, f, db)
 			err := createEFS(context.Background(), testEnv(t, aws_, false))
-			if err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("want %q, got %v", tc.want, err)
+			for _, w := range tc.want {
+				if err == nil || !strings.Contains(err.Error(), w) {
+					t.Fatalf("want %q, got %v", w, err)
+				}
 			}
-			if count(f.writes, "CreateAddon")+count(f.writes, "UpdateAddon") > 0 {
-				t.Errorf("changed the add-on after a refusal: %v", f.writes)
+			if count(f.writes, "CreateAddon")+count(f.writes, "UpdateAddon")+count(aws_.writes, "PodIdentityAssociation") > 0 {
+				t.Errorf("changed the add-on or an association after a refusal: %v %v", f.writes, aws_.writes)
+			}
+			if tc.noWrite && len(f.writes)+len(db.writes)+len(aws_.writes) > 0 {
+				t.Errorf("wrote before the refusal: %v %v %v", f.writes, db.writes, aws_.writes)
 			}
 		})
 	}

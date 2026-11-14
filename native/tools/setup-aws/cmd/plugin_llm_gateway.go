@@ -179,7 +179,8 @@ func llmPolicy(models map[string]bedrockProfile) (string, error) {
 
 // bedrockProfiles lists the Region's inference profiles. setup-aws has no
 // Bedrock SDK module, so it signs the REST call itself with the SDK's SigV4
-// signer and the same credential chain. Replaced in tests.
+// signer and awsload's credentials (signedGet says what that covers).
+// Replaced in tests.
 //
 // shortcut: the endpoint is the aws partition's (bedrock.<region>.amazonaws.com);
 // add the other partitions' DNS suffixes if they are ever supported.
@@ -215,6 +216,11 @@ const emptySHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b785
 
 // signedGet is a SigV4-signed GET of u decoded into v. The credentials stay
 // in memory; an error carries the service's message, never a header.
+//
+// The credentials come from ac (awsload), so they carry its pinned identity,
+// but the request does not go through the SDK's retryer: a response that the
+// credentials expired is not retried with refreshed ones, as SDK calls are.
+// The step fails at once and is run again.
 func signedGet(ctx context.Context, ac aws.Config, service, u string, v any) error {
 	creds, err := ac.Credentials.Retrieve(ctx)
 	if err != nil {
@@ -255,8 +261,9 @@ func signedGet(ctx context.Context, ac aws.Config, service, u string, v any) err
 // ---- teardown and inventory of a ServiceAccount's Pod Identity --------------
 
 // podIdentitySteps delete what roleForSA made for ns/sa: its associations,
-// then its role <IAMPrefix>-<sa>. Either one without this deployment's owner
-// tag is a refusal.
+// then its role <IAMPrefix>-<sa>. An association without this deployment's
+// owner tag is left alone, a fixed name (stepAddon); the role, a derived
+// name, is a refusal.
 func (e *tdEnv) podIdentitySteps(ns, sa string) []pluginStep {
 	role := e.n.IAMPrefix + "-" + sa
 	return []pluginStep{
@@ -268,6 +275,9 @@ func (e *tdEnv) podIdentitySteps(ns, sa string) []pluginStep {
 			var ts []tdTarget
 			var rs []string
 			for _, a := range as {
+				if !e.owned(a.Tags) {
+					continue
+				}
 				label := assocLabel(a)
 				if r := e.refuse("Pod Identity association", label, a.Tags); r != "" {
 					rs = append(rs, r)

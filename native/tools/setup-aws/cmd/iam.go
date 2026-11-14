@@ -7,6 +7,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
+	ekstypes "github.com/aws/aws-sdk-go-v2/service/eks/types"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"github.com/spf13/cobra"
@@ -75,10 +76,15 @@ func (e *env) trustPolicy() string {
 }
 
 // roleForSA makes a ServiceAccount's role: the role, its trust and inline
-// policy, and exactly one Pod Identity association pointing at it.
+// policy, and exactly one Pod Identity association pointing at it. An
+// association someone else made stops it before anything is written.
 func (e *env) roleForSA(ctx context.Context, p PodIdentity) error {
 	role := e.names.IAMPrefix + "-" + p.ServiceAccount
 	roleARN := fmt.Sprintf("arn:%s:iam::%s:role/%s", e.names.Partition, e.names.Account, role)
+	assoc, err := e.ownedAssociation(ctx, p.Namespace, p.ServiceAccount)
+	if err != nil {
+		return err
+	}
 	exists, err := e.ownedRole(ctx, role)
 	if err != nil {
 		return err
@@ -109,35 +115,22 @@ func (e *env) roleForSA(ctx context.Context, p PodIdentity) error {
 		return fmt.Errorf("policy of %s: %w", role, err)
 	}
 
-	list, err := e.c.EKS.ListPodIdentityAssociations(ctx, &eks.ListPodIdentityAssociationsInput{
-		ClusterName: aws.String(e.names.Cluster), Namespace: aws.String(p.Namespace), ServiceAccount: aws.String(p.ServiceAccount)})
-	if err != nil {
-		return fmt.Errorf("list Pod Identity associations of %s/%s: %w", p.Namespace, p.ServiceAccount, err)
-	}
-	switch len(list.Associations) {
-	case 0:
+	switch {
+	case assoc == nil:
 		err = e.act(fmt.Sprintf("associate %s/%s with %s", p.Namespace, p.ServiceAccount, role), func() error {
 			_, err := e.c.EKS.CreatePodIdentityAssociation(ctx, &eks.CreatePodIdentityAssociationInput{
 				ClusterName: aws.String(e.names.Cluster), Namespace: aws.String(p.Namespace),
 				ServiceAccount: aws.String(p.ServiceAccount), RoleArn: aws.String(roleARN), Tags: e.tags})
 			return err
 		})
-	case 1:
-		id := list.Associations[0].AssociationId
-		d, derr := e.c.EKS.DescribePodIdentityAssociation(ctx, &eks.DescribePodIdentityAssociationInput{ClusterName: aws.String(e.names.Cluster), AssociationId: id})
-		if derr != nil {
-			return fmt.Errorf("describe association %s: %w", aws.ToString(id), derr)
-		}
-		if cur := aws.ToString(d.Association.RoleArn); cur != roleARN {
-			slog.Warn("association points at another role; repointing it", "sa", p.Namespace+"/"+p.ServiceAccount, "was", cur)
-			err = e.act("repoint association "+aws.ToString(id)+" at "+role, func() error {
-				_, err := e.c.EKS.UpdatePodIdentityAssociation(ctx, &eks.UpdatePodIdentityAssociationInput{
-					ClusterName: aws.String(e.names.Cluster), AssociationId: id, RoleArn: aws.String(roleARN)})
-				return err
-			})
-		}
-	default:
-		return fmt.Errorf("%s/%s has %d Pod Identity associations; expected one", p.Namespace, p.ServiceAccount, len(list.Associations))
+	case aws.ToString(assoc.RoleArn) != roleARN:
+		id := assoc.AssociationId
+		slog.Warn("association points at another role; repointing it", "sa", p.Namespace+"/"+p.ServiceAccount, "was", aws.ToString(assoc.RoleArn))
+		err = e.act("repoint association "+aws.ToString(id)+" at "+role, func() error {
+			_, err := e.c.EKS.UpdatePodIdentityAssociation(ctx, &eks.UpdatePodIdentityAssociationInput{
+				ClusterName: aws.String(e.names.Cluster), AssociationId: id, RoleArn: aws.String(roleARN)})
+			return err
+		})
 	}
 	if err != nil {
 		return fmt.Errorf("association of %s/%s: %w", p.Namespace, p.ServiceAccount, err)
@@ -146,6 +139,35 @@ func (e *env) roleForSA(ctx context.Context, p PodIdentity) error {
 		slog.Info("pod identity ready", "sa", p.Namespace+"/"+p.ServiceAccount, "role", role)
 	}
 	return nil
+}
+
+// ownedAssociation is ns/sa's Pod Identity association, or nil when it has
+// none. Its name is fixed, so one without this deployment's owner tag is
+// someone else's (the cluster owner's own EFS CSI driver or External
+// Secrets, say): that is an error naming it, and it is never repointed at
+// this deployment's role, which teardown deletes from under it.
+func (e *env) ownedAssociation(ctx context.Context, ns, sa string) (*ekstypes.PodIdentityAssociation, error) {
+	list, err := e.c.EKS.ListPodIdentityAssociations(ctx, &eks.ListPodIdentityAssociationsInput{
+		ClusterName: aws.String(e.names.Cluster), Namespace: aws.String(ns), ServiceAccount: aws.String(sa)})
+	if err != nil {
+		return nil, fmt.Errorf("list Pod Identity associations of %s/%s: %w", ns, sa, err)
+	}
+	switch len(list.Associations) {
+	case 0:
+		return nil, nil
+	case 1:
+	default:
+		return nil, fmt.Errorf("%s/%s has %d Pod Identity associations; expected one", ns, sa, len(list.Associations))
+	}
+	id := list.Associations[0].AssociationId
+	d, err := e.c.EKS.DescribePodIdentityAssociation(ctx, &eks.DescribePodIdentityAssociationInput{ClusterName: aws.String(e.names.Cluster), AssociationId: id})
+	if err != nil {
+		return nil, fmt.Errorf("describe association %s: %w", aws.ToString(id), err)
+	}
+	if err := e.owned(fmt.Sprintf("Pod Identity association %s/%s (%s)", ns, sa, aws.ToString(id)), d.Association.Tags); err != nil {
+		return nil, err
+	}
+	return d.Association, nil
 }
 
 // ownedRole reports whether role exists; one without the owner tag is an error.
