@@ -224,7 +224,7 @@ func AteSetupArgs(o Options, kubeContext string) []string {
 		extra = append(extra, "--ateapi-postgres-server-ca-file", o.caFile)
 		// The Auto Mode system node group is tainted, so other pods go to
 		// Auto Mode nodes; this pins every control plane Deployment there,
-		// with the matching toleration (install.sh, AUTO_MODE=on). Not with
+		// with the matching toleration (AUTO_MODE=on). Not with
 		// the bundled PostgreSQL: ate-setup then also needs a dedicated
 		// ate.dev/workloadType=ate-postgres pool, which no cluster here has.
 		if o.AutoMode {

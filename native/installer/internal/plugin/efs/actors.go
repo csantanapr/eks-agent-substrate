@@ -2,8 +2,8 @@ package efs
 
 // Counter actors on per-actor volumes: the templates the efs and s3files
 // plugins add to the counter demo, and the check that an actor's file
-// counter lives on its own access point (eks-talk's demos/efs/verify.sh and
-// verify-move.sh).
+// counter lives on its own access point, also after the actor moves to
+// another node.
 
 import (
 	"context"
@@ -280,10 +280,10 @@ func readCounter(ctx context.Context, base string, timeout time.Duration) (int, 
 	return FileCounter(body)
 }
 
-// RoundTrip is verify.sh for one class: an actor on s gets its own access
+// RoundTrip checks one class: an actor on s gets its own access
 // point; its file counter, which lives on that volume, continues across
 // suspend and resume; deleting the actor deletes the access point. With
-// move it is verify-move.sh too: after the suspend reaches S3, the actor's
+// move it also checks a move: after the suspend reaches S3, the actor's
 // node is cordoned and its pool's workers there deleted, so the resume lands
 // on another node, which mounts the same access point. The node is
 // uncordoned at the end, also on failure.

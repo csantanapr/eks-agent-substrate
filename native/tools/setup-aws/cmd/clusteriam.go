@@ -183,7 +183,7 @@ func (r *clusterRun) ensureRoles(ctx context.Context) error {
 // existing Auto Mode cluster's role, so a rerun brings a cluster made by an
 // older setup-aws up to date. Only a role carrying this deployment's owner
 // tag is changed; any other is refused (logged and left alone), since the
-// cluster may be one setup-aws did not create (create-cluster.sh's).
+// cluster may be one setup-aws did not create (one eksctl made, say).
 func (r *clusterRun) reconcileClusterRole(ctx context.Context) error {
 	if r.cluster == nil || !r.auto {
 		return nil

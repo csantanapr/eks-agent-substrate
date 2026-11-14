@@ -14,7 +14,7 @@ import (
 	ekstypes "github.com/aws/aws-sdk-go-v2/service/eks/types"
 )
 
-// clusterAddon is one EKS add-on of cluster.yaml.
+// clusterAddon is one EKS add-on of the cluster.
 type clusterAddon struct {
 	Name string
 	// Config is the add-on's configuration values (JSON), if any.
@@ -25,7 +25,7 @@ type clusterAddon struct {
 // become Ready first, then coredns and the EBS CSI driver, which stay
 // DEGRADED until nodes exist. Creating an add-on does not wait for it, so
 // all five are created before the node groups and waited for after them
-// (waitReady), which is the ordering create-cluster.sh had to work around.
+// (waitReady).
 //
 // The VPC CNI enforces NetworkPolicy (Substrate ships default-deny policies
 // for ate-system and one per WorkerPool) only with enableNetworkPolicy on.

@@ -1,9 +1,7 @@
 // Package mode3 is the mode3 plugin: mode 3, a proposal for upstream
 // Substrate in csantanapr/substrate. The worker Pod itself is a microVM (Kata
 // Containers on Cloud Hypervisor) and runs actors with gVisor inside, so an
-// escape from gVisor still lands in the guest kernel, not on the node. It is
-// the native form of eks-talk's demos/mode3/deploy.sh, and of its parts of
-// demos/counter/verify.sh and clean.sh.
+// escape from gVisor still lands in the guest kernel, not on the node.
 //
 //   - Needs: the control plane installs the fork's pinned commit with its
 //     images (ghcr.io/csantanapr/substrate) and the NetworkWorkers preview
@@ -82,8 +80,8 @@ func init() {
 	})
 }
 
-// Kata's DaemonSet, the label it puts on a node it is done with, and the
-// bounds demos/mode3/deploy.sh used.
+// Kata's DaemonSet, the label it puts on a node it is done with, and how long
+// to wait for it.
 const (
 	kataDaemonSet   = "ds/kata-deploy"
 	kataNodeLabel   = "katacontainers.io/kata-runtime=true"

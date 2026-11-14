@@ -1,6 +1,6 @@
 // Package openclaw is the openclaw plugin: the OpenClaw always-on agent on
-// Substrate, its gateway state on EFS, the native form of eks-talk's
-// demos/openclaw and the always-on-agent repository's demo/eks/deploy-demo.sh.
+// Substrate, its gateway state on EFS, the native form of the always-on-agent
+// repository's demo/eks/deploy-demo.sh.
 //
 // An always-on gateway holds the chat channel; each conversation's agent is
 // a Substrate actor that suspends when idle and resumes on the next message.

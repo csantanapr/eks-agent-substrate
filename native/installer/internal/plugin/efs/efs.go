@@ -15,7 +15,7 @@ import (
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin"
 )
 
-// Names the plugin's objects use (demos/efs/deploy.sh).
+// Names the plugin's objects use.
 const (
 	ID           = "efs"
 	StorageClass = "efs-ate"
@@ -156,7 +156,7 @@ func EFSStorage(o plugin.Options) Storage {
 	}}
 }
 
-// verify is verify.sh on every counter class and verify-move.sh on gVisor:
+// verify is the round trip on every counter class, and the move on gVisor:
 // about 2 minutes per class, plus up to 10 for the move, which waits for the
 // suspend's snapshot to reach S3 (5 to 6 minutes on EKS).
 func verify(ctx context.Context, w io.Writer, o plugin.Options) error {
@@ -173,7 +173,7 @@ func verify(ctx context.Context, w io.Writer, o plugin.Options) error {
 	return nil
 }
 
-// remove is demos/efs/clean.sh's Kubernetes half: the counter-efs actors
+// remove is the plugin's Kubernetes half: the counter-efs actors
 // (their access points go with them) and templates, the StorageClass, the
 // CSIDriverConfig and Substrate's controller. `setup-aws plugin efs
 // --delete` then deletes the add-on, the role and the file system.

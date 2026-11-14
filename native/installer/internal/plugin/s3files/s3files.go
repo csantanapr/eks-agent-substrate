@@ -101,7 +101,7 @@ func storage(o plugin.Options) efs.Storage {
 	}}
 }
 
-// verify is demos/efs/verify.sh with STORAGE=s3files on every counter class:
+// verify is the efs plugin's round trip on S3 Files, on every counter class:
 // about 2 minutes per class.
 func verify(ctx context.Context, w io.Writer, o plugin.Options) error {
 	k, err := efs.BuildAte(ctx, w, o)

@@ -23,8 +23,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
 
-// createClusterInput is the EKS cluster create-cluster.sh's eksctl config
-// describes, with two deliberate differences: the cluster gets only the
+// createClusterInput is the EKS cluster, as eksctl would make it from the
+// same settings, with two deliberate differences: the cluster gets only the
 // private subnets (see vpc.go), and the caller's admin access is an explicit
 // access entry (ensureAccess) instead of EKS's creator bootstrap, so a rerun
 // can check and repair it.

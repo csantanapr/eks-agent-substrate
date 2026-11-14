@@ -1,8 +1,7 @@
 package cmd
 
 // `setup-aws plugin efs`: the AWS half of the installer's efs plugin
-// (installer/internal/plugin/efs), the native form of eks-talk's
-// demos/efs/deploy.sh. It makes
+// (installer/internal/plugin/efs). It makes
 //
 //   - one encrypted Amazon EFS file system, creation token <cluster>-actors;
 //   - the security group <cluster>-efs, which admits NFS (tcp 2049) only from
@@ -58,8 +57,7 @@ const (
 const efsAddonConfig = `{"node":{"volumeMounts":[{"mountPath":"/var/lib/ate","mountPropagation":"Bidirectional","name":"ate-base"}],` +
 	`"volumes":[{"hostPath":{"path":"/var/lib/ate","type":"DirectoryOrCreate"},"name":"ate-base"}]}}`
 
-// Names of the efs plugin, matching lib/common.sh (EFS_TOKEN, EFS_SG_NAME)
-// and role_for_sa, so the scripts' resources are recognised.
+// Names of the efs plugin's resources.
 func (n Names) EFSToken() string          { return n.Cluster + "-actors" }
 func (n Names) EFSGroup() string          { return n.Cluster + "-efs" }
 func (n Names) EFSControllerRole() string { return n.IAMPrefix + "-" + efsControllerSA }

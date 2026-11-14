@@ -6,13 +6,13 @@
 # (and kata-clh) boots each Pod as a lightweight VM on the nodes kata-deploy
 # has labeled katacontainers.io/kata-runtime=true.
 #
-# These are the kata-deploy chart's objects, rendered once from the chart that
-# demos/mode3/deploy.sh installed with helm (kata-deploy-3.32.0.tgz, sha256
+# These are the kata-deploy chart's objects, rendered once from the chart
+# (kata-deploy-3.32.0.tgz, sha256
 # 901c3895d972d0f87df72f06277504acd81c48042631d3677e989db8c4c70aa6):
 #
 #   helm template kata-deploy kata-deploy-3.32.0.tgz -n kube-system -f values.yaml
 #
-# with the script's values, and every document carrying a helm.sh/hook
+# with the values below, and every document carrying a helm.sh/hook
 # annotation dropped. Those hooks only delete the RBAC below once an uninstall
 # is done; the plugin's Remove does that itself. The installer applies this
 # file with kubectl: nothing runs helm.

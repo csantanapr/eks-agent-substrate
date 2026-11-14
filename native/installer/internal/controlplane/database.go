@@ -289,7 +289,7 @@ $$;
 }
 
 // bootstrapSchema runs pkg/postgressetup/setup.sql from a Job inside the
-// cluster (the database has no public endpoint), as db-bootstrap.sh does.
+// cluster (the database has no public endpoint).
 // The master password lives only in a Secret in a throwaway namespace for
 // the length of the Job; removeBootstrap deletes the Secret, the Job and the
 // namespace afterwards, also on failure and when ctx is cancelled.
