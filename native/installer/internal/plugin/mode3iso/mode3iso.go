@@ -28,12 +28,14 @@ import (
 	"bytes"
 	"context"
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"strings"
 	"time"
 
+	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/awsx"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/demo"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin/mode3"
@@ -81,7 +83,7 @@ func init() {
 		Summary: "Mode 3 with each worker Pod an EKS Auto Mode isolated sandbox (RuntimeClass isolated-sandbox), " +
 			"on nodes Auto Mode launches for them (NodePool ate-isolated). Needs Auto Mode and mode 3, which it turns on; " +
 			"adds a counter pool that it checks.",
-		Order: mode3.Order + 1, Minutes: 12, Requires: []string{mode3.ID},
+		Order: mode3.Order + 1, Minutes: 12, Requires: []string{mode3.ID}, NeedsAutoMode: needsAutoMode,
 		// One node for the two worker Pods, launched by Auto Mode (an
 		// m8a.large on-demand, with the Auto Mode fee).
 		HourlyUSD: 0.12,
@@ -89,12 +91,89 @@ func init() {
 	})
 }
 
-// errNoAutoMode refuses a cluster without Auto Mode, which has neither the
-// RuntimeClass nor NodePools.
+// needsAutoMode is why the plugin needs EKS Auto Mode (Plugin.NeedsAutoMode):
+// the wizard offers it only there, and Run refuses it anywhere else.
+const needsAutoMode = "needs EKS Auto Mode: its isolated-sandbox RuntimeClass and NodePool come from Auto Mode"
+
+// errNoAutoMode is the same refusal from Deploy and Verify themselves.
 func errNoAutoMode(cluster string) error {
-	return fmt.Errorf("%s needs an EKS Auto Mode cluster: RuntimeClass %s and NodePools come from Auto Mode, and %s does not run it",
-		ID, RuntimeClass, cluster)
+	return fmt.Errorf("plugin %s %s; %s has EKS Auto Mode off", ID, needsAutoMode, cluster)
 }
+
+// createdHere reports a cluster `setup-aws create cluster` made: its role
+// carries the auto-mode-node-tags policy, which lets Auto Mode launch nodes
+// of a NodeClass with the deployment's tags. On another cluster that would
+// fail validation, so the NodeClass gets no tags there, as the StorageClass
+// gets none. Tests replace it.
+var createdHere = func(ctx context.Context, o plugin.Options) (bool, error) {
+	c, err := awsx.New(ctx, o.Profile, o.Region)
+	if err != nil {
+		return false, err
+	}
+	cl, err := c.Describe(ctx, o.Cluster)
+	if err != nil {
+		return false, err
+	}
+	return cl.CreatedByInstaller(o.Region), nil
+}
+
+// nodeClassTries bounds the wait for NodeClass ate-isolated to be Ready, at
+// mode3.Interval (2s): 3 minutes.
+const nodeClassTries = 90
+
+// NodeClassReady reads `kubectl get nodeclass -o json`: whether it is Ready,
+// and else the message of its first condition that is False.
+func NodeClassReady(b []byte) (bool, string, error) {
+	var nc struct {
+		Status struct {
+			Conditions []struct{ Type, Status, Reason, Message string } `json:"conditions"`
+		} `json:"status"`
+	}
+	if err := json.Unmarshal(b, &nc); err != nil {
+		return false, "", fmt.Errorf("read NodeClass %s: %w", NodePoolName, err)
+	}
+	why := ""
+	for _, c := range nc.Status.Conditions {
+		if c.Type == "Ready" && c.Status == "True" {
+			return true, "", nil
+		}
+		if c.Status == "False" && c.Type != "Ready" && why == "" {
+			why = c.Type + ": " + c.Reason + ": " + c.Message
+		}
+	}
+	return false, why, nil
+}
+
+// waitNodeClass waits for NodeClass ate-isolated to be Ready: a NodeClass
+// Auto Mode cannot validate launches no node, and the worker Pods would
+// wait for one without saying why.
+func waitNodeClass(ctx context.Context, w io.Writer, o plugin.Options) error {
+	why := "no status yet"
+	for i := 0; i < nodeClassTries; i++ {
+		var out bytes.Buffer
+		if err := plugin.Kubectl(ctx, io.Discard, o, nil, &out, "get", "nodeclass", NodePoolName, "-o", "json"); err != nil {
+			return err
+		}
+		ok, msg, err := NodeClassReady(out.Bytes())
+		if err != nil {
+			return err
+		}
+		if ok {
+			fmt.Fprintln(w, "NodeClass "+NodePoolName+" is Ready")
+			return nil
+		}
+		if msg != "" {
+			why = msg
+		}
+		if err := sleep(ctx); err != nil {
+			return err
+		}
+	}
+	return fmt.Errorf("NodeClass %s is not Ready (%s); on a cluster setup-aws created, run `setup-aws create cluster` again: it gives the cluster role the auto-mode-node-tags policy tagged NodeClasses need", NodePoolName, why)
+}
+
+// NoNodeTagsLine is printed on a cluster setup-aws did not create.
+const NoNodeTagsLine = "The cluster was not created by setup-aws, so its role may not let Auto Mode add tags: the isolated nodes get no deployment tags"
 
 // Bounds demos/mode3-iso/deploy.sh used: Auto Mode launches the nodes while
 // the worker Pods wait.
@@ -133,6 +212,14 @@ func deploy(ctx context.Context, w io.Writer, o plugin.Options) error {
 	if err != nil {
 		return err
 	}
+	here, err := createdHere(ctx, o)
+	if err != nil {
+		return err
+	}
+	if !here {
+		fmt.Fprintln(w, NoNodeTagsLine)
+		tags = nil
+	}
 	nc, err := NodeClass(src.Bytes(), tags)
 	if err != nil {
 		return err
@@ -142,6 +229,9 @@ func deploy(ctx context.Context, w io.Writer, o plugin.Options) error {
 		if err := plugin.Kubectl(ctx, w, o, m, nil, "apply", "-f", "-"); err != nil {
 			return err
 		}
+	}
+	if err := waitNodeClass(ctx, w, o); err != nil {
+		return err
 	}
 
 	fmt.Fprintln(w, AteletName+" on the isolated nodes")

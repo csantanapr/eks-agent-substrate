@@ -99,6 +99,28 @@ func TestNodePool(t *testing.T) {
 	}
 }
 
+// NodeClass statuses as Auto Mode writes them: Ready, and the validation
+// failure a cluster role without auto-mode-node-tags gives a tagged one.
+const (
+	testReady   = `{"status":{"conditions":[{"type":"SubnetsReady","status":"True"},{"type":"Ready","status":"True"}]}}`
+	testInvalid = `{"status":{"conditions":[{"type":"SubnetsReady","status":"True"},
+  {"type":"ValidationSucceeded","status":"False","reason":"CreateLaunchTemplateAuthCheckFailed","message":"Controller isn't authorized to call ec2:CreateLaunchTemplate"},
+  {"type":"Ready","status":"False","reason":"UnhealthyDependents","message":"ValidationSucceeded=False"}]}}`
+)
+
+func TestNodeClassReady(t *testing.T) {
+	if ok, _, err := NodeClassReady([]byte(testReady)); !ok || err != nil {
+		t.Errorf("Ready: %v %v", ok, err)
+	}
+	ok, why, err := NodeClassReady([]byte(testInvalid))
+	if ok || err != nil || why != "ValidationSucceeded: CreateLaunchTemplateAuthCheckFailed: Controller isn't authorized to call ec2:CreateLaunchTemplate" {
+		t.Errorf("invalid: %v %q %v", ok, why, err)
+	}
+	if ok, _, _ := NodeClassReady([]byte(`{}`)); ok {
+		t.Error("no status counted as Ready")
+	}
+}
+
 // testNodeClass is the shape of Auto Mode's default NodeClass.
 const testNodeClass = `{"apiVersion":"eks.amazonaws.com/v1","kind":"NodeClass",
  "metadata":{"name":"default","finalizers":["eks.amazonaws.com/termination"],"annotations":{"eks.amazonaws.com/nodeclass-hash":"1"}},
@@ -185,9 +207,13 @@ type fake struct {
 
 func newFake(t *testing.T) *fake {
 	f := &fake{t: t, out: map[string][]string{}, stdin: map[string]string{}, tmpls: map[string]string{"counter-mode3": "ecr/c1/counter@sha256:c0ffee"}}
-	prevExec, prevDemo, prevInterval := plugin.Exec, mode3.Demo, mode3.Interval
-	t.Cleanup(func() { plugin.Exec, mode3.Demo, mode3.Interval = prevExec, prevDemo, prevInterval })
+	prevExec, prevDemo, prevInterval, prevHere := plugin.Exec, mode3.Demo, mode3.Interval, createdHere
+	t.Cleanup(func() {
+		plugin.Exec, mode3.Demo, mode3.Interval, createdHere = prevExec, prevDemo, prevInterval, prevHere
+	})
 	mode3.Interval = 0
+	createdHere = func(context.Context, plugin.Options) (bool, error) { return true, nil }
+	f.out["get nodeclass ate-isolated"] = []string{testReady}
 	plugin.Exec = func(_ context.Context, w io.Writer, c plugin.Cmd) error {
 		if len(c.Argv) < 3 || strings.Join(c.Argv[:3], " ") != "kubectl --kubeconfig /kc" {
 			return fmt.Errorf("not the installer's kubectl: %q", c.Argv)
@@ -271,7 +297,7 @@ func (f *fake) has(entries ...string) error {
 
 func TestRegistered(t *testing.T) {
 	p, ok := plugin.Get(ID)
-	if !ok || len(p.Requires) != 1 || p.Requires[0] != mode3.ID || p.SetupAWS || p.Needs.Source != nil {
+	if !ok || len(p.Requires) != 1 || p.Requires[0] != mode3.ID || p.SetupAWS || p.Needs.Source != nil || p.NeedsAutoMode == "" {
 		t.Errorf("plugin = %+v", p)
 	}
 	if err := plugin.Check(); err != nil {
@@ -286,7 +312,7 @@ func TestDeploy(t *testing.T) {
 	f := newFake(t)
 	for _, fn := range []func(context.Context, io.Writer, plugin.Options) error{deploy, verify} {
 		err := fn(context.Background(), io.Discard, testOptions(t, false))
-		if err == nil || !strings.Contains(err.Error(), "needs an EKS Auto Mode cluster") || len(f.log) != 0 {
+		if err == nil || !strings.Contains(err.Error(), "needs EKS Auto Mode") || !strings.Contains(err.Error(), "c1 has EKS Auto Mode off") || len(f.log) != 0 {
 			t.Errorf("no Auto Mode: err = %v, ran %q", err, f.log)
 		}
 	}
@@ -308,7 +334,8 @@ func TestDeploy(t *testing.T) {
 		t.Errorf("first applies:\n%s", strings.Join(f.applies[:min(2, len(f.applies))], "\n"))
 	}
 	if err := f.has("kubectl get runtimeclass isolated-sandbox", "kubectl get nodepool general-purpose -o json", "kubectl get nodeclass default -o json",
-		"kubectl apply -f -", "kubectl apply -f -", "kubectl apply -f -", "kubectl -n ate-system get ds atelet -o json", "kubectl apply -f -", "build kubectl-ate",
+		"kubectl apply -f -", "kubectl apply -f -", "kubectl get nodeclass ate-isolated -o json",
+		"kubectl apply -f -", "kubectl -n ate-system get ds atelet -o json", "kubectl apply -f -", "build kubectl-ate",
 		"ate get actor-template counter-mode3 -a ate-demo-counter-mode3", "kubectl apply -f -", "ate create atespace ate-demo-counter-iso",
 		"ate get actor-template counter-iso", "kubectl -n ate-demo-counter-iso rollout status deploy/counter-iso --timeout=10m",
 		"kubectl -n ate-system rollout status ds/atelet-iso --timeout=5m", "ate create actor-template -f", "golden"); err != nil {
@@ -321,6 +348,32 @@ func TestDeploy(t *testing.T) {
 	}
 	if !strings.Contains(f.stdin["template"], "image: ecr/c1/counter@sha256:c0ffee") {
 		t.Errorf("template:\n%s", f.stdin["template"])
+	}
+
+	// A cluster setup-aws did not create: the NodeClass keeps only its
+	// source's tags, and the output says so.
+	f = newFake(t)
+	createdHere = func(context.Context, plugin.Options) (bool, error) { return false, nil }
+	f.out["get nodepool general-purpose"] = []string{testGeneralPurpose}
+	f.out["get nodeclass default"] = []string{testNodeClass}
+	f.out["-n ate-system get ds atelet"] = []string{testAtelet}
+	out.Reset()
+	if err := deploy(context.Background(), &out, testOptions(t, true)); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(f.applies[0], `"tags":{"auto-delete":"yes","team":"a"}`) || !strings.Contains(out.String(), NoNodeTagsLine) {
+		t.Errorf("foreign cluster: NodeClass %s\n%s", f.applies[0], out.String())
+	}
+
+	// A NodeClass Auto Mode cannot validate stops the deploy with its reason
+	// and the fix, before atelet-iso or the pool.
+	f = newFake(t)
+	f.out["get nodepool general-purpose"] = []string{testGeneralPurpose}
+	f.out["get nodeclass default"] = []string{testNodeClass}
+	f.out["get nodeclass ate-isolated"] = []string{testInvalid}
+	err := deploy(context.Background(), io.Discard, testOptions(t, true))
+	if err == nil || !strings.Contains(err.Error(), "isn't authorized to call ec2:CreateLaunchTemplate") || !strings.Contains(err.Error(), "setup-aws create cluster") || len(f.applies) != 2 {
+		t.Errorf("invalid NodeClass: err %v, %d applies", err, len(f.applies))
 	}
 
 	// No mode 3 template: mode3-iso says to deploy mode 3 first.
