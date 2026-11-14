@@ -480,6 +480,14 @@ func (t *tfRDS) DeleteDBInstance(_ context.Context, in *rds.DeleteDBInstanceInpu
 		return nil, apiErr("InvalidParameterCombination")
 	}
 	o.deleting, o.pending = true, 1
+	// DeleteAutomatedBackups: RDS removes the instance's automated snapshots
+	// itself, a while after the instance (each one's pending reads, which
+	// a test sets; they stay "available" until then, as seen live).
+	for _, s := range t.f().objs {
+		if s.kind == "rds snapshot" && s.name == id && strings.HasPrefix(s.id, "rds:") {
+			s.deleting = true
+		}
+	}
 	return &rds.DeleteDBInstanceOutput{}, nil
 }
 
@@ -491,6 +499,20 @@ func (t *tfRDS) DescribeDBSnapshots(_ context.Context, in *rds.DescribeDBSnapsho
 	defer f.mu.Unlock()
 	if f.deny["DescribeDBSnapshots"] {
 		return nil, apiErr("AccessDenied")
+	}
+	// By instance (teardown): its automated snapshots; DBInstanceNotFound
+	// once neither the instance nor a snapshot of it is left.
+	if db := aws.ToString(in.DBInstanceIdentifier); db != "" {
+		var out []rdstypes.DBSnapshot
+		for _, o := range f.list("rds snapshot") {
+			if o.name == db && strings.HasPrefix(o.id, "rds:") && aws.ToString(in.SnapshotType) == "automated" {
+				out = append(out, rdstypes.DBSnapshot{DBSnapshotIdentifier: aws.String(o.id), Status: aws.String(o.state)})
+			}
+		}
+		if len(out) == 0 && f.get("db", db) == nil {
+			return nil, apiErr("DBInstanceNotFound")
+		}
+		return &rds.DescribeDBSnapshotsOutput{DBSnapshots: out}, nil
 	}
 	id := aws.ToString(in.DBSnapshotIdentifier)
 	o := f.get("rds snapshot", id)
