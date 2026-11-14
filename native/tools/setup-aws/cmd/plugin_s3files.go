@@ -439,19 +439,21 @@ func (e *tdEnv) s3FileSystems(ctx context.Context) (*s3filesClients, []s3ftypes.
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	tags := make([]map[string]string, len(fss))
-	for i, f := range fss {
+	var live []s3ftypes.ListFileSystemsDescription
+	var tags []map[string]string
+	for _, f := range fss {
 		out, err := c.S3Files.GetFileSystem(ctx, &s3files.GetFileSystemInput{FileSystemId: f.FileSystemId})
 		if tdGone(err) {
-			tags[i] = map[string]string{}
+			// Listed but gone: a delete that just finished. Untagged, it
+			// would read as another owner's and be refused.
 			continue
 		}
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("get S3 file system %s: %w", aws.ToString(f.FileSystemId), err)
 		}
-		tags[i] = s3fTagMap(out.Tags)
+		live, tags = append(live, f), append(tags, s3fTagMap(out.Tags))
 	}
-	return c, fss, tags, nil
+	return c, live, tags, nil
 }
 
 func s3AccessPoints(ctx context.Context, c s3filesAPI, fsID string) ([]s3ftypes.ListAccessPointsDescription, error) {

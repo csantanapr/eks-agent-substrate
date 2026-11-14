@@ -38,6 +38,9 @@ type fakeNFS struct {
 	// s3CreateFails makes the first N S3 Files CreateFileSystem calls fail,
 	// as they do while a new role cannot be assumed yet.
 	s3CreateFails int
+	// s3Vanished are S3 file systems ListFileSystems still returns and
+	// GetFileSystem reports gone: a delete that just finished.
+	s3Vanished map[string]bool
 }
 
 type nfsFS struct {
@@ -299,7 +302,7 @@ func (f *fS3F) ListFileSystems(_ context.Context, in *s3files.ListFileSystemsInp
 }
 func (f *fS3F) GetFileSystem(_ context.Context, in *s3files.GetFileSystemInput, _ ...func(*s3files.Options)) (*s3files.GetFileSystemOutput, error) {
 	x := settleFS(f.s3fss, aws.ToString(in.FileSystemId))
-	if x == nil {
+	if x == nil || f.s3Vanished[aws.ToString(in.FileSystemId)] {
 		return nil, apiErr("ResourceNotFoundException")
 	}
 	return &s3files.GetFileSystemOutput{FileSystemId: aws.String(x.id), FileSystemArn: aws.String("arn:aws:s3files:us-west-2:111122223333:file-system/" + x.id),
