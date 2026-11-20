@@ -7,6 +7,10 @@ package mode3iso
 // labeled ate.dev/pool=nitro and eks.amazonaws.com/nitro-sandbox=true and
 // tainted ate.dev/sandboxClass=nitro; their AMI registers the
 // isolated-sandbox handler and advertises eks.amazonaws.com/nitro-sandbox.
+// With setup-aws's KARPENTER_NODE_OVERLAY=on the nitro pool is a Karpenter
+// NodePool of the same labels, taint and AMI instead, which starts with no
+// node: Karpenter launches nodes for counter-iso's worker Pods, so deploy
+// checks no capacity there (nitroArch).
 //
 //   - Deploy: RuntimeClass isolated-sandbox, the one EKS Auto Mode defines,
 //     created and labeled as the installer's when the cluster has none, and
@@ -336,6 +340,55 @@ func NitroNodes(nodesJSON []byte, replicas int) (arch string, err error) {
 	return archs[0], nil
 }
 
+// nitroArch is the CPU architecture of the nitro pool's nodes (nodesJSON,
+// `kubectl get nodes -l ate.dev/pool=nitro -o json`). On the nitro node
+// group their Nitro sandbox capacity must cover replicas worker Pods
+// (NitroNodes). The nitro pool of KARPENTER_NODE_OVERLAY=on is a Karpenter
+// NodePool (o.KarpenterPools) instead. Karpenter adds nodes to it, up to
+// NITRO_NODES, when the worker Pods need them, and a node it has may still
+// be booting or draining. So there the capacity is not checked, and the
+// deploy waits for the worker Pods to run. The architecture is the one the
+// NodePool requires (o.NodePoolArchs), and each node the pool has now must
+// be of it.
+func nitroArch(w io.Writer, o plugin.Options, nodesJSON []byte, replicas int) (string, error) {
+	if !slices.Contains(o.KarpenterPools, NitroPool) {
+		arch, err := NitroNodes(nodesJSON, replicas)
+		if err != nil {
+			return "", err
+		}
+		fmt.Fprintf(w, "The nodes labeled %s=%s run %d or more Nitro sandboxes, on %s\n", PoolLabel, NitroPool, replicas, arch)
+		return arch, nil
+	}
+	var nodes struct {
+		Items []struct {
+			Metadata struct {
+				Name   string            `json:"name"`
+				Labels map[string]string `json:"labels"`
+			} `json:"metadata"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(nodesJSON, &nodes); err != nil {
+		return "", fmt.Errorf("read the nodes labeled %s=%s: %w", PoolLabel, NitroPool, err)
+	}
+	archs := plugin.ArchsOf(o.NodePoolArchs, NitroPool)
+	if len(archs) != 1 {
+		return "", fmt.Errorf("the Karpenter NodePool of the %s pool requires the %s values %q: mode3-iso builds its counter image for one architecture", NitroPool, archKey, archs)
+	}
+	for _, n := range nodes.Items {
+		if a := n.Metadata.Labels[archKey]; a != archs[0] {
+			return "", fmt.Errorf("node %s of the %s pool has %s=%q, and the pool's Karpenter NodePool requires %s: mode3-iso builds its counter image for one architecture", n.Metadata.Name, NitroPool, archKey, a, archs[0])
+		}
+	}
+	if len(nodes.Items) == 0 {
+		fmt.Fprintf(w, "The Karpenter NodePool of the %s pool has no node yet: Karpenter launches %s nodes for %s's %d worker Pods, and their Nitro sandbox capacity shows when they run\n",
+			NitroPool, archs[0], Iso.Name, replicas)
+	} else {
+		fmt.Fprintf(w, "The Karpenter NodePool of the %s pool has %d %s nodes now: Karpenter adds more, up to NITRO_NODES, when %s's %d worker Pods need them, so their Nitro sandbox capacity is not checked here\n",
+			NitroPool, len(nodes.Items), archs[0], Iso.Name, replicas)
+	}
+	return archs[0], nil
+}
+
 // IsoNodeGroup is the counter pool on the nitro node group: counter-iso's
 // Namespace, WorkerPool and template, its workers selecting and tolerating
 // the nitro nodes (nodeGroupPool).
@@ -400,11 +453,10 @@ func deployNodeGroup(ctx context.Context, w io.Writer, o plugin.Options, tree st
 	if err := plugin.Kubectl(ctx, w, o, nil, &nodes, "get", "nodes", "-l", PoolLabel+"="+NitroPool, "-o", "json"); err != nil {
 		return err
 	}
-	arch, err := NitroNodes(nodes.Bytes(), replicas)
+	arch, err := nitroArch(w, o, nodes.Bytes(), replicas)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(w, "The nodes labeled %s=%s run %d or more Nitro sandboxes, on %s\n", PoolLabel, NitroPool, replicas, arch)
 	if err := makeRuntimeClass(ctx, w, o, rc); err != nil {
 		return err
 	}

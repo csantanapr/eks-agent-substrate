@@ -162,8 +162,17 @@ func (b builder) createCluster(s *state.Setup) execx.Spec {
 	if slices.Contains(s.NodeGroups(), nodegroups.Nitro) {
 		settings = append(settings, "NITRO_AMI_ID="+s.NewClusterConfig.NitroAMIID)
 	}
+	// And Karpenter, which makes the gvisor group a NodePool, and its
+	// NodeOverlay, which makes the microvm and nitro groups NodePools too.
+	karpenter := s.NewClusterConfig.KarpenterOn()
+	if karpenter {
+		settings = append(settings, "KARPENTER="+nodegroups.KarpenterOn)
+	}
+	if s.NewClusterConfig.NodeOverlayOn() {
+		settings = append(settings, "KARPENTER_NODE_OVERLAY="+nodegroups.KarpenterOn)
+	}
 	return b.setupAWSSpec(s, "setup-aws create cluster", settings, s.NewClusterConfig.Env(),
-		simPhases(phases.ClusterFor(s.NewClusterConfig.NodeGroupType), simStart(s, "Creating the cluster..."),
+		simPhases(phases.ClusterFor(s.NewClusterConfig.NodeGroupType, karpenter), simStart(s, "Creating the cluster..."),
 			`level=INFO msg="Cluster ready." cluster=`+s.ClusterName+` created=27 changed=0 took=19m40s`),
 		"create", "cluster")
 }

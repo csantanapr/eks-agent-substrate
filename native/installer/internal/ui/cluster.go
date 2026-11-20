@@ -182,7 +182,7 @@ func (m *Model) decide(c awsx.Cluster, res probe.Result) tea.Cmd {
 		m.cl.mode = "installed"
 	default:
 		m.cl.mode = "list"
-		m.s.SelectCluster(c, res.Pools)
+		m.s.SelectCluster(c, res.Pools, res.NodePools, res.Karpenter)
 		return m.commit()
 	}
 	return nil

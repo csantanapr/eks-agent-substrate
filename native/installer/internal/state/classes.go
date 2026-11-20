@@ -24,9 +24,13 @@ package state
 // that runs on it. So Auto Mode with the bundled PostgreSQL makes only the
 // sandbox groups, and with the nitro class alone on Auto Mode's nodes no
 // node group.
-// A connected cluster's node groups are the ones its nodes are labeled with
-// (Setup.ClusterPools), and a class or plugin whose nodes are missing is
-// refused.
+// With KARPENTER=on (no Auto Mode) the rule is the same, and setup-aws makes
+// the gvisor group as a Karpenter NodePool, and with KARPENTER_NODE_OVERLAY=on
+// the microvm and nitro groups too.
+// A connected cluster's node groups are the ones its nodes are labeled with,
+// plus the Karpenter NodePools this installer made, which can have no node
+// yet (Setup.ClusterPools), and a class or plugin whose nodes are missing
+// is refused.
 
 import (
 	"fmt"
@@ -204,6 +208,55 @@ func (s *Setup) NodeGroups() []string {
 	return out
 }
 
+// karpenterNodes are the node groups plugin p runs on that are Karpenter
+// NodePools, when p cannot run on Karpenter's nodes (NoKarpenter): those
+// KARPENTER makes NodePools on a new cluster, those a connected cluster has
+// as NodePools.
+func (s *Setup) karpenterNodes(p plugin.Plugin) []string {
+	if p.NoKarpenter == "" {
+		return nil
+	}
+	var out []string
+	for _, n := range p.Nodes {
+		if (s.ClusterIsNew && s.NewClusterConfig.IsPool(n)) || (!s.ClusterIsNew && slices.Contains(s.ClusterNodePools, n)) {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// ConnectedGroups splits a connected cluster's node groups (NodeGroups) into
+// the node groups and the ones that are Karpenter NodePools
+// (ClusterNodePools).
+func (s *Setup) ConnectedGroups() (groups, nodePools []string) {
+	for _, g := range s.NodeGroups() {
+		if slices.Contains(s.ClusterNodePools, g) {
+			nodePools = append(nodePools, g)
+		} else {
+			groups = append(groups, g)
+		}
+	}
+	return groups, nodePools
+}
+
+// TagsProblem is why `setup-aws create cluster` refuses TAGS for a cluster
+// with KARPENTER=on (karpenter) or without (nodegroups.CheckTags), short
+// enough for the Settings row, or "": a key setup-aws sets itself, or with
+// karpenter a key Karpenter sets on its nodes.
+func TagsProblem(tags string, karpenter bool) string {
+	for _, kv := range strings.Fields(tags) {
+		if nodegroups.CheckTags(kv, karpenter) == nil {
+			continue
+		}
+		k, _, _ := strings.Cut(kv, "=")
+		if strings.HasPrefix(k, "agent-substrate-on-eks/") {
+			return k + " is a key setup-aws sets itself: remove it"
+		}
+		return k + " is a key Karpenter sets itself: remove it"
+	}
+	return ""
+}
+
 // ClassProblem is why class c cannot be chosen for a cluster with autoMode
 // and this NITRO_COMPUTE, or "": the AWS Nitro sandbox needs Auto Mode
 // (nitroCompute plugin.NitroAutoMode), and on a connected cluster (pools are
@@ -225,11 +278,15 @@ func ClassProblem(c string, autoMode, newCluster bool, cluster string, pools []s
 
 // PluginProblem is why plugin p cannot be chosen, with chosen already
 // chosen, on s's cluster with s's sandbox classes, or "": it needs Auto
-// Mode, or the RDS database when the run uses the bundled PostgreSQL, or
-// nodes of a node group the cluster lacks or the run does not make,
-// or (a plugin built on the counter demo) a gvisor or microvm class to run
-// the demo on. What p requires counts too. A new cluster is never short of
-// the system group: a plugin that runs on it makes it (nodegroups.For).
+// Mode, or cannot run on Karpenter's nodes (NoKarpenter) and a node group it
+// runs on is a Karpenter NodePool, or needs the RDS database when the run
+// uses the bundled
+// PostgreSQL, or nodes of a node group the cluster lacks or the run does
+// not make, or (a plugin built on the counter demo) a gvisor or microvm
+// class to run the demo on. What p requires counts too. A new cluster is
+// never short of the system group: a plugin that runs on it makes it
+// (nodegroups.For). A pool a Karpenter NodePool makes counts as a node
+// group: its nodes come when the Pods need them.
 func (s *Setup) PluginProblem(p plugin.Plugin, chosen []string) string {
 	if why := p.AutoModeProblem(plugin.Options{AutoMode: s.AutoMode, NitroCompute: s.NewClusterConfig.NitroCompute}); why != "" {
 		return why + "; " + s.ClusterName + " has Auto Mode off"
@@ -243,6 +300,18 @@ func (s *Setup) PluginProblem(p plugin.Plugin, chosen []string) string {
 		return err.Error()
 	}
 	for _, q := range ps {
+		if pools := s.karpenterNodes(q); len(pools) > 0 {
+			if s.ClusterIsNew {
+				// KARPENTER makes only gvisor a NodePool; the others are
+				// KARPENTER_NODE_OVERLAY's.
+				setting, row := "KARPENTER", "Karpenter"
+				if slices.ContainsFunc(pools, func(g string) bool { return !nodegroups.IsKarpenterPool(g, false) }) {
+					setting, row = "KARPENTER_NODE_OVERLAY", "Karpenter overlay"
+				}
+				return fmt.Sprintf("%s; %s makes the %s node group a Karpenter NodePool (Settings: %s)", q.NoKarpenter, setting, strings.Join(pools, " and "), row)
+			}
+			return fmt.Sprintf("%s; the %s node group of %s is a Karpenter NodePool", q.NoKarpenter, strings.Join(pools, " and "), s.ClusterName)
+		}
 		if q.NeedsRDS != "" && s.Database == DatabaseBundled {
 			return q.NeedsRDS + "; the run uses the bundled PostgreSQL (Settings: Database)"
 		}

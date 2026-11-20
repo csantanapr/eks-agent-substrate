@@ -56,6 +56,16 @@ func TestCounterImageBuildsAndPushesLikeDeploy(t *testing.T) {
 	if _, err := CounterImage(context.Background(), io.Discard, o, tree, "microvm", "t"); err == nil || len(f.pushed) != 0 {
 		t.Errorf("mixed architectures: err = %v, pushed %q", err, f.pushed)
 	}
+
+	// A pool with a Karpenter NodePool and no node yet: the NodePool's
+	// architecture, as Deploy does.
+	f = newFake(t)
+	f.archs = ""
+	useFake(t, f)
+	o.PoolArchs = map[string][]string{"microvm": {"arm64"}}
+	if _, err := CounterImage(context.Background(), io.Discard, o, tree, "microvm", "t"); err != nil || len(f.pushed) != 1 || !strings.Contains(f.pushed[0], "|arm64|") {
+		t.Errorf("a nodeless NodePool: err = %v, pushed %q", err, f.pushed)
+	}
 }
 
 // Both ways: CounterImageFor builds for the architecture it is given, not

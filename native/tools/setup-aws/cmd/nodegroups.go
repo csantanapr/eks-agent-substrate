@@ -37,8 +37,20 @@ type nodeGroupSpec struct {
 	NodeLabels map[string]string
 	Taints     []ekstypes.Taint
 	// Image is the AMI the group's launch template names (groupImage), or
-	// nil when EKS picks it (a managed group without NODE_AMI_ID).
+	// nil when EKS picks it (a managed group without NODE_AMI_ID). A
+	// Karpenter NodePool's is its EC2NodeClass's AMI.
 	Image *nodeImage
+	// Pool is a Karpenter NodePool (KARPENTER=on), not a node group: its
+	// nodes come and go, up to Desired (*_NODES) of them.
+	Pool bool
+}
+
+// noun names g in messages: "<name> node group", or "<name> NodePool".
+func (g nodeGroupSpec) noun() string {
+	if g.Pool {
+		return g.Name + " NodePool"
+	}
+	return g.Name + " node group"
 }
 
 // groupExists reports whether node group name exists as a group of the
@@ -54,14 +66,45 @@ func (r *clusterRun) groupExists(name string) bool {
 // groups are the node groups NODE_GROUPS names, of the system, gvisor,
 // microvm and nitro ones (allGroups), in that order: on an Auto Mode cluster
 // any of them, or none (nodegroups.Check is the rule).
+//
+// With KARPENTER=on the gvisor group is a Karpenter NodePool (pools), not a
+// node group, so it is not among them.
 func (r *clusterRun) groups() []nodeGroupSpec {
 	var out []nodeGroupSpec
 	for _, g := range r.allGroups() {
-		if slices.Contains(r.wanted, g.Name) {
+		if slices.Contains(r.wanted, g.Name) && !r.isPool(g.Name) {
 			out = append(out, g)
 		}
 	}
 	return out
+}
+
+// isPool reports a group this run makes as a Karpenter NodePool
+// (nodegroups.KarpenterPools): gvisor with KARPENTER=on, and microvm and
+// nitro too with nodeOverlay.
+func (r *clusterRun) isPool(name string) bool {
+	return r.karpenter && nodegroups.IsKarpenterPool(name, r.nodeOverlay)
+}
+
+// pools are, with KARPENTER=on, the groups NODE_GROUPS names that are made
+// as Karpenter NodePools (isPool): each with the group's instance type,
+// root volume, labels and taints, its EC2NodeClass's AMI (Image), and up to
+// Desired nodes. Without KARPENTER=on there are none.
+func (r *clusterRun) pools() []nodeGroupSpec {
+	var out []nodeGroupSpec
+	for _, g := range r.allGroups() {
+		if slices.Contains(r.wanted, g.Name) && r.isPool(g.Name) {
+			g.Pool, g.Image = true, r.poolImages[g.Name]
+			out = append(out, g)
+		}
+	}
+	return out
+}
+
+// computeSpecs are the node groups, then the NodePools: every instance type
+// the run launches.
+func (r *clusterRun) computeSpecs() []nodeGroupSpec {
+	return append(r.groups(), r.pools()...)
 }
 
 // allGroups are the system, gvisor, microvm and nitro node groups, each with
@@ -244,6 +287,10 @@ func (r *clusterRun) waitReady(ctx context.Context) error {
 				}
 			}
 		}
+		// A nitro NodePool (KARPENTER_NODE_OVERLAY=on) is not among
+		// r.groups(): it starts with no node, so nothing waits for its
+		// capacity here; Karpenter launches a node for the counter-iso
+		// worker Pods, and mode3-iso checks them.
 		if g.Name == nodegroups.Nitro {
 			desired := g.Desired
 			if sc := ng.ScalingConfig; sc != nil && sc.DesiredSize != nil {

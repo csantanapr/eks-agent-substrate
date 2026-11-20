@@ -610,19 +610,26 @@ func TestRemoveIsModeAgnostic(t *testing.T) {
 		nodePool      bool
 		// left is what the "Left as they are" line names; "" is no line.
 		left string
+		// nodeClassCRD answers the read of the NodeClass CRD alone, which
+		// auto-mode makes only off Auto Mode where the NodePool CRD is.
+		nodeClassCRD string
 	}{
-		{"node-group install, removed under auto-mode", false, plugin.NitroAutoMode, "", "", true, true, false, ""},
-		{"node-group install, removed with NITRO_COMPUTE unset", false, "", "", "", true, true, false, ""},
+		{"node-group install, removed under auto-mode", false, plugin.NitroAutoMode, "", "", true, true, false, "", ""},
+		{"node-group install, removed with NITRO_COMPUTE unset", false, "", "", "", true, true, false, "", ""},
 		{"auto-mode install, removed under node-group", true, plugin.NitroNodeGroup, bothCRDs, "nodepool.karpenter.sh/ate-isolated\nnodeclass.eks.amazonaws.com/ate-isolated\n", true, false, false,
-			"nodepool.karpenter.sh/ate-isolated, nodeclass.eks.amazonaws.com/ate-isolated"},
-		{"node-group, only a NodeClass there", true, plugin.NitroNodeGroup, bothCRDs, "nodeclass.eks.amazonaws.com/ate-isolated\n", true, false, false, "nodeclass.eks.amazonaws.com/ate-isolated"},
-		{"node-group, Auto Mode, neither there", true, plugin.NitroNodeGroup, bothCRDs, "", true, false, false, ""},
-		{"node-group, its own Karpenter", false, plugin.NitroNodeGroup, "customresourcedefinition.apiextensions.k8s.io/nodepools.karpenter.sh\n", "", true, true, false, ""},
-		{"auto-mode on Auto Mode", true, plugin.NitroAutoMode, "crd/nodepools.karpenter.sh\n", "", false, false, true, ""},
+			"nodepool.karpenter.sh/ate-isolated, nodeclass.eks.amazonaws.com/ate-isolated", ""},
+		{"node-group, only a NodeClass there", true, plugin.NitroNodeGroup, bothCRDs, "nodeclass.eks.amazonaws.com/ate-isolated\n", true, false, false, "nodeclass.eks.amazonaws.com/ate-isolated", ""},
+		{"node-group, Auto Mode, neither there", true, plugin.NitroNodeGroup, bothCRDs, "", true, false, false, "", ""},
+		{"node-group, its own Karpenter", false, plugin.NitroNodeGroup, "customresourcedefinition.apiextensions.k8s.io/nodepools.karpenter.sh\n", "", true, true, false, "", ""},
+		{"auto-mode on Auto Mode", true, plugin.NitroAutoMode, "crd/nodepools.karpenter.sh\n", "", false, false, true, "", ""},
+		{"auto-mode, no Auto Mode, its own Karpenter", false, plugin.NitroAutoMode, "customresourcedefinition.apiextensions.k8s.io/nodepools.karpenter.sh\n", "", true, true, false, "", ""},
+		{"auto-mode, Auto Mode turned off, both kinds left", false, plugin.NitroAutoMode, "customresourcedefinition.apiextensions.k8s.io/nodepools.karpenter.sh\n", "", true, true, true, "",
+			"customresourcedefinition.apiextensions.k8s.io/nodeclasses.eks.amazonaws.com\n"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			f := newFake(t)
 			f.out["get crd nodepools.karpenter.sh"] = []string{c.crds}
+			f.out["get crd nodeclasses.eks.amazonaws.com"] = []string{c.nodeClassCRD}
 			f.out["get nodepool,nodeclass ate-isolated"] = []string{c.objs}
 			f.out["get nodes -l karpenter.sh/nodepool=ate-isolated"] = []string{""}
 			rc := ownedRC
@@ -653,6 +660,12 @@ func TestRemoveIsModeAgnostic(t *testing.T) {
 				"kubectl get nodes -l karpenter.sh/nodepool=ate-isolated", "kubectl delete nodeclass ate-isolated --ignore-not-found --wait=true --timeout=5m") == nil
 			if pool != c.nodePool || (!pool && (f.has("kubectl delete nodepool") == nil || f.has("kubectl delete nodeclass") == nil)) {
 				t.Errorf("NodePool path %v, want %v:\n%s", pool, c.nodePool, strings.Join(f.log, "\n"))
+			}
+			// auto-mode reads the NodeClass CRD alone only off Auto Mode, where
+			// the NodePool CRD is: an Auto Mode cluster has both kinds.
+			ncRead := f.has("kubectl get crd nodeclasses.eks.amazonaws.com --ignore-not-found -o name") == nil
+			if want := c.compute != plugin.NitroNodeGroup && !c.auto && c.crds != ""; ncRead != want {
+				t.Errorf("read the NodeClass CRD %v, want %v:\n%s", ncRead, want, strings.Join(f.log, "\n"))
 			}
 			// Without both of Auto Mode's kinds the objects are never read:
 			// on a cluster with its own Karpenter, nodeclass names no kind.
@@ -713,6 +726,7 @@ func TestFailedReadsStop(t *testing.T) {
 		deploy  bool
 	}{
 		{"remove under auto-mode: the NodePool kind", true, plugin.NitroAutoMode, "get crd nodepools.karpenter.sh --ignore-not-found", false},
+		{"remove under auto-mode without Auto Mode: the NodeClass kind", false, plugin.NitroAutoMode, "get crd nodeclasses.eks.amazonaws.com --ignore-not-found", false},
 		{"remove under node-group: Auto Mode's kinds", true, plugin.NitroNodeGroup, "get crd nodepools.karpenter.sh nodeclasses.eks.amazonaws.com", false},
 		{"remove under node-group: NodePool and NodeClass ate-isolated", true, plugin.NitroNodeGroup, "get nodepool,nodeclass ate-isolated", false},
 		{"remove under node-group: the RuntimeClass", false, plugin.NitroNodeGroup, "get runtimeclass isolated-sandbox", false},
@@ -764,5 +778,105 @@ func TestFailedReadsStop(t *testing.T) {
 				t.Errorf("applied %q, created %q", f.applies, f.creates)
 			}
 		})
+	}
+}
+
+// With setup-aws's KARPENTER_NODE_OVERLAY=on the nitro pool is a Karpenter
+// NodePool that starts with no node: deploy takes the architecture from the
+// NodePool (Options.NodePoolArchs), checks no capacity, and makes the
+// RuntimeClass, atelet-iso and the pool as on a node group, so the pool's
+// worker Pods make Karpenter launch a node. A node the pool has already,
+// though booting, without its Nitro sandbox capacity yet, or draining,
+// stops nothing: Karpenter adds nodes up to NITRO_NODES. It must be of the
+// NodePool's architecture, which holds also when the pool had no node when
+// the inventory was read (no PoolArchs). Both ways: no node and no NodePool
+// is refused as before; a node of another architecture and a NodePool of
+// two architectures are refused, before anything is made.
+func TestDeployNodeGroupOnAKarpenterPool(t *testing.T) {
+	karp := func() plugin.Options {
+		o := testOptionsNodeGroup(t)
+		o.KarpenterPools, o.NodePoolArchs = []string{"gvisor", "microvm", "nitro"}, map[string][]string{"gvisor": {"amd64"}, "microvm": {"amd64"}, "nitro": {"arm64"}}
+		o.PoolArchs = map[string][]string{"nitro": {"arm64"}}
+		return o
+	}
+	f := newFake(t)
+	f.out["get nodes -l ate.dev/pool=nitro"] = []string{nodeList()}
+	f.out["-n ate-system get ds atelet"] = []string{testAtelet}
+	var out bytes.Buffer
+	if err := deploy(context.Background(), &out, karp()); err != nil {
+		t.Fatalf("%v\n%s", err, out.String())
+	}
+	if err := f.has("kubectl get runtimeclass isolated-sandbox --ignore-not-found -o json",
+		"kubectl get nodes -l ate.dev/pool=nitro -o json", "kubectl create -f -", "kubectl -n ate-system get ds atelet -o json", "kubectl apply -f -",
+		"build kubectl-ate", "counter image arm64 mode3-iso-"+mode3.Tag, "kubectl apply -f -",
+		"kubectl -n ate-demo-counter-iso rollout status deploy/counter-iso --timeout=10m",
+		"kubectl -n ate-system rollout status ds/atelet-iso --timeout=5m"); err != nil {
+		t.Error(err)
+	}
+	if len(f.creates) != 1 || !strings.Contains(f.creates[0], `"kind":"RuntimeClass"`) || len(f.applies) != 2 ||
+		!strings.Contains(f.applies[0], `"values":["nitro"]`) || !strings.Contains(f.applies[1], "      ate.dev/pool: nitro\n") {
+		t.Fatalf("creates:\n%s\napplies:\n%s", strings.Join(f.creates, "\n"), strings.Join(f.applies, "\n"))
+	}
+	if !strings.Contains(out.String(), "The Karpenter NodePool of the nitro pool has no node yet: Karpenter launches arm64 nodes for counter-iso's 2 worker Pods") {
+		t.Errorf("output:\n%s", out.String())
+	}
+
+	// Nodes Karpenter has made already, with too little or no capacity yet:
+	// the deploy goes on, on their architecture, though PoolArchs (the
+	// pools that had no node) does not name the pool.
+	for name, nodes := range map[string]string{
+		"booting":     nodeList(nitroNode("n1", "arm64", "", false)),
+		"too little":  nodeList(nitroNode("n1", "arm64", "1", true)),
+		"one of two":  nodeList(nitroNode("n1", "arm64", "20", true), nitroNode("n2", "arm64", "", false)),
+		"not labeled": nodeList(strings.Replace(nitroNode("n1", "arm64", "", true), `"eks.amazonaws.com/nitro-sandbox":"true",`, "", 1)),
+	} {
+		f = newFake(t)
+		f.out["get nodes -l ate.dev/pool=nitro"] = []string{nodes}
+		f.out["-n ate-system get ds atelet"] = []string{testAtelet}
+		o := karp()
+		o.PoolArchs = nil
+		out.Reset()
+		if err := deploy(context.Background(), &out, o); err != nil {
+			t.Errorf("%s: %v", name, err)
+			continue
+		}
+		if err := f.has("counter image arm64 mode3-iso-" + mode3.Tag); err != nil || len(f.creates) != 1 || len(f.applies) != 2 {
+			t.Errorf("%s: %v, creates %d, applies %d", name, err, len(f.creates), len(f.applies))
+		}
+		if !strings.Contains(out.String(), "The Karpenter NodePool of the nitro pool has ") || !strings.Contains(out.String(), " arm64 nodes now: Karpenter adds more, up to NITRO_NODES, when counter-iso's 2 worker Pods need them") {
+			t.Errorf("%s: output:\n%s", name, out.String())
+		}
+	}
+
+	f = newFake(t)
+	f.out["get nodes -l ate.dev/pool=nitro"] = []string{nodeList()}
+	err := deploy(context.Background(), &bytes.Buffer{}, testOptionsNodeGroup(t))
+	if err == nil || !strings.Contains(err.Error(), "no node is labeled ate.dev/pool=nitro") || len(f.creates)+len(f.applies) != 0 {
+		t.Errorf("no node and no NodePool: %v", err)
+	}
+	// Only the nitro pool's NodePool counts: another pool's does not make
+	// the nitro node group a Karpenter one.
+	f = newFake(t)
+	f.out["get nodes -l ate.dev/pool=nitro"] = []string{nodeList(nitroNode("n1", "arm64", "1", true))}
+	o := karp()
+	o.KarpenterPools = []string{"gvisor", "microvm"}
+	err = deploy(context.Background(), &bytes.Buffer{}, o)
+	if err == nil || !strings.Contains(err.Error(), "1 allocatable eks.amazonaws.com/nitro-sandbox in all") || len(f.creates)+len(f.applies) != 0 {
+		t.Errorf("a nitro node group with too little capacity: %v", err)
+	}
+	f = newFake(t)
+	f.out["get nodes -l ate.dev/pool=nitro"] = []string{nodeList(nitroNode("n1", "arm64", "20", true), nitroNode("n2", "amd64", "", false))}
+	err = deploy(context.Background(), &bytes.Buffer{}, karp())
+	if err == nil || err.Error() != `node n2 of the nitro pool has kubernetes.io/arch="amd64", and the pool's Karpenter NodePool requires arm64: mode3-iso builds its counter image for one architecture` ||
+		len(f.creates)+len(f.applies) != 0 {
+		t.Errorf("a node of another architecture: %v", err)
+	}
+	f = newFake(t)
+	f.out["get nodes -l ate.dev/pool=nitro"] = []string{nodeList()}
+	o = karp()
+	o.NodePoolArchs = map[string][]string{"nitro": {"amd64", "arm64"}}
+	err = deploy(context.Background(), &bytes.Buffer{}, o)
+	if err == nil || !strings.Contains(err.Error(), `requires the kubernetes.io/arch values ["amd64" "arm64"]`) || len(f.creates)+len(f.applies) != 0 {
+		t.Errorf("a NodePool of two architectures: %v", err)
 	}
 }

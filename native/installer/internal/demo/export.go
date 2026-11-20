@@ -45,7 +45,7 @@ func CounterImage(ctx context.Context, w io.Writer, o Options, tree, pool, tag s
 	if err != nil {
 		return "", err
 	}
-	arch, err := e.nodeArch(ctx, kubectlFor(kc, o.Cluster), []class{{name: pool}})
+	arch, err := e.nodeArch(ctx, kubectlFor(kc, o.Cluster), []class{{name: pool}}, o.PoolArchs)
 	if err != nil {
 		return "", err
 	}

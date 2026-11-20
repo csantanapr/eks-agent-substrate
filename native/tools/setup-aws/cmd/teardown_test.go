@@ -110,18 +110,18 @@ func fullDeployment() *tdFake {
 func tdTestEnv(t *testing.T, f *tdFake, plan, keep bool) (e *tdEnv, out, logs *bytes.Buffer) {
 	t.Helper()
 	cfg = Config{Region: "us-west-2", ClusterName: "demo", Tags: "project=agent-substrate auto-delete=no", Plan: plan}
-	prevClients, prevPoll, prevTimeout, prevLog := newTDClients, tdPoll, tdTimeout, slog.Default()
+	prevClients, prevPoll, prevTimeout, prevLog, prevSettle := newTDClients, tdPoll, tdTimeout, slog.Default(), karpenterSettle
 	// The core teardown runs with no plugin registered: each plugin tests
 	// its own steps against its own fakes (plugin_<id>_test.go), so a plugin
 	// port never reaches AWS from these tests or changes their counts.
 	prevPlugins := pluginDefs
 	pluginDefs = map[string]pluginDef{}
 	newTDClients = func(context.Context, Config) (*tdClients, error) { return f.clients(), nil }
-	tdPoll, tdTimeout = time.Millisecond, 300*time.Millisecond
+	tdPoll, tdTimeout, karpenterSettle = time.Millisecond, 300*time.Millisecond, 5*time.Millisecond
 	logs = &bytes.Buffer{}
 	slog.SetDefault(slog.New(slog.NewTextHandler(logs, nil)))
 	t.Cleanup(func() {
-		newTDClients, tdPoll, tdTimeout = prevClients, prevPoll, prevTimeout
+		newTDClients, tdPoll, tdTimeout, karpenterSettle = prevClients, prevPoll, prevTimeout, prevSettle
 		pluginDefs = prevPlugins
 		slog.SetDefault(prevLog)
 	})

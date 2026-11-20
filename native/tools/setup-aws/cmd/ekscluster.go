@@ -50,7 +50,8 @@ func (r *clusterRun) createClusterInput() *eks.CreateClusterInput {
 		// The add-ons phase installs vpc-cni, kube-proxy and coredns as EKS
 		// add-ons; Auto Mode requires this off.
 		BootstrapSelfManagedAddons: aws.Bool(false),
-		Tags:                       r.tags,
+		// With KARPENTER=on, the marker too.
+		Tags: r.clusterTags(),
 	}
 	if r.auto {
 		// Auto Mode turns on compute, load balancing and block storage

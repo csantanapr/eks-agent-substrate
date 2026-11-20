@@ -25,11 +25,12 @@ import (
 // Plugins for these tests: a default one on the system node group, one that
 // another requires, mode3-iso, which needs EKS Auto Mode and is the AWS
 // Nitro sandbox class's, and t-kata, which adds the microvm node group as
-// mode 3 does.
+// mode 3 does, and as mode 3 cannot run on Karpenter's nodes.
 func init() {
 	for _, p := range []plugin.Plugin{
 		{ID: "t-gateway", Title: "LLM gateway", Summary: "A gateway to Amazon Bedrock.", Order: 10, Minutes: 3, Default: true, Nodes: []string{"system"}},
-		{ID: "t-kata", Title: "Kata pool", Summary: "Workers in Kata on the microvm nodes.", Order: 60, Minutes: 5, Nodes: []string{"microvm"}, AddsNodes: true},
+		{ID: "t-kata", Title: "Kata pool", Summary: "Workers in Kata on the microvm nodes.", Order: 60, Minutes: 5, Nodes: []string{"microvm"}, AddsNodes: true,
+			NoKarpenter: "needs a label kata-deploy sets"},
 		{ID: "t-claw", Title: "Claw agent", Summary: "Workers on the gvisor nodes.", Order: 70, Minutes: 5, Nodes: []string{"gvisor"}},
 		{ID: "t-efs", Title: "EFS volumes", Summary: "Amazon EFS volumes per actor.", Order: 20, Minutes: 6, HourlyUSD: 0.04, SetupAWS: true,
 			Check: func(lookup func(string) (string, bool)) error {
@@ -808,7 +809,7 @@ func TestOutcomeStaysOnAShortScreen(t *testing.T) {
 		s.ClusterIsNew = true
 		m := sized(New(testDeps(&recorder{}), s))
 		m.jump(state.InstallOrder(s), state.CreateCluster)
-		tk := newTask(execx.Spec{Label: "create cluster", Display: strings.Repeat("CLUSTER_NAME=fresh ", 8)}, steps.Cluster(""))
+		tk := newTask(execx.Spec{Label: "create cluster", Display: strings.Repeat("CLUSTER_NAME=fresh ", 8)}, steps.Cluster("", false))
 		tk.done, tk.err, tk.active = true, err, 2
 		for i := range 20 {
 			tk.lines = append(tk.lines, fmt.Sprintf("output line %d", i))

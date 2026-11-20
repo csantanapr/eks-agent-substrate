@@ -256,6 +256,35 @@ func TestRegisteredNeeds(t *testing.T) {
 	}
 }
 
+// mode 3 is refused where its microvm group is a Karpenter NodePool, for
+// the reason its RuntimeClasses give: both place their Pods on the label
+// kata-deploy sets on a running node, which no NodePool can make a node
+// for.
+func TestNoKarpenter(t *testing.T) {
+	p, _ := plugin.Get(ID)
+	if p.NoKarpenter != NoKarpenter || !strings.Contains(NoKarpenter, "katacontainers.io/kata-runtime=true") || !strings.Contains(NoKarpenter, "Karpenter cannot make a node") {
+		t.Errorf("NoKarpenter %q", p.NoKarpenter)
+	}
+	nodes, err := kio.FromBytes(kataManifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	k, v, _ := strings.Cut(kataNodeLabel, "=")
+	n := 0
+	for _, o := range nodes {
+		if o.GetKind() != "RuntimeClass" {
+			continue
+		}
+		n++
+		if got, err := o.GetString("scheduling.nodeSelector." + strings.ReplaceAll(k, ".", `\.`)); err != nil || got != v {
+			t.Errorf("RuntimeClass %s selects %q (%v), not %s", o.GetName(), got, err, kataNodeLabel)
+		}
+	}
+	if n != 2 {
+		t.Errorf("%d RuntimeClasses", n)
+	}
+}
+
 // checkKata is what the embedded Kata manifest must be: kata-deploy's six
 // objects (no helm hook left), every image pinned by digest, and the
 // DaemonSet on the microvm nodes only.

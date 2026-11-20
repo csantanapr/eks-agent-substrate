@@ -111,7 +111,7 @@ func TestValidSandboxClasses(t *testing.T) {
 func TestSelectAndNewClusterOverwriteEachOther(t *testing.T) {
 	s := &Setup{Region: "us-west-2", NewClusterConfig: ClusterConfig{KubernetesVersion: "1.37", AutoMode: "on"}}
 	s.NewCluster("made")
-	s.SelectCluster(awsx.Cluster{Name: "brought", Version: "1.38"}, []string{"gvisor"})
+	s.SelectCluster(awsx.Cluster{Name: "brought", Version: "1.38"}, []string{"gvisor"}, nil, false)
 	if s.ClusterIsNew || s.ClusterOwned || s.AutoMode || s.ClusterVersion != "1.38" || len(s.ClusterPools) != 1 {
 		t.Errorf("after SelectCluster: %+v", s)
 	}
@@ -130,7 +130,8 @@ func TestNitroKnobs(t *testing.T) {
 		t.Errorf("defaults %+v", c)
 	}
 	env := c.Env()
-	if want := []string{"NODE_GROUP_TYPE=managed", "NITRO_COMPUTE=auto-mode", "NITRO_AMI_ID=", "NITRO_INSTANCE_TYPE=m8i.xlarge", "NITRO_NODES=1"}; !slices.Equal(env[len(env)-5:], want) {
+	if want := []string{"NODE_GROUP_TYPE=managed", "NITRO_COMPUTE=auto-mode", "NITRO_AMI_ID=", "NITRO_INSTANCE_TYPE=m8i.xlarge", "NITRO_NODES=1", "KARPENTER=",
+		"KARPENTER_NODE_OVERLAY="}; !slices.Equal(env[len(env)-7:], want) {
 		t.Errorf("env %q", env)
 	}
 	c = ClusterConfigFromEnv(func(k string) (string, bool) {

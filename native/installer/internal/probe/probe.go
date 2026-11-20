@@ -38,10 +38,17 @@ type Result struct {
 	// record was read: without it the plugins are unknown, not none.
 	Plugins     []string
 	PluginsRead bool
-	// Pools are the ate.dev/pool values of the cluster's nodes (plugin
-	// PoolsArgs): the node groups a connected cluster has, which decide the
-	// sandbox classes and plugins the wizard offers on it.
+	// Pools are the ate.dev/pool values of the cluster's nodes and of the
+	// Karpenter NodePools this installer made (plugin.ReadInventory): the
+	// node groups a connected cluster has, which decide the sandbox classes
+	// and plugins the wizard offers on it.
 	Pools []string
+	// NodePools are the pools of Pools that are Karpenter NodePools: the
+	// wizard does not offer a plugin with NoKarpenter on one of them.
+	NodePools []string
+	// Karpenter reports the Karpenter AWS provider on the cluster (the CRD
+	// ec2nodeclasses.karpenter.k8s.aws), which Review names.
+	Karpenter bool
 }
 
 // Partial reports the namespace-without-atelet state.
@@ -73,13 +80,20 @@ func Check(ctx context.Context, kubectl Kubectl) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// The node groups, which the wizard checks the sandbox classes against;
-	// like the namespace, a failed read stops the probe.
-	nodes, err := kubectl(ctx, plugin.PoolsArgs...)
+	// The node groups and Karpenter NodePools, which the wizard checks the
+	// sandbox classes against; like the namespace, a failed read stops the
+	// probe. The NodePools and Karpenter are named only when there are any.
+	inv, err := plugin.ReadInventory(ctx, plugin.Reader(kubectl))
 	if err != nil {
 		return "", err
 	}
-	pools := " pools=" + strings.Join(plugin.ParsePools(nodes), ",")
+	pools := " pools=" + strings.Join(inv.Pools(), ",")
+	if np := inv.NodePoolNames(); len(np) > 0 {
+		pools += " nodepools=" + strings.Join(np, ",")
+	}
+	if inv.Karpenter {
+		pools += " karpenter"
+	}
 	if strings.TrimSpace(ns) == "" {
 		return Marker + "false" + pools, nil
 	}
@@ -119,6 +133,10 @@ func ParseInstalled(lines []string) (Result, error) {
 			switch k, v, _ := strings.Cut(f, "="); k {
 			case "pools":
 				r.Pools = plugin.ParsePools(strings.ReplaceAll(v, ",", " "))
+			case "nodepools":
+				r.NodePools = plugin.ParsePools(strings.ReplaceAll(v, ",", " "))
+			case "karpenter":
+				r.Karpenter = true
 			case "atelet":
 				r.Atelet = true
 			case "image":

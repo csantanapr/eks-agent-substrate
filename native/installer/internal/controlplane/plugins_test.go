@@ -165,6 +165,10 @@ type deployFakes struct {
 	installed probe.Result
 	// trees are the directories fetched into, in order.
 	trees []string
+	// pools is the cluster's pool inventory (readPools), and poolsErr its
+	// read's failure.
+	pools    plugin.Inventory
+	poolsErr error
 }
 
 // deployEnv stubs every seam Deploy reaches, for the bundled database.
@@ -184,6 +188,15 @@ func deployEnv(t *testing.T, f *deployFakes) Options {
 		runCommand = prev[7].(func(context.Context, io.Writer, command) error)
 		readInstalled = prev[8].(func(context.Context, string) (probe.Result, error))
 	})
+	prevPools := readPools
+	t.Cleanup(func() { readPools = prevPools })
+	readPools = func(_ context.Context, _ io.Writer, po plugin.Options) (plugin.Inventory, error) {
+		if po.Kubeconfig == "" {
+			return plugin.Inventory{}, errors.New("pools read without a kubeconfig")
+		}
+		f.calls = append(f.calls, "pools")
+		return f.pools, f.poolsErr
+	}
 	readInstalled = func(_ context.Context, kc string) (probe.Result, error) {
 		if kc == "" {
 			return probe.Result{}, errors.New("probe without a kubeconfig")

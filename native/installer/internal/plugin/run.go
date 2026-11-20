@@ -118,13 +118,19 @@ func SetupAWSArgv(path string, args ...string) []string {
 	return append([]string{"go", "-C", path, "run", "."}, args...)
 }
 
-// NodePools are the PoolLabel values of o's cluster's nodes (Options.Pools).
-func NodePools(ctx context.Context, w io.Writer, o Options) ([]string, error) {
-	var out bytes.Buffer
-	if err := Kubectl(ctx, w, o, nil, &out, PoolsArgs...); err != nil {
-		return nil, fmt.Errorf("read the nodes' %s labels: %w", PoolLabel, err)
-	}
-	return ParsePools(out.String()), nil
+// NodePools is the pool inventory of o's cluster (ReadInventory): the
+// PoolLabel values of its nodes and of the Karpenter NodePools this
+// installer made, which the caller puts in o (Options.WithInventory). A
+// failed read of the nodes says so, as before Karpenter.
+func NodePools(ctx context.Context, w io.Writer, o Options) (Inventory, error) {
+	return ReadInventory(ctx, func(ctx context.Context, args ...string) (string, error) {
+		var out bytes.Buffer
+		err := Kubectl(ctx, w, o, nil, &out, args...)
+		if err != nil && slices.Equal(args, PoolsArgs) {
+			err = fmt.Errorf("read the nodes' %s labels: %w", PoolLabel, err)
+		}
+		return out.String(), err
+	})
 }
 
 // BundledDatabaseArgs are the kubectl arguments that name the StatefulSet
@@ -273,6 +279,9 @@ func Run(ctx context.Context, w io.Writer, action string, ids []string, o Option
 			if why := p.AutoModeProblem(o); why != "" {
 				return fmt.Errorf("plugin %s %s; %s has EKS Auto Mode off", p.ID, why, o.Cluster)
 			}
+			if err := KarpenterProblem(p, o.Cluster, o.KarpenterPools); err != nil {
+				return err
+			}
 			// Before its AWS half, which would otherwise be made for an
 			// install it cannot work on, or for none.
 			if p.NeedsRDS != "" && o.BundledDatabase {
@@ -291,7 +300,8 @@ func Run(ctx context.Context, w io.Writer, action string, ids []string, o Option
 			return err
 		}
 		// So do missing nodes: its Pods would stay Pending on nodes that do
-		// not exist.
+		// not exist. A pool with a Karpenter NodePool counts: its nodes
+		// come when the Pods need them.
 		for _, p := range ps {
 			if miss := MissingNodes(p, o.Pools); len(miss) > 0 {
 				return fmt.Errorf("plugin %s runs on the %s node group, and %s has no node labeled %s=%s: a cluster gets its node groups from the sandbox classes it is created with",

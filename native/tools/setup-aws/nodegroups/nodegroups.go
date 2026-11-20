@@ -185,3 +185,158 @@ func SandboxCount(q string) (n int64, ok bool) {
 	}
 	return n * mult, true
 }
+
+// KARPENTER=on (a new cluster only, without EKS Auto Mode) makes the gvisor
+// group NODE_GROUPS names as a Karpenter NodePool instead of a node group:
+// the pool makes a node only when a Pod needs one, and removes it when it
+// is empty, up to GVISOR_NODES nodes. The system, microvm and nitro groups
+// stay node groups of NODE_GROUP_TYPE. The Karpenter controller runs on the
+// system group. The microvm and nitro worker Pods request extended
+// resources (ate.dev/kvm, eks.amazonaws.com/nitro-sandbox) that a node
+// advertises only once it runs, so Karpenter 1.15.2 finds no instance type
+// for them unless a NodeOverlay, an alpha API, tells it the capacity.
+// KARPENTER_NODE_OVERLAY=on (with KARPENTER=on, on a new cluster too) turns
+// on Karpenter's NodeOverlay feature gate, and makes the microvm and nitro
+// groups NodePools as well, each with a NodeOverlay that adds that
+// resource. The API of NodeOverlay is alpha and can change.
+//
+//	https://karpenter.sh/docs/concepts/nodepools/
+//	https://karpenter.sh/docs/concepts/nodeoverlays/
+const (
+	// KarpenterOn is KARPENTER's one value that turns it on; "off" and
+	// empty leave it off.
+	KarpenterOn = "on"
+	// KarpenterVersion is the Karpenter release setup-aws installs.
+	KarpenterVersion = "1.15.2"
+)
+
+// KarpenterPools are the groups KARPENTER=on makes as Karpenter NodePools:
+// gvisor. With nodeOverlay (KARPENTER_NODE_OVERLAY=on: Karpenter's
+// NodeOverlay tells it the microvm nodes' ate.dev/kvm and the nitro nodes'
+// eks.amazonaws.com/nitro-sandbox capacity) the microvm and nitro groups
+// too.
+func KarpenterPools(nodeOverlay bool) []string {
+	if nodeOverlay {
+		return []string{GVisor, MicroVM, Nitro}
+	}
+	return []string{GVisor}
+}
+
+// AnyKarpenterPools are the groups either Karpenter mode can make as
+// NodePools: what teardown looks for.
+func AnyKarpenterPools() []string { return KarpenterPools(true) }
+
+// IsKarpenterPool reports whether KARPENTER=on makes group g as a NodePool.
+func IsKarpenterPool(g string, nodeOverlay bool) bool {
+	return slices.Contains(KarpenterPools(nodeOverlay), g)
+}
+
+// SplitKarpenter splits groups, in their order, into those made as node
+// groups and those KARPENTER=on makes as NodePools.
+func SplitKarpenter(groups []string, nodeOverlay bool) (nodeGroups, pools []string) {
+	for _, g := range groups {
+		if IsKarpenterPool(g, nodeOverlay) {
+			pools = append(pools, g)
+		} else {
+			nodeGroups = append(nodeGroups, g)
+		}
+	}
+	return nodeGroups, pools
+}
+
+// CheckKarpenter refuses a KARPENTER value other than "on", "off" or empty,
+// and KARPENTER=on with Auto Mode (Auto Mode runs its own Karpenter, and the
+// two cannot share the karpenter.sh resources) or with groups that do not
+// name gvisor (there would be no NodePool).
+func CheckKarpenter(karpenter string, autoMode bool, groups []string) error {
+	switch karpenter {
+	case KarpenterOn:
+	case "off", "":
+		return nil
+	default:
+		return fmt.Errorf(`KARPENTER must be "on", "off" or empty, not %q`, karpenter)
+	}
+	if autoMode {
+		return errors.New("KARPENTER=on needs AUTO_MODE off: EKS Auto Mode runs its own Karpenter, and the two cannot share the karpenter.sh resources")
+	}
+	if !slices.Contains(groups, GVisor) {
+		return fmt.Errorf("KARPENTER=on makes a NodePool for the gvisor sandbox class, and NODE_GROUPS=%s does not name gvisor", Format(groups))
+	}
+	return nil
+}
+
+// CheckNodeOverlay refuses a KARPENTER_NODE_OVERLAY value other than "on",
+// "off" or empty, and KARPENTER_NODE_OVERLAY=on without KARPENTER=on.
+func CheckNodeOverlay(karpenter, nodeOverlay string) error {
+	switch nodeOverlay {
+	case KarpenterOn:
+	case "off", "":
+		return nil
+	default:
+		return fmt.Errorf(`KARPENTER_NODE_OVERLAY must be "on", "off" or empty, not %q`, nodeOverlay)
+	}
+	if karpenter != KarpenterOn {
+		return fmt.Errorf("KARPENTER_NODE_OVERLAY=on needs KARPENTER=on, and KARPENTER=%q: it makes the microvm and nitro groups Karpenter NodePools too", karpenter)
+	}
+	return nil
+}
+
+// The values of KarpenterTagKey, fixed when the cluster is made: a cluster
+// made with KARPENTER=on, and one made with KARPENTER_NODE_OVERLAY=on too.
+const (
+	KarpenterMarkerOn          = "on"
+	KarpenterMarkerNodeOverlay = "node-overlay"
+)
+
+// KarpenterMarker is the value of KarpenterTagKey a cluster made with
+// karpenter (KARPENTER=on) and nodeOverlay (KARPENTER_NODE_OVERLAY=on)
+// carries, or "" for none.
+func KarpenterMarker(karpenter, nodeOverlay bool) string {
+	switch {
+	case karpenter && nodeOverlay:
+		return KarpenterMarkerNodeOverlay
+	case karpenter:
+		return KarpenterMarkerOn
+	}
+	return ""
+}
+
+// Tag keys that TAGS may not set. The marker is always reserved: create
+// cluster sets it on a cluster made with KARPENTER=on, and a cluster is
+// refused when it does not match. With KARPENTER=on, the owner and
+// created-by keys are reserved too (Karpenter's instances carry TAGS), and
+// so are the keys Karpenter sets itself, which an EC2NodeClass refuses.
+const (
+	// KarpenterTagKey marks a cluster made with KARPENTER=on: value "on",
+	// or "node-overlay" with KARPENTER_NODE_OVERLAY=on (KarpenterMarker).
+	KarpenterTagKey = "agent-substrate-on-eks/karpenter"
+	ownerTagKey     = "agent-substrate-on-eks/deployment"
+	createdByTagKey = "agent-substrate-on-eks/created-by"
+)
+
+// CheckTags refuses a TAGS (space-separated key=value) that sets a reserved
+// key: KarpenterTagKey always; with karpenter also the owner and created-by
+// keys, and the keys that start with kubernetes.io/cluster (as the
+// EC2NodeClass refuses them), karpenter.sh/*, karpenter.k8s.aws/* and
+// eks:eks-cluster-name. A pair that is not key=value is left to the caller.
+func CheckTags(tags string, karpenter bool) error {
+	for _, kv := range strings.Fields(tags) {
+		k, _, _ := strings.Cut(kv, "=")
+		reserved := k == KarpenterTagKey
+		if karpenter {
+			// The EC2NodeClass CRD refuses any tag key that starts with
+			// kubernetes.io/cluster, with or without a slash
+			// (!k.startsWith('kubernetes.io/cluster')), so the check here has none.
+			reserved = reserved || k == ownerTagKey || k == createdByTagKey || k == "eks:eks-cluster-name" ||
+				strings.HasPrefix(k, "kubernetes.io/cluster") || strings.HasPrefix(k, "karpenter.sh/") || strings.HasPrefix(k, "karpenter.k8s.aws/")
+		}
+		if !reserved {
+			continue
+		}
+		if k == KarpenterTagKey || k == ownerTagKey || k == createdByTagKey {
+			return fmt.Errorf("TAGS sets %s, which setup-aws sets itself; remove it from TAGS", k)
+		}
+		return fmt.Errorf("TAGS sets %s, a key Karpenter sets itself; KARPENTER=on puts TAGS on Karpenter's nodes, so remove it from TAGS", k)
+	}
+	return nil
+}

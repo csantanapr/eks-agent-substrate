@@ -82,6 +82,11 @@ func TestFailedReadsAreErrors(t *testing.T) {
 			t.Errorf("%s read failed but Check returned %q", kind, line)
 		}
 	}
+	// The nodes' read fails with kubectl's own error, as before Karpenter.
+	k := fakeKubectl(nil, map[string]error{"nodes": errors.New("kubectl get nodes: Unauthorized")})
+	if _, err := Check(context.Background(), k); err == nil || err.Error() != "kubectl get nodes: Unauthorized" {
+		t.Errorf("nodes read: %v", err)
+	}
 }
 
 // Both ways: the plugin record is read, on a full or a partial install, and
@@ -155,6 +160,50 @@ func TestSimLinesCoverEveryState(t *testing.T) {
 		r, err := ParseInstalled([]string{SimLine(name)})
 		if err != nil || r.Badge() != want {
 			t.Errorf("%s: %+v %v, want %s", name, r, err, want)
+		}
+	}
+}
+
+// Both ways: a cluster without Karpenter's CRDs reports what it did before,
+// to the byte. With them, the pools of the NodePools this installer made
+// join the nodes' (a pool can have no node yet), and the line names them and
+// Karpenter. EKS Auto Mode's CRD alone, with NodePools that label no pool,
+// reports neither.
+func TestPoolsIncludeKarpenterNodePools(t *testing.T) {
+	base := map[string]string{"nodes": "system microvm", "namespace": "ate-system", "daemonset": "daemonset.apps/atelet"}
+	line, err := Check(context.Background(), fakeKubectl(base, nil))
+	if err != nil || line != Marker+"true pools=microvm,system atelet plugins=" {
+		t.Errorf("no CRD: %q %v", line, err)
+	}
+	auto := map[string]string{"nodes": "system", "crd": "customresourcedefinition.apiextensions.k8s.io/nodepools.karpenter.sh",
+		"nodepools.karpenter.sh": `{"items":[{"spec":{"template":{"metadata":{"labels":{"team":"a"}}}}}]}`}
+	if line, err := Check(context.Background(), fakeKubectl(auto, nil)); err != nil || line != Marker+"false pools=system" {
+		t.Errorf("Auto Mode's CRD: %q %v", line, err)
+	}
+	karp := map[string]string{"nodes": "system microvm",
+		"crd":                    "customresourcedefinition.apiextensions.k8s.io/nodepools.karpenter.sh\ncustomresourcedefinition.apiextensions.k8s.io/ec2nodeclasses.karpenter.k8s.aws\n",
+		"nodepools.karpenter.sh": `{"items":[{"spec":{"template":{"metadata":{"labels":{"ate.dev/pool":"gvisor"}}}}},{"spec":{"template":{"metadata":{"labels":{"ate.dev/pool":"microvm"}}}}}]}`}
+	line, err = Check(context.Background(), fakeKubectl(karp, nil))
+	if err != nil || line != Marker+"false pools=gvisor,microvm,system nodepools=gvisor,microvm karpenter" {
+		t.Fatalf("Karpenter: %q %v", line, err)
+	}
+	r := checkThenParse(t, fakeKubectl(karp, nil))
+	if strings.Join(r.Pools, ",") != "gvisor,microvm,system" || strings.Join(r.NodePools, ",") != "gvisor,microvm" || !r.Karpenter || r.Installed {
+		t.Errorf("parsed %+v", r)
+	}
+	if r := checkThenParse(t, fakeKubectl(base, nil)); r.Karpenter || r.NodePools != nil {
+		t.Errorf("no CRD parsed %+v", r)
+	}
+}
+
+// A failed read of the CRDs or of the NodePools stops the probe, as a failed
+// node read does: a cluster whose pools cannot be read is not shown to lack
+// them.
+func TestFailedKarpenterReadsAreErrors(t *testing.T) {
+	answers := map[string]string{"crd": "customresourcedefinition.apiextensions.k8s.io/nodepools.karpenter.sh"}
+	for _, kind := range []string{"crd", "nodepools.karpenter.sh"} {
+		if line, err := Check(context.Background(), fakeKubectl(answers, map[string]error{kind: errors.New("Forbidden")})); err == nil {
+			t.Errorf("%s read failed but Check returned %q", kind, line)
 		}
 	}
 }

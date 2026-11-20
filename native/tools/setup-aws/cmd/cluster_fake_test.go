@@ -104,6 +104,21 @@ type clusterFake struct {
 	nitroNotReady bool
 	// nitroMissing nodes of the nitro group never join.
 	nitroMissing int
+
+	// KARPENTER=on (karpenter_fake_test.go): the SQS queues, EventBridge
+	// rules and Pod Identity associations, and the Kubernetes API of the
+	// cluster's objects (nil: none answers).
+	queues  map[string]*fakeQueue
+	rules   map[string]*fakeRule
+	assocs  map[string]*ekstypes.PodIdentityAssociation
+	objects *kubeFake
+	// eksNodeEntry: CreateNodegroup gives the node role its EC2_LINUX
+	// access entry, as EKS does (the tests before KARPENTER do without).
+	eksNodeEntry bool
+	// updateEnds: an UPDATING cluster is ACTIVE from the next
+	// DescribeCluster on. Without it the cluster stays UPDATING, as under
+	// another run's change that does not end (review F17).
+	updateEnds bool
 }
 
 type fakeProfile struct {
@@ -137,8 +152,17 @@ func nestedVirtType(name string, nested bool) ec2types.InstanceTypeInfo {
 	if nested {
 		p.SupportedFeatures = []ec2types.SupportedAdditionalProcessorFeature{ec2types.SupportedAdditionalProcessorFeatureNestedVirtualization}
 	}
-	return ec2types.InstanceTypeInfo{InstanceType: ec2types.InstanceType(name), ProcessorInfo: p,
+	return ec2types.InstanceTypeInfo{InstanceType: ec2types.InstanceType(name), ProcessorInfo: p, VCpuInfo: vcpus(name),
 		NetworkInfo: &ec2types.NetworkInfo{EnaSupport: ec2types.EnaSupportRequired}, NitroEnclavesSupport: ec2types.NitroEnclavesSupportSupported}
+}
+
+// vcpus are the vCPUs of an m8i, m7i or m8g size.
+func vcpus(name string) *ec2types.VCpuInfo {
+	n := int32(4)
+	if strings.HasSuffix(name, ".2xlarge") {
+		n = 8
+	}
+	return &ec2types.VCpuInfo{DefaultVCpus: aws.Int32(n)}
 }
 
 func newClusterFake() *clusterFake {
@@ -173,6 +197,7 @@ func newClusterFake() *clusterFake {
 			"/aws/service/eks/optimized-ami/1.37/amazon-linux-2023/arm64/standard/recommended/image_id":  eksAMIarm,
 		},
 		nitroAlloc: "2",
+		queues:     map[string]*fakeQueue{}, rules: map[string]*fakeRule{}, assocs: map[string]*ekstypes.PodIdentityAssociation{},
 	}
 	for id, arch := range map[string]ec2types.ArchitectureValues{eksAMIx86: ec2types.ArchitectureValuesX8664, eksAMIarm: ec2types.ArchitectureValuesArm64} {
 		im := testImage(arch, "/dev/xvda", 20)
@@ -191,12 +216,13 @@ func newClusterFake() *clusterFake {
 func armType(name string) ec2types.InstanceTypeInfo {
 	return ec2types.InstanceTypeInfo{InstanceType: ec2types.InstanceType(name),
 		ProcessorInfo: &ec2types.ProcessorInfo{SupportedArchitectures: []ec2types.ArchitectureType{ec2types.ArchitectureTypeArm64}},
+		VCpuInfo:      vcpus(name),
 		NetworkInfo:   &ec2types.NetworkInfo{EnaSupport: ec2types.EnaSupportRequired}, NitroEnclavesSupport: ec2types.NitroEnclavesSupportSupported}
 }
 
 func (f *clusterFake) clients() *ClusterClients {
 	return &ClusterClients{EC2: (*fcEC2)(f), EKS: (*fcEKS)(f), IAM: (*fcIAM)(f), ASG: (*fcASG)(f), Quotas: (*fcQuotas)(f),
-		SSM: (*fcSSM)(f), Kube: f.kube}
+		SSM: (*fcSSM)(f), Kube: f.kube, SQS: (*fcSQS)(f), Events: (*fcEvents)(f), Objects: f.kubeObjects}
 }
 
 func (f *clusterFake) id(prefix string) string { f.n++; return fmt.Sprintf("%s-%04d", prefix, f.n) }
@@ -854,6 +880,10 @@ func (e *fcEKS) DescribeCluster(_ context.Context, in *eks.DescribeClusterInput,
 		return nil, apiErr("ResourceNotFoundException")
 	}
 	c := *e.cluster
+	// An update ends between two reads, when the test says so.
+	if e.cluster.Status == ekstypes.ClusterStatusUpdating && e.updateEnds {
+		e.cluster.Status = ekstypes.ClusterStatusActive
+	}
 	// The cluster becomes ACTIVE between two reads, with what a node needs
 	// to join it.
 	if e.cluster.Status == ekstypes.ClusterStatusCreating {
@@ -1090,6 +1120,13 @@ func (e *fcEKS) CreateNodegroup(_ context.Context, in *eks.CreateNodegroupInput,
 		return nil, err
 	}
 	f.ngIn[name] = in
+	// EKS gives the node role an EC2_LINUX access entry of its own, without
+	// the owner tag (when the test asks for it: eksNodeEntry).
+	if nr := aws.ToString(in.NodeRole); nr != "" && f.eksNodeEntry {
+		if _, ok := f.entries[nr]; !ok {
+			f.entries[nr], f.entryTypes[nr] = nil, "EC2_LINUX"
+		}
+	}
 	f.ngs[name] = &ekstypes.Nodegroup{NodegroupName: in.NodegroupName, Status: ekstypes.NodegroupStatusCreating, Tags: in.Tags,
 		AmiType: in.AmiType, LaunchTemplate: &ekstypes.LaunchTemplateSpecification{Id: in.LaunchTemplate.Id, Version: in.LaunchTemplate.Version}}
 	if in.AmiType == "" {

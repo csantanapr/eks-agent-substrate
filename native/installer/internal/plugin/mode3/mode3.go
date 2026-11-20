@@ -66,6 +66,10 @@ var Needs = plugin.Needs{
 	Source:  &plugin.Source{Repo: Repo, Commit: Commit, Tag: Tag, ImageRepo: ImageRepo},
 }
 
+// NoKarpenter is why mode 3 cannot run on nodes Karpenter makes.
+const NoKarpenter = "needs nodes labeled " + kataNodeLabel + ", which kata-deploy sets only on a node that already runs, " +
+	"so Karpenter cannot make a node for its Pods"
+
 // Order places mode 3 after the plugins that only add volumes or providers;
 // mode3-iso comes right after, so the two are listed together.
 const Order = 70
@@ -100,7 +104,13 @@ func init() {
 		// Kata and the counter pool run on the microvm node group, which a
 		// new cluster gets for mode 3 even without the microvm class.
 		Nodes: []string{"microvm"}, AddsNodes: true,
-		Deploy: deploy, Verify: Kata.Verify, Remove: remove,
+		// Karpenter makes a node only for a Pod a NodePool can place, and
+		// the kata RuntimeClass places its Pods on a label kata-deploy sets
+		// on a node that already runs (kataNodeLabel). So it is refused
+		// where the microvm group is a Karpenter NodePool; KARPENTER=on
+		// keeps that group a node group.
+		NoKarpenter: NoKarpenter,
+		Deploy:      deploy, Verify: Kata.Verify, Remove: remove,
 	})
 }
 

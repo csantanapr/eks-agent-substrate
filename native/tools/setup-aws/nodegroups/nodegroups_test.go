@@ -161,3 +161,105 @@ func TestSandboxCount(t *testing.T) {
 		t.Errorf("NitroAMIBuild = %q", b)
 	}
 }
+
+// KARPENTER=on: the values, Auto Mode, and a NodePool to make; the pools are
+// gvisor, and with KARPENTER_NODE_OVERLAY microvm and nitro too, in
+// NODE_GROUPS's order.
+func TestCheckKarpenter(t *testing.T) {
+	for _, c := range []struct {
+		karpenter string
+		auto      bool
+		groups    []string
+		want      string
+	}{
+		{"", true, []string{System, GVisor}, ""},
+		{"off", false, []string{System}, ""},
+		{"on", false, []string{System, GVisor, MicroVM}, ""},
+		{"on", false, []string{System, GVisor}, ""},
+		{"on", false, []string{System, MicroVM, Nitro}, "NODE_GROUPS=system,microvm,nitro does not name gvisor"},
+		{"on", true, []string{System, GVisor}, "needs AUTO_MODE off"},
+		{"on", false, []string{System, Nitro}, "NODE_GROUPS=system,nitro does not name gvisor"},
+		{"yes", false, []string{System, GVisor}, `not "yes"`},
+	} {
+		err := CheckKarpenter(c.karpenter, c.auto, c.groups)
+		if (c.want == "") != (err == nil) || (err != nil && !strings.Contains(err.Error(), c.want)) {
+			t.Errorf("CheckKarpenter(%q, %v, %v) = %v, want %q", c.karpenter, c.auto, c.groups, err, c.want)
+		}
+	}
+	// KARPENTER=on makes the gvisor group a NodePool; microvm stays a node
+	// group, as system and nitro do. With KARPENTER_NODE_OVERLAY=on, microvm
+	// and nitro are NodePools too; system never is.
+	all := []string{System, MicroVM, GVisor, Nitro}
+	ng, pools := SplitKarpenter(all, false)
+	if !slices.Equal(ng, []string{System, MicroVM, Nitro}) || !slices.Equal(pools, []string{GVisor}) {
+		t.Errorf("SplitKarpenter: %v %v", ng, pools)
+	}
+	if ng, pools = SplitKarpenter(all, true); !slices.Equal(ng, []string{System}) || !slices.Equal(pools, []string{MicroVM, GVisor, Nitro}) {
+		t.Errorf("SplitKarpenter with KARPENTER_NODE_OVERLAY: %v %v", ng, pools)
+	}
+	if IsKarpenterPool(System, false) || IsKarpenterPool(Nitro, false) || !IsKarpenterPool(GVisor, false) || IsKarpenterPool(MicroVM, false) ||
+		!IsKarpenterPool(MicroVM, true) || !IsKarpenterPool(Nitro, true) || IsKarpenterPool(System, true) {
+		t.Error("IsKarpenterPool")
+	}
+	if !slices.Equal(KarpenterPools(false), []string{GVisor}) || !slices.Equal(AnyKarpenterPools(), []string{GVisor, MicroVM, Nitro}) {
+		t.Errorf("KarpenterPools(false) %v, AnyKarpenterPools %v", KarpenterPools(false), AnyKarpenterPools())
+	}
+}
+
+// KARPENTER_NODE_OVERLAY: on, off or empty, and on only with KARPENTER=on;
+// the marker of each mode.
+func TestCheckNodeOverlay(t *testing.T) {
+	for _, c := range []struct{ karpenter, overlay, want string }{
+		{"", "", ""}, {"", "off", ""}, {"on", "", ""}, {"on", "off", ""}, {"on", "on", ""},
+		{"", "on", `KARPENTER_NODE_OVERLAY=on needs KARPENTER=on, and KARPENTER=""`},
+		{"off", "on", `KARPENTER_NODE_OVERLAY=on needs KARPENTER=on, and KARPENTER="off"`},
+		{"on", "yes", `KARPENTER_NODE_OVERLAY must be "on", "off" or empty, not "yes"`},
+		{"", "yes", `not "yes"`},
+	} {
+		err := CheckNodeOverlay(c.karpenter, c.overlay)
+		if (c.want == "") != (err == nil) || (err != nil && !strings.Contains(err.Error(), c.want)) {
+			t.Errorf("CheckNodeOverlay(%q, %q) = %v, want %q", c.karpenter, c.overlay, err, c.want)
+		}
+	}
+	for _, c := range []struct {
+		karpenter, overlay bool
+		want               string
+	}{{false, false, ""}, {false, true, ""}, {true, false, "on"}, {true, true, "node-overlay"}} {
+		if got := KarpenterMarker(c.karpenter, c.overlay); got != c.want {
+			t.Errorf("KarpenterMarker(%v, %v) = %q, want %q", c.karpenter, c.overlay, got, c.want)
+		}
+	}
+}
+
+// The marker is never a TAGS key; with KARPENTER=on neither are the owner
+// and created-by keys or Karpenter's own; without it TAGS is as before.
+func TestCheckTags(t *testing.T) {
+	def := "project=agent-substrate auto-delete=no"
+	for _, c := range []struct {
+		tags      string
+		karpenter bool
+		bad       bool
+	}{
+		{def, false, false},
+		{def, true, false},
+		{def + " " + KarpenterTagKey + "=on", false, true},
+		{def + " " + KarpenterTagKey + "=off", true, true},
+		{ownerTagKey + "=x", false, false},
+		{ownerTagKey + "=x", true, true},
+		{createdByTagKey + "=x", true, true},
+		{"kubernetes.io/cluster/demo=owned", false, false},
+		{"kubernetes.io/cluster/demo=owned", true, true},
+		{"kubernetes.io/cluster=x", true, true},
+		{"kubernetes.io/clusters=x", true, true},
+		{"kubernetes.io/cluster=x", false, false},
+		{"karpenter.sh/nodepool=a", true, true},
+		{"karpenter.sh/anything=a", true, true},
+		{"karpenter.k8s.aws/ec2nodeclass=a", true, true},
+		{"eks:eks-cluster-name=demo", true, true},
+		{"team=karpenter.sh", true, false},
+	} {
+		if err := CheckTags(c.tags, c.karpenter); (err != nil) != c.bad {
+			t.Errorf("CheckTags(%q, %v) = %v", c.tags, c.karpenter, err)
+		}
+	}
+}

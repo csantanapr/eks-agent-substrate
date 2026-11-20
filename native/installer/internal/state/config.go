@@ -292,7 +292,7 @@ var ManagedKeys = []string{
 	"CLUSTER_NAME", "AWS_REGION", "AWS_PROFILE", "KUBERNETES_VERSION", "AUTO_MODE",
 	"SYSTEM_INSTANCE_TYPE", "SYSTEM_NODES", "GVISOR_INSTANCE_TYPE", "GVISOR_NODES",
 	"MICROVM_INSTANCE_TYPE", "MICROVM_NODES", "NODE_AMI_ID", "NODE_GROUP_TYPE",
-	"NITRO_COMPUTE", "NITRO_AMI_ID", "NITRO_INSTANCE_TYPE", "NITRO_NODES", "TAGS", "EKS_PUBLIC_ACCESS_CIDRS",
+	"NITRO_COMPUTE", "NITRO_AMI_ID", "NITRO_INSTANCE_TYPE", "NITRO_NODES", "KARPENTER", "KARPENTER_NODE_OVERLAY", "TAGS", "EKS_PUBLIC_ACCESS_CIDRS",
 	"SUBSTRATE_TAG", "SUBSTRATE_IMAGE_REPO", "SANDBOX_CLASSES",
 }
 
@@ -420,6 +420,8 @@ func ValidateConfig(values map[string]string) map[string]string {
 	check("KUBERNETES_VERSION", minor >= awsx.MinMinor,
 		fmt.Sprintf("an EKS version 1.%d or newer, such as 1.%d", awsx.MinMinor, awsx.MinMinor))
 	check("AUTO_MODE", values["AUTO_MODE"] == "on" || values["AUTO_MODE"] == "", "on, or empty for off")
+	check("KARPENTER", slices.Contains([]string{nodegroups.KarpenterOn, "off", ""}, values["KARPENTER"]), "on, off, or empty for off")
+	check("KARPENTER_NODE_OVERLAY", slices.Contains([]string{nodegroups.KarpenterOn, "off", ""}, values["KARPENTER_NODE_OVERLAY"]), "on, off, or empty for off")
 	for _, g := range []string{"SYSTEM", "GVISOR", "MICROVM", "NITRO"} {
 		check(g+"_INSTANCE_TYPE", typeRe.MatchString(values[g+"_INSTANCE_TYPE"]), "an EC2 instance type such as m8i.2xlarge")
 		check(g+"_NODES", nodesRe.MatchString(values[g+"_NODES"]), "a node count from 1 to 99")

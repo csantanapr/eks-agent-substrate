@@ -315,7 +315,9 @@ var deleteImage = mode3.DeleteCounterImage
 // ConfigMap, and RuntimeClass isolated-sandbox when the installer made it
 // and no Pod uses it (node-group's, removeRuntimeClass). Only under
 // auto-mode does it delete NodePool ate-isolated with its NodeClass, as
-// before NITRO_COMPUTE; under node-group it leaves them (nodePoolLeft):
+// before NITRO_COMPUTE, where the cluster has both kinds (autoModeKinds: a
+// cluster with its own Karpenter has no NodeClass kind); under node-group
+// it leaves them (nodePoolLeft):
 // node-group never makes them, and ones of that name may be another's.
 // Under auto-mode on an Auto Mode cluster it reads no RuntimeClass, as
 // before NITRO_COMPUTE: there it is Auto Mode's own.
@@ -340,12 +342,11 @@ func remove(ctx context.Context, w io.Writer, o plugin.Options) error {
 		}
 		return removeRuntimeClass(ctx, w, o)
 	}
-	// Without Auto Mode there is no NodePool kind, and nothing to delete.
-	var crd bytes.Buffer
-	if err := plugin.Kubectl(ctx, w, o, nil, &crd, "get", "crd", "nodepools.karpenter.sh", "--ignore-not-found", "-o", "name"); err != nil {
+	kinds, err := autoModeKinds(ctx, w, o)
+	if err != nil {
 		return err
 	}
-	if strings.TrimSpace(crd.String()) != "" {
+	if kinds {
 		fmt.Fprintln(w, "Deleting NodePool "+NodePoolName+"; Auto Mode drains and removes its nodes")
 		if err := plugin.Kubectl(ctx, w, o, nil, nil, "delete", "nodepool", NodePoolName, "--ignore-not-found", "--wait=true", "--timeout=10m"); err != nil {
 			return err
@@ -363,6 +364,30 @@ func remove(ctx context.Context, w io.Writer, o plugin.Options) error {
 		return nil
 	}
 	return removeRuntimeClass(ctx, w, o)
+}
+
+// autoModeKinds reports both of Auto Mode's kinds, NodePool and NodeClass,
+// on the cluster: auto-mode's Remove deletes NodePool and NodeClass
+// ate-isolated only then. It reads the NodePool CRD, as before
+// NITRO_COMPUTE. A cluster without it has neither kind, and an Auto Mode
+// cluster has both. A cluster without Auto Mode that has it runs its own
+// Karpenter (setup-aws's KARPENTER=on), with NodePools and no NodeClass
+// kind, so only there is the NodeClass CRD read too. A failed read stops
+// Remove.
+func autoModeKinds(ctx context.Context, w io.Writer, o plugin.Options) (bool, error) {
+	for _, crd := range []string{"nodepools.karpenter.sh", "nodeclasses.eks.amazonaws.com"} {
+		var out bytes.Buffer
+		if err := plugin.Kubectl(ctx, w, o, nil, &out, "get", "crd", crd, "--ignore-not-found", "-o", "name"); err != nil {
+			return false, err
+		}
+		if strings.TrimSpace(out.String()) == "" {
+			return false, nil
+		}
+		if o.AutoMode {
+			return true, nil
+		}
+	}
+	return true, nil
 }
 
 // NodePoolLeftLine ends the line node-group's Remove prints when NodePool

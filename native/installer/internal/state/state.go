@@ -247,6 +247,41 @@ type ClusterConfig struct {
 	// The nitro node group's: NITRO_AMI_ID, a Nitro Sandbox AMI (required
 	// for the group); NITRO_INSTANCE_TYPE, with Nitro Enclaves; NITRO_NODES.
 	NitroAMIID, NitroInstanceType, NitroNodes string
+	// Karpenter is config.env's KARPENTER: nodegroups.KarpenterOn makes the
+	// gvisor group a Karpenter NodePool of up to GVISOR_NODES nodes, on a
+	// cluster without Auto Mode; "off" or empty makes it a node group.
+	Karpenter string
+	// KarpenterNodeOverlay is config.env's KARPENTER_NODE_OVERLAY:
+	// nodegroups.KarpenterOn, with KARPENTER=on, turns on Karpenter's alpha
+	// NodeOverlay and makes the microvm and nitro groups NodePools too, up
+	// to MICROVM_NODES and NITRO_NODES nodes; "off" or empty leaves them
+	// node groups.
+	KarpenterNodeOverlay string
+}
+
+// KarpenterOn reports KARPENTER=on.
+func (c ClusterConfig) KarpenterOn() bool { return c.Karpenter == nodegroups.KarpenterOn }
+
+// NodeOverlayOn reports KARPENTER_NODE_OVERLAY=on with KARPENTER=on.
+func (c ClusterConfig) NodeOverlayOn() bool {
+	return c.KarpenterOn() && c.KarpenterNodeOverlay == nodegroups.KarpenterOn
+}
+
+// SplitPools splits groups, in their order, into the node groups and the
+// Karpenter NodePools a new cluster of c gets (nodegroups.KarpenterPools):
+// none of the second without KARPENTER=on, and the microvm and nitro groups
+// too with KARPENTER_NODE_OVERLAY=on.
+func (c ClusterConfig) SplitPools(groups []string) (nodeGroups, pools []string) {
+	if !c.KarpenterOn() {
+		return groups, nil
+	}
+	return nodegroups.SplitKarpenter(groups, c.NodeOverlayOn())
+}
+
+// IsPool reports a group c makes a Karpenter NodePool (SplitPools).
+func (c ClusterConfig) IsPool(g string) bool {
+	_, pools := c.SplitPools([]string{g})
+	return len(pools) > 0
 }
 
 // clusterKnobs are the environment variables of ClusterConfig with
@@ -270,6 +305,8 @@ var clusterKnobs = []struct {
 	{"NITRO_AMI_ID", "", func(c *ClusterConfig) *string { return &c.NitroAMIID }},
 	{"NITRO_INSTANCE_TYPE", "m8i.xlarge", func(c *ClusterConfig) *string { return &c.NitroInstanceType }},
 	{"NITRO_NODES", "1", func(c *ClusterConfig) *string { return &c.NitroNodes }},
+	{"KARPENTER", "", func(c *ClusterConfig) *string { return &c.Karpenter }},
+	{"KARPENTER_NODE_OVERLAY", "", func(c *ClusterConfig) *string { return &c.KarpenterNodeOverlay }},
 }
 
 // ClusterConfigFromEnv reads the knobs with lookup (os.LookupEnv), falling
@@ -317,17 +354,51 @@ func (c ClusterConfig) Summary(groups []string) string {
 }
 
 // GroupsLine is groups with their nodes and instance types, such as
-// "system 2×m8i.xlarge · gvisor 2×m8i.2xlarge", or NoNodeGroups.
+// "system 2×m8i.xlarge · gvisor 2×m8i.2xlarge", or NoNodeGroups. With
+// KARPENTER=on the gvisor group is a Karpenter NodePool (PoolsLine):
+// "system 2×m8i.xlarge · microvm 2×m8i.2xlarge · Karpenter NodePool gvisor
+// up to 2×m8i.2xlarge".
 func (c ClusterConfig) GroupsLine(groups []string) string {
 	if len(groups) == 0 {
 		return NoNodeGroups
 	}
+	ngs, _ := c.SplitPools(groups)
 	var out []string
-	for _, g := range groups {
+	for _, g := range ngs {
 		nodes, typ := c.Group(g)
 		out = append(out, g+" "+nodes+"×"+typ)
 	}
+	if pools := c.PoolsLine(groups); pools != "" {
+		out = append(out, "Karpenter "+pools)
+	}
 	return strings.Join(out, " · ")
+}
+
+// PoolsLine names the Karpenter NodePools of groups with KARPENTER=on, from
+// no node up to their *_NODES: "NodePool gvisor up to 2×m8i.2xlarge", or
+// with more than one "NodePools gvisor, microvm, up to 2×m8i.2xlarge each",
+// or "NodePools gvisor up to 2×m8i.2xlarge, microvm up to 3×m8i.2xlarge"
+// when they differ; "" without KARPENTER=on or a NodePool.
+func (c ClusterConfig) PoolsLine(groups []string) string {
+	_, pools := c.SplitPools(groups)
+	var each []string
+	for _, g := range pools {
+		nodes, typ := c.Group(g)
+		each = append(each, nodes+"×"+typ)
+	}
+	switch {
+	case len(pools) == 0:
+		return ""
+	case len(pools) == 1:
+		return "NodePool " + pools[0] + " up to " + each[0]
+	case len(slices.Compact(slices.Clone(each))) == 1:
+		return "NodePools " + strings.Join(pools, ", ") + ", up to " + each[0] + " each"
+	}
+	var out []string
+	for i, g := range pools {
+		out = append(out, g+" up to "+each[i])
+	}
+	return "NodePools " + strings.Join(out, ", ")
 }
 
 // NoNodeGroups is what Review and the Create the cluster step say of a
@@ -400,8 +471,24 @@ type Setup struct {
 	// counter demo's classes.
 	SandboxClasses string
 	// ClusterPools are a connected cluster's node groups, the ate.dev/pool
-	// values of its nodes (the probe reads them); nil for a new cluster.
+	// values of its nodes and of the Karpenter NodePools this installer made
+	// (the probe reads them); nil for a new cluster.
 	ClusterPools []string
+	// ClusterNodePools are the pools of ClusterPools that are Karpenter
+	// NodePools, and ClusterKarpenter a connected cluster with the Karpenter
+	// AWS provider (the probe's); none for a new cluster, whose KARPENTER is
+	// NewClusterConfig's.
+	ClusterNodePools []string
+	ClusterKarpenter bool
+}
+
+// Karpenter reports a run whose cluster has Karpenter: KARPENTER=on for a
+// cluster the run creates, the Karpenter AWS provider on a connected one.
+func (s *Setup) Karpenter() bool {
+	if s.ClusterIsNew {
+		return s.NewClusterConfig.KarpenterOn()
+	}
+	return s.ClusterKarpenter
 }
 
 // Defaults the installer passes on, and the flag defaults of its
@@ -439,17 +526,20 @@ func NewSetupFrom(lookup func(string) (string, bool)) *Setup {
 }
 
 // SelectCluster records an existing cluster as the run's target, with the
-// node groups its nodes come from (pools: the probe's), and NewCluster a
-// cluster the run will create. Every Cluster* field is written by both, as
-// in substrate-gke: a field one of them forgot would carry an abandoned
-// selection's value into the other path.
-func (s *Setup) SelectCluster(c awsx.Cluster, pools []string) {
+// node groups its nodes and NodePools come from (pools, the probe's), the
+// pools of them that are Karpenter NodePools and whether it has Karpenter,
+// and NewCluster a cluster the run will create. Every Cluster* field is
+// written by both, as in substrate-gke: a field one of them forgot would
+// carry an abandoned selection's value into the other path.
+func (s *Setup) SelectCluster(c awsx.Cluster, pools, nodePools []string, karpenter bool) {
 	s.ClusterName = c.Name
 	s.ClusterVersion = c.Version
 	s.AutoMode = c.AutoMode
 	s.ClusterIsNew = false
 	s.ClusterOwned = c.CreatedByInstaller(s.Region)
 	s.ClusterPools = pools
+	s.ClusterNodePools = nodePools
+	s.ClusterKarpenter = karpenter
 }
 
 // NewCluster records a cluster the run will create, named name.
@@ -460,6 +550,8 @@ func (s *Setup) NewCluster(name string) {
 	s.ClusterIsNew = true
 	s.ClusterOwned = true
 	s.ClusterPools = nil
+	s.ClusterNodePools = nil
+	s.ClusterKarpenter = false
 }
 
 // Names are setup-aws's derived resource names (cmd.deriveNames).

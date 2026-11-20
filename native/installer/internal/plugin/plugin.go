@@ -234,10 +234,28 @@ type Options struct {
 	Tags string
 	// AutoMode is the cluster's EKS Auto Mode, read off the cluster.
 	AutoMode bool
-	// Pools are the ate.dev/pool values of the cluster's nodes (NodePools),
+	// Pools are the ate.dev/pool values of the cluster's nodes and of the
+	// Karpenter NodePools this installer made (NodePools, Inventory.Pools),
 	// read by the caller: the node groups a plugin's Nodes are checked
-	// against.
+	// against. A NodePool's pool can have no node yet.
 	Pools []string
+	// PoolArchs are, by pool, the CPU architectures each Karpenter NodePool
+	// this installer made requires (Inventory.NodePools), whether its pool
+	// has a node yet or not: a step that builds an image for a pool's nodes
+	// adds them to the architectures it reads off the nodes (ArchsOf), so a
+	// node Karpenter removed between the inventory and that read cannot
+	// leave it with none.
+	PoolArchs map[string][]string
+	// NodePoolArchs are, by pool, the CPU architectures each Karpenter
+	// NodePool this installer made requires (Inventory.NodePools), whether
+	// its pool has a node yet or not: Karpenter can add or remove nodes
+	// while a step runs, so a step that builds for the nodes Karpenter makes
+	// (mode3-iso on the nitro pool) takes the architecture from here.
+	NodePoolArchs map[string][]string
+	// KarpenterPools are the pools of Pools that have a Karpenter NodePool
+	// this installer made (Inventory.NodePoolNames): Run refuses a plugin
+	// with NoKarpenter whose node group is one of them (KarpenterProblem).
+	KarpenterPools []string
 	// BundledDatabase is a control plane on ate-setup's bundled PostgreSQL
 	// (BundledDatabase), read by the caller: Run refuses a plugin with
 	// NeedsRDS there.
@@ -331,6 +349,12 @@ type Plugin struct {
 	// with NeedsAutoMode runs without Auto Mode all the same (mode3-iso with
 	// NITRO_COMPUTE=node-group, on the nitro node group).
 	AutoModeOptional func(Options) bool
+	// NoKarpenter, when set, is why the plugin cannot run on nodes Karpenter
+	// makes: where a node group of its Nodes is a Karpenter NodePool, the
+	// wizard does not offer it, and Run and the control plane's deploy
+	// refuse it (KarpenterProblem). With KARPENTER=on only the gvisor group
+	// is a NodePool, so a plugin on the microvm group runs as before.
+	NoKarpenter string
 	// NeedsRDS, when set, is why the plugin needs the RDS database (login
 	// rotation rotates its logins): the wizard offers it only with RDS, and
 	// Run refuses to deploy or check it, before any child, on a cluster

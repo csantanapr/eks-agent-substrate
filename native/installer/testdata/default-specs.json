@@ -1,0 +1,1371 @@
+{
+ "connected": {
+  "bootstrap": {
+   "Label": "setup-aws bootstrap",
+   "Display": "CLUSTER_NAME=demo AWS_REGION=us-west-2 AWS_PROFILE=eks-sandbox go -C tools/setup-aws run . bootstrap",
+   "Argv": [
+    "go",
+    "-C",
+    "/w/native/tools/setup-aws",
+    "run",
+    ".",
+    "bootstrap"
+   ],
+   "Env": [
+    "CLUSTER_NAME=demo",
+    "AWS_REGION=us-west-2",
+    "AWS_PROFILE=eks-sandbox",
+    "TAGS=project=agent-substrate auto-delete=no",
+    "PLAN=false",
+    "KEEP_CLUSTER=false"
+   ],
+   "SimLines": [
+    "level=INFO msg=\"Starting full bootstrap...\" cluster=demo region=us-west-2",
+    "level=INFO msg=\"Step 1/4: Checking the EKS cluster...\"",
+    "level=INFO msg=\"Step 2/4: Creating S3 buckets for snapshots and microVM assets...\"",
+    "level=INFO msg=\"Step 3/4: Creating EKS Pod Identity roles for ate-api-server and atelet...\"",
+    "level=INFO msg=\"Step 4/4: Creating ECR repositories...\"",
+    "level=INFO msg=\"Bootstrap completed successfully.\""
+   ],
+   "Summary": false
+  },
+  "control plane": {
+   "Label": "ate-setup deploy ate-system",
+   "Display": "go run ./cmd/ate-setup deploy ate-system  (substrate v1.0.0 + deploy/eks, gvisor,microvm, database rds)",
+   "Argv": [
+    "/w/native/bin/substrate-eks",
+    "--deploy-control-plane",
+    "--database",
+    "rds",
+    "--snap-bucket",
+    "demo-snap-111122223333-us-west-2",
+    "--asset-bucket",
+    "demo-assets-111122223333-us-west-2",
+    "--tag",
+    "v1.0.0",
+    "--sandbox-classes",
+    "gvisor,microvm",
+    "--cluster",
+    "demo",
+    "--region",
+    "us-west-2",
+    "--profile",
+    "eks-sandbox"
+   ],
+   "Env": [
+    "TAGS=project=agent-substrate auto-delete=no"
+   ],
+   "SimLines": [
+    "Writing kubeconfig ~/.cache/substrate-eks/kubeconfig/demo.us-west-2.yaml",
+    "Using cached substrate v1.0.0",
+    "substrate-eks EKS overlay: added deploy/eks to manifests/ate-install/base/kustomization.yaml",
+    "substrate-eks EKS overlay: applied code patch ate-setup-s3-assets-v1.0.0.patch",
+    "Applying cluster prerequisites: StorageClass substrate-eks-auto-ebs (ebs.csi.eks.amazonaws.com, encrypted gp3, 3 volume tags)",
+    "storageclass.storage.k8s.io/substrate-eks-auto-ebs created",
+    "[step]: deploy_ate_system",
+    "[step]: prepare_microvm_deps",
+    "Uploading assets to s3://demo-assets-111122223333-us-west-2/microvm-assets/ ...",
+    "[step]: deploy_crds",
+    "[step]: ensure_apiserver_prerequisites",
+    "[step]: Waiting for ATE system components to be ready...",
+    "deployment \"ate-api-server\" successfully rolled out",
+    "daemon set \"atelet\" successfully rolled out",
+    "Substrate control plane is ready"
+   ],
+   "Summary": true
+  },
+  "create cluster": {
+   "Label": "setup-aws create cluster",
+   "Display": "NODE_GROUPS=system,gvisor,microvm CLUSTER_NAME=demo AWS_REGION=us-west-2 AWS_PROFILE=eks-sandbox go -C tools/setup-aws run . create cluster",
+   "Argv": [
+    "go",
+    "-C",
+    "/w/native/tools/setup-aws",
+    "run",
+    ".",
+    "create",
+    "cluster"
+   ],
+   "Env": [
+    "NODE_GROUPS=system,gvisor,microvm",
+    "CLUSTER_NAME=demo",
+    "AWS_REGION=us-west-2",
+    "AWS_PROFILE=eks-sandbox",
+    "TAGS=project=agent-substrate auto-delete=no",
+    "PLAN=false",
+    "KEEP_CLUSTER=false",
+    "KUBERNETES_VERSION=1.37",
+    "AUTO_MODE=on",
+    "SYSTEM_INSTANCE_TYPE=m8i.xlarge",
+    "GVISOR_INSTANCE_TYPE=m8i.2xlarge",
+    "MICROVM_INSTANCE_TYPE=m8i.2xlarge",
+    "SYSTEM_NODES=2",
+    "GVISOR_NODES=2",
+    "MICROVM_NODES=2",
+    "EKS_PUBLIC_ACCESS_CIDRS=auto",
+    "NODE_AMI_ID=",
+    "NODE_GROUP_TYPE=managed",
+    "NITRO_COMPUTE=auto-mode",
+    "NITRO_AMI_ID=",
+    "NITRO_INSTANCE_TYPE=m8i.xlarge",
+    "NITRO_NODES=1"
+   ],
+   "SimLines": [
+    "level=INFO msg=\"Creating the cluster...\" cluster=demo region=us-west-2",
+    "level=INFO msg=\"Step 1/9: Checking the account, Region and quotas...\"",
+    "level=INFO msg=\"Step 2/9: Creating the VPC and subnets...\"",
+    "level=INFO msg=\"Step 3/9: Creating the cluster and node IAM roles...\"",
+    "level=INFO msg=\"Step 4/9: Creating the EKS cluster...\"",
+    "level=INFO msg=\"Step 5/9: Granting cluster access...\"",
+    "level=INFO msg=\"Step 6/9: Installing EKS add-ons...\"",
+    "level=INFO msg=\"Step 7/9: Creating the node groups' launch templates...\"",
+    "level=INFO msg=\"Step 8/9: Creating the managed node groups...\"",
+    "level=INFO msg=\"Step 9/9: Waiting for the node groups to be ACTIVE...\"",
+    "level=INFO msg=\"Cluster ready.\" cluster=demo created=27 changed=0 took=19m40s"
+   ],
+   "Summary": false
+  },
+  "demo": {
+   "Label": "counter demo",
+   "Display": "bin/substrate-eks --deploy-demo --verify --tag v1.0.0 --sandbox-classes gvisor,microvm --cluster demo --region us-west-2 --profile eks-sandbox",
+   "Argv": [
+    "/w/native/bin/substrate-eks",
+    "--deploy-demo",
+    "--verify",
+    "--tag",
+    "v1.0.0",
+    "--sandbox-classes",
+    "gvisor,microvm",
+    "--cluster",
+    "demo",
+    "--region",
+    "us-west-2",
+    "--profile",
+    "eks-sandbox"
+   ],
+   "Env": [
+    "TAGS=project=agent-substrate auto-delete=no"
+   ],
+   "SimLines": [
+    "Deploying the counter demo on gvisor",
+    "actor counter-gvisor is Running",
+    "Deploying the counter demo on microvm",
+    "actor counter-microvm is Running",
+    "Checking suspend and resume on gvisor",
+    "suspended counter-gvisor; snapshot in s3://demo-snap-111122223333-us-west-2/",
+    "PASS: gvisor: memory, file and rootfs counters continued after resume",
+    "Checking suspend and resume on microvm",
+    "suspended counter-microvm; snapshot in s3://demo-snap-111122223333-us-west-2/",
+    "PASS: microvm: memory, file and rootfs counters continued after resume"
+   ],
+   "Summary": false
+  },
+  "inventory": {
+   "Label": "setup-aws inventory",
+   "Display": "CLUSTER_NAME=demo AWS_REGION=us-west-2 AWS_PROFILE=eks-sandbox go -C tools/setup-aws run . inventory",
+   "Argv": [
+    "go",
+    "-C",
+    "/w/native/tools/setup-aws",
+    "run",
+    ".",
+    "inventory"
+   ],
+   "Env": [
+    "CLUSTER_NAME=demo",
+    "AWS_REGION=us-west-2",
+    "AWS_PROFILE=eks-sandbox",
+    "TAGS=project=agent-substrate auto-delete=no",
+    "PLAN=false",
+    "KEEP_CLUSTER=false"
+   ],
+   "SimLines": null,
+   "Summary": false
+  },
+  "plugins": {
+   "Label": "plugins",
+   "Display": "bin/substrate-eks --plugin-action deploy --tag v1.0.0 --cluster demo --region us-west-2 --profile eks-sandbox",
+   "Argv": [
+    "/w/native/bin/substrate-eks",
+    "--plugin-action",
+    "deploy",
+    "--tag",
+    "v1.0.0",
+    "--cluster",
+    "demo",
+    "--region",
+    "us-west-2",
+    "--profile",
+    "eks-sandbox"
+   ],
+   "Env": [
+    "TAGS=project=agent-substrate auto-delete=no"
+   ],
+   "SimLines": null,
+   "Summary": false
+  },
+  "probe": {
+   "Label": "check other for an existing install",
+   "Display": "bin/substrate-eks --probe-installed --cluster other --region us-west-2 --profile eks-sandbox",
+   "Argv": [
+    "/w/native/bin/substrate-eks",
+    "--probe-installed",
+    "--cluster",
+    "other",
+    "--region",
+    "us-west-2",
+    "--profile",
+    "eks-sandbox"
+   ],
+   "Env": [
+    "TAGS=project=agent-substrate auto-delete=no"
+   ],
+   "SimLines": [
+    "SUBSTRATE_EKS_INSTALLED false pools=gvisor,microvm,system"
+   ],
+   "Summary": false
+  },
+  "rds": {
+   "Label": "setup-aws create rds",
+   "Display": "CLUSTER_NAME=demo AWS_REGION=us-west-2 AWS_PROFILE=eks-sandbox go -C tools/setup-aws run . create rds",
+   "Argv": [
+    "go",
+    "-C",
+    "/w/native/tools/setup-aws",
+    "run",
+    ".",
+    "create",
+    "rds"
+   ],
+   "Env": [
+    "CLUSTER_NAME=demo",
+    "AWS_REGION=us-west-2",
+    "AWS_PROFILE=eks-sandbox",
+    "TAGS=project=agent-substrate auto-delete=no",
+    "PLAN=false",
+    "KEEP_CLUSTER=false"
+   ],
+   "SimLines": [
+    "level=INFO msg=\"Starting RDS setup...\" cluster=demo region=us-west-2",
+    "level=INFO msg=\"Step 1/4: Creating the RDS subnet group and security group...\"",
+    "level=INFO msg=\"Step 2/4: Creating the RDS PostgreSQL instance...\"",
+    "level=INFO msg=\"Step 3/4: Creating the Substrate database logins in Secrets Manager...\"",
+    "level=INFO msg=\"Step 4/4: Waiting for the RDS instance to be available...\"",
+    "level=INFO msg=\"RDS setup completed successfully.\""
+   ],
+   "Summary": false
+  },
+  "remove": {
+   "Label": "ate-setup delete ate-system",
+   "Display": "bin/substrate-eks --remove-control-plane --tag v1.0.0 --cluster demo --region us-west-2 --profile eks-sandbox",
+   "Argv": [
+    "/w/native/bin/substrate-eks",
+    "--remove-control-plane",
+    "--tag",
+    "v1.0.0",
+    "--cluster",
+    "demo",
+    "--region",
+    "us-west-2",
+    "--profile",
+    "eks-sandbox"
+   ],
+   "Env": [
+    "TAGS=project=agent-substrate auto-delete=no"
+   ],
+   "SimLines": [
+    "Removing the recorded plugins before ate-system",
+    "Using cached substrate v1.0.0",
+    "$ go run ./cmd/ate-setup delete ate-system --context demo",
+    "namespace \"ate-system\" deleted",
+    "Substrate control plane removed"
+   ],
+   "Summary": false
+  },
+  "teardown": {
+   "Label": "setup-aws teardown",
+   "Display": "CLUSTER_NAME=demo AWS_REGION=us-west-2 AWS_PROFILE=eks-sandbox go -C tools/setup-aws run . teardown",
+   "Argv": [
+    "go",
+    "-C",
+    "/w/native/tools/setup-aws",
+    "run",
+    ".",
+    "teardown"
+   ],
+   "Env": [
+    "CLUSTER_NAME=demo",
+    "AWS_REGION=us-west-2",
+    "AWS_PROFILE=eks-sandbox",
+    "TAGS=project=agent-substrate auto-delete=no",
+    "PLAN=false",
+    "KEEP_CLUSTER=false"
+   ],
+   "SimLines": [
+    "level=INFO msg=\"Starting teardown of demo.us-west-2...\"",
+    "level=INFO msg=\"Step 1/10: Listing this deployment's resources...\"",
+    "level=INFO msg=\"Step 2/10: Deleting plugin resources...\"",
+    "level=INFO msg=\"Step 3/10: Deleting Pod Identity associations and IAM roles...\"",
+    "level=INFO msg=\"Step 4/10: Deleting the RDS instance and its logins...\"",
+    "level=INFO msg=\"Step 5/10: Emptying and deleting the S3 buckets...\"",
+    "level=INFO msg=\"Step 6/10: Deleting the ECR repositories...\"",
+    "level=INFO msg=\"Step 7/10: Deleting the managed node groups...\"",
+    "level=INFO msg=\"Step 8/10: Deleting the EKS cluster...\"",
+    "level=INFO msg=\"Step 9/10: Deleting the launch template, VPC and network...\"",
+    "level=INFO msg=\"Step 10/10: Checking that nothing is left...\"",
+    "level=INFO msg=\"Teardown complete: nothing left for demo.us-west-2\""
+   ],
+   "Summary": false
+  },
+  "verify": {
+   "Label": "verify",
+   "Display": "bin/substrate-eks --verify --tag v1.0.0 --sandbox-classes gvisor,microvm --cluster demo --region us-west-2 --profile eks-sandbox",
+   "Argv": [
+    "/w/native/bin/substrate-eks",
+    "--verify",
+    "--tag",
+    "v1.0.0",
+    "--sandbox-classes",
+    "gvisor,microvm",
+    "--cluster",
+    "demo",
+    "--region",
+    "us-west-2",
+    "--profile",
+    "eks-sandbox"
+   ],
+   "Env": [
+    "TAGS=project=agent-substrate auto-delete=no"
+   ],
+   "SimLines": null,
+   "Summary": false
+  }
+ },
+ "new": {
+  "bootstrap": {
+   "Label": "setup-aws bootstrap",
+   "Display": "CLUSTER_NAME=demo AWS_REGION=us-west-2 AWS_PROFILE=eks-sandbox go -C tools/setup-aws run . bootstrap",
+   "Argv": [
+    "go",
+    "-C",
+    "/w/native/tools/setup-aws",
+    "run",
+    ".",
+    "bootstrap"
+   ],
+   "Env": [
+    "CLUSTER_NAME=demo",
+    "AWS_REGION=us-west-2",
+    "AWS_PROFILE=eks-sandbox",
+    "TAGS=project=agent-substrate auto-delete=no",
+    "PLAN=false",
+    "KEEP_CLUSTER=false"
+   ],
+   "SimLines": [
+    "level=INFO msg=\"Starting full bootstrap...\" cluster=demo region=us-west-2",
+    "level=INFO msg=\"Step 1/4: Checking the EKS cluster...\"",
+    "level=INFO msg=\"Step 2/4: Creating S3 buckets for snapshots and microVM assets...\"",
+    "level=INFO msg=\"Step 3/4: Creating EKS Pod Identity roles for ate-api-server and atelet...\"",
+    "level=INFO msg=\"Step 4/4: Creating ECR repositories...\"",
+    "level=INFO msg=\"Bootstrap completed successfully.\""
+   ],
+   "Summary": false
+  },
+  "control plane": {
+   "Label": "ate-setup deploy ate-system",
+   "Display": "go run ./cmd/ate-setup deploy ate-system  (substrate v1.0.0 + deploy/eks, gvisor,microvm, database rds)",
+   "Argv": [
+    "/w/native/bin/substrate-eks",
+    "--deploy-control-plane",
+    "--database",
+    "rds",
+    "--snap-bucket",
+    "demo-snap-111122223333-us-west-2",
+    "--asset-bucket",
+    "demo-assets-111122223333-us-west-2",
+    "--tag",
+    "v1.0.0",
+    "--sandbox-classes",
+    "gvisor,microvm",
+    "--cluster",
+    "demo",
+    "--region",
+    "us-west-2",
+    "--profile",
+    "eks-sandbox"
+   ],
+   "Env": [
+    "TAGS=project=agent-substrate auto-delete=no"
+   ],
+   "SimLines": [
+    "Writing kubeconfig ~/.cache/substrate-eks/kubeconfig/demo.us-west-2.yaml",
+    "Using cached substrate v1.0.0",
+    "substrate-eks EKS overlay: added deploy/eks to manifests/ate-install/base/kustomization.yaml",
+    "substrate-eks EKS overlay: applied code patch ate-setup-s3-assets-v1.0.0.patch",
+    "Applying cluster prerequisites: StorageClass substrate-eks-auto-ebs (ebs.csi.eks.amazonaws.com, encrypted gp3, 3 volume tags)",
+    "storageclass.storage.k8s.io/substrate-eks-auto-ebs created",
+    "[step]: deploy_ate_system",
+    "[step]: prepare_microvm_deps",
+    "Uploading assets to s3://demo-assets-111122223333-us-west-2/microvm-assets/ ...",
+    "[step]: deploy_crds",
+    "[step]: ensure_apiserver_prerequisites",
+    "[step]: Waiting for ATE system components to be ready...",
+    "deployment \"ate-api-server\" successfully rolled out",
+    "daemon set \"atelet\" successfully rolled out",
+    "Substrate control plane is ready"
+   ],
+   "Summary": true
+  },
+  "create cluster": {
+   "Label": "setup-aws create cluster",
+   "Display": "NODE_GROUPS=system,gvisor,microvm CLUSTER_NAME=demo AWS_REGION=us-west-2 AWS_PROFILE=eks-sandbox go -C tools/setup-aws run . create cluster",
+   "Argv": [
+    "go",
+    "-C",
+    "/w/native/tools/setup-aws",
+    "run",
+    ".",
+    "create",
+    "cluster"
+   ],
+   "Env": [
+    "NODE_GROUPS=system,gvisor,microvm",
+    "CLUSTER_NAME=demo",
+    "AWS_REGION=us-west-2",
+    "AWS_PROFILE=eks-sandbox",
+    "TAGS=project=agent-substrate auto-delete=no",
+    "PLAN=false",
+    "KEEP_CLUSTER=false",
+    "KUBERNETES_VERSION=1.37",
+    "AUTO_MODE=on",
+    "SYSTEM_INSTANCE_TYPE=m8i.xlarge",
+    "GVISOR_INSTANCE_TYPE=m8i.2xlarge",
+    "MICROVM_INSTANCE_TYPE=m8i.2xlarge",
+    "SYSTEM_NODES=2",
+    "GVISOR_NODES=2",
+    "MICROVM_NODES=2",
+    "EKS_PUBLIC_ACCESS_CIDRS=auto",
+    "NODE_AMI_ID=",
+    "NODE_GROUP_TYPE=managed",
+    "NITRO_COMPUTE=auto-mode",
+    "NITRO_AMI_ID=",
+    "NITRO_INSTANCE_TYPE=m8i.xlarge",
+    "NITRO_NODES=1"
+   ],
+   "SimLines": [
+    "level=INFO msg=\"Creating the cluster...\" cluster=demo region=us-west-2",
+    "level=INFO msg=\"Step 1/9: Checking the account, Region and quotas...\"",
+    "level=INFO msg=\"Step 2/9: Creating the VPC and subnets...\"",
+    "level=INFO msg=\"Step 3/9: Creating the cluster and node IAM roles...\"",
+    "level=INFO msg=\"Step 4/9: Creating the EKS cluster...\"",
+    "level=INFO msg=\"Step 5/9: Granting cluster access...\"",
+    "level=INFO msg=\"Step 6/9: Installing EKS add-ons...\"",
+    "level=INFO msg=\"Step 7/9: Creating the node groups' launch templates...\"",
+    "level=INFO msg=\"Step 8/9: Creating the managed node groups...\"",
+    "level=INFO msg=\"Step 9/9: Waiting for the node groups to be ACTIVE...\"",
+    "level=INFO msg=\"Cluster ready.\" cluster=demo created=27 changed=0 took=19m40s"
+   ],
+   "Summary": false
+  },
+  "demo": {
+   "Label": "counter demo",
+   "Display": "bin/substrate-eks --deploy-demo --verify --tag v1.0.0 --sandbox-classes gvisor,microvm --cluster demo --region us-west-2 --profile eks-sandbox",
+   "Argv": [
+    "/w/native/bin/substrate-eks",
+    "--deploy-demo",
+    "--verify",
+    "--tag",
+    "v1.0.0",
+    "--sandbox-classes",
+    "gvisor,microvm",
+    "--cluster",
+    "demo",
+    "--region",
+    "us-west-2",
+    "--profile",
+    "eks-sandbox"
+   ],
+   "Env": [
+    "TAGS=project=agent-substrate auto-delete=no"
+   ],
+   "SimLines": [
+    "Deploying the counter demo on gvisor",
+    "actor counter-gvisor is Running",
+    "Deploying the counter demo on microvm",
+    "actor counter-microvm is Running",
+    "Checking suspend and resume on gvisor",
+    "suspended counter-gvisor; snapshot in s3://demo-snap-111122223333-us-west-2/",
+    "PASS: gvisor: memory, file and rootfs counters continued after resume",
+    "Checking suspend and resume on microvm",
+    "suspended counter-microvm; snapshot in s3://demo-snap-111122223333-us-west-2/",
+    "PASS: microvm: memory, file and rootfs counters continued after resume"
+   ],
+   "Summary": false
+  },
+  "inventory": {
+   "Label": "setup-aws inventory",
+   "Display": "CLUSTER_NAME=demo AWS_REGION=us-west-2 AWS_PROFILE=eks-sandbox go -C tools/setup-aws run . inventory",
+   "Argv": [
+    "go",
+    "-C",
+    "/w/native/tools/setup-aws",
+    "run",
+    ".",
+    "inventory"
+   ],
+   "Env": [
+    "CLUSTER_NAME=demo",
+    "AWS_REGION=us-west-2",
+    "AWS_PROFILE=eks-sandbox",
+    "TAGS=project=agent-substrate auto-delete=no",
+    "PLAN=false",
+    "KEEP_CLUSTER=false"
+   ],
+   "SimLines": null,
+   "Summary": false
+  },
+  "plugins": {
+   "Label": "plugins",
+   "Display": "bin/substrate-eks --plugin-action deploy --tag v1.0.0 --cluster demo --region us-west-2 --profile eks-sandbox",
+   "Argv": [
+    "/w/native/bin/substrate-eks",
+    "--plugin-action",
+    "deploy",
+    "--tag",
+    "v1.0.0",
+    "--cluster",
+    "demo",
+    "--region",
+    "us-west-2",
+    "--profile",
+    "eks-sandbox"
+   ],
+   "Env": [
+    "TAGS=project=agent-substrate auto-delete=no"
+   ],
+   "SimLines": null,
+   "Summary": false
+  },
+  "probe": {
+   "Label": "check other for an existing install",
+   "Display": "bin/substrate-eks --probe-installed --cluster other --region us-west-2 --profile eks-sandbox",
+   "Argv": [
+    "/w/native/bin/substrate-eks",
+    "--probe-installed",
+    "--cluster",
+    "other",
+    "--region",
+    "us-west-2",
+    "--profile",
+    "eks-sandbox"
+   ],
+   "Env": [
+    "TAGS=project=agent-substrate auto-delete=no"
+   ],
+   "SimLines": [
+    "SUBSTRATE_EKS_INSTALLED false pools=gvisor,microvm,system"
+   ],
+   "Summary": false
+  },
+  "rds": {
+   "Label": "setup-aws create rds",
+   "Display": "CLUSTER_NAME=demo AWS_REGION=us-west-2 AWS_PROFILE=eks-sandbox go -C tools/setup-aws run . create rds",
+   "Argv": [
+    "go",
+    "-C",
+    "/w/native/tools/setup-aws",
+    "run",
+    ".",
+    "create",
+    "rds"
+   ],
+   "Env": [
+    "CLUSTER_NAME=demo",
+    "AWS_REGION=us-west-2",
+    "AWS_PROFILE=eks-sandbox",
+    "TAGS=project=agent-substrate auto-delete=no",
+    "PLAN=false",
+    "KEEP_CLUSTER=false"
+   ],
+   "SimLines": [
+    "level=INFO msg=\"Starting RDS setup...\" cluster=demo region=us-west-2",
+    "level=INFO msg=\"Step 1/4: Creating the RDS subnet group and security group...\"",
+    "level=INFO msg=\"Step 2/4: Creating the RDS PostgreSQL instance...\"",
+    "level=INFO msg=\"Step 3/4: Creating the Substrate database logins in Secrets Manager...\"",
+    "level=INFO msg=\"Step 4/4: Waiting for the RDS instance to be available...\"",
+    "level=INFO msg=\"RDS setup completed successfully.\""
+   ],
+   "Summary": false
+  },
+  "remove": {
+   "Label": "ate-setup delete ate-system",
+   "Display": "bin/substrate-eks --remove-control-plane --tag v1.0.0 --cluster demo --region us-west-2 --profile eks-sandbox",
+   "Argv": [
+    "/w/native/bin/substrate-eks",
+    "--remove-control-plane",
+    "--tag",
+    "v1.0.0",
+    "--cluster",
+    "demo",
+    "--region",
+    "us-west-2",
+    "--profile",
+    "eks-sandbox"
+   ],
+   "Env": [
+    "TAGS=project=agent-substrate auto-delete=no"
+   ],
+   "SimLines": [
+    "Removing the recorded plugins before ate-system",
+    "Using cached substrate v1.0.0",
+    "$ go run ./cmd/ate-setup delete ate-system --context demo",
+    "namespace \"ate-system\" deleted",
+    "Substrate control plane removed"
+   ],
+   "Summary": false
+  },
+  "teardown": {
+   "Label": "setup-aws teardown",
+   "Display": "CLUSTER_NAME=demo AWS_REGION=us-west-2 AWS_PROFILE=eks-sandbox go -C tools/setup-aws run . teardown",
+   "Argv": [
+    "go",
+    "-C",
+    "/w/native/tools/setup-aws",
+    "run",
+    ".",
+    "teardown"
+   ],
+   "Env": [
+    "CLUSTER_NAME=demo",
+    "AWS_REGION=us-west-2",
+    "AWS_PROFILE=eks-sandbox",
+    "TAGS=project=agent-substrate auto-delete=no",
+    "PLAN=false",
+    "KEEP_CLUSTER=false"
+   ],
+   "SimLines": [
+    "level=INFO msg=\"Starting teardown of demo.us-west-2...\"",
+    "level=INFO msg=\"Step 1/10: Listing this deployment's resources...\"",
+    "level=INFO msg=\"Step 2/10: Deleting plugin resources...\"",
+    "level=INFO msg=\"Step 3/10: Deleting Pod Identity associations and IAM roles...\"",
+    "level=INFO msg=\"Step 4/10: Deleting the RDS instance and its logins...\"",
+    "level=INFO msg=\"Step 5/10: Emptying and deleting the S3 buckets...\"",
+    "level=INFO msg=\"Step 6/10: Deleting the ECR repositories...\"",
+    "level=INFO msg=\"Step 7/10: Deleting the managed node groups...\"",
+    "level=INFO msg=\"Step 8/10: Deleting the EKS cluster...\"",
+    "level=INFO msg=\"Step 9/10: Deleting the launch template, VPC and network...\"",
+    "level=INFO msg=\"Step 10/10: Checking that nothing is left...\"",
+    "level=INFO msg=\"Teardown complete: nothing left for demo.us-west-2\""
+   ],
+   "Summary": false
+  },
+  "verify": {
+   "Label": "verify",
+   "Display": "bin/substrate-eks --verify --tag v1.0.0 --sandbox-classes gvisor,microvm --cluster demo --region us-west-2 --profile eks-sandbox",
+   "Argv": [
+    "/w/native/bin/substrate-eks",
+    "--verify",
+    "--tag",
+    "v1.0.0",
+    "--sandbox-classes",
+    "gvisor,microvm",
+    "--cluster",
+    "demo",
+    "--region",
+    "us-west-2",
+    "--profile",
+    "eks-sandbox"
+   ],
+   "Env": [
+    "TAGS=project=agent-substrate auto-delete=no"
+   ],
+   "SimLines": null,
+   "Summary": false
+  }
+ },
+ "new, Auto Mode off": {
+  "bootstrap": {
+   "Label": "setup-aws bootstrap",
+   "Display": "CLUSTER_NAME=demo AWS_REGION=us-west-2 AWS_PROFILE=eks-sandbox go -C tools/setup-aws run . bootstrap",
+   "Argv": [
+    "go",
+    "-C",
+    "/w/native/tools/setup-aws",
+    "run",
+    ".",
+    "bootstrap"
+   ],
+   "Env": [
+    "CLUSTER_NAME=demo",
+    "AWS_REGION=us-west-2",
+    "AWS_PROFILE=eks-sandbox",
+    "TAGS=project=agent-substrate auto-delete=no",
+    "PLAN=false",
+    "KEEP_CLUSTER=false"
+   ],
+   "SimLines": [
+    "level=INFO msg=\"Starting full bootstrap...\" cluster=demo region=us-west-2",
+    "level=INFO msg=\"Step 1/4: Checking the EKS cluster...\"",
+    "level=INFO msg=\"Step 2/4: Creating S3 buckets for snapshots and microVM assets...\"",
+    "level=INFO msg=\"Step 3/4: Creating EKS Pod Identity roles for ate-api-server and atelet...\"",
+    "level=INFO msg=\"Step 4/4: Creating ECR repositories...\"",
+    "level=INFO msg=\"Bootstrap completed successfully.\""
+   ],
+   "Summary": false
+  },
+  "control plane": {
+   "Label": "ate-setup deploy ate-system",
+   "Display": "go run ./cmd/ate-setup deploy ate-system  (substrate v1.0.0 + deploy/eks, gvisor,microvm, database rds)",
+   "Argv": [
+    "/w/native/bin/substrate-eks",
+    "--deploy-control-plane",
+    "--database",
+    "rds",
+    "--snap-bucket",
+    "demo-snap-111122223333-us-west-2",
+    "--asset-bucket",
+    "demo-assets-111122223333-us-west-2",
+    "--tag",
+    "v1.0.0",
+    "--sandbox-classes",
+    "gvisor,microvm",
+    "--cluster",
+    "demo",
+    "--region",
+    "us-west-2",
+    "--profile",
+    "eks-sandbox"
+   ],
+   "Env": [
+    "TAGS=project=agent-substrate auto-delete=no"
+   ],
+   "SimLines": [
+    "Writing kubeconfig ~/.cache/substrate-eks/kubeconfig/demo.us-west-2.yaml",
+    "Using cached substrate v1.0.0",
+    "substrate-eks EKS overlay: added deploy/eks to manifests/ate-install/base/kustomization.yaml",
+    "substrate-eks EKS overlay: applied code patch ate-setup-s3-assets-v1.0.0.patch",
+    "Applying cluster prerequisites: StorageClass substrate-eks-ebs (ebs.csi.aws.com, encrypted gp3, 3 volume tags)",
+    "storageclass.storage.k8s.io/substrate-eks-ebs created",
+    "[step]: deploy_ate_system",
+    "[step]: prepare_microvm_deps",
+    "Uploading assets to s3://demo-assets-111122223333-us-west-2/microvm-assets/ ...",
+    "[step]: deploy_crds",
+    "[step]: ensure_apiserver_prerequisites",
+    "[step]: Waiting for ATE system components to be ready...",
+    "deployment \"ate-api-server\" successfully rolled out",
+    "daemon set \"atelet\" successfully rolled out",
+    "Substrate control plane is ready"
+   ],
+   "Summary": true
+  },
+  "create cluster": {
+   "Label": "setup-aws create cluster",
+   "Display": "NODE_GROUPS=system,gvisor,microvm CLUSTER_NAME=demo AWS_REGION=us-west-2 AWS_PROFILE=eks-sandbox go -C tools/setup-aws run . create cluster",
+   "Argv": [
+    "go",
+    "-C",
+    "/w/native/tools/setup-aws",
+    "run",
+    ".",
+    "create",
+    "cluster"
+   ],
+   "Env": [
+    "NODE_GROUPS=system,gvisor,microvm",
+    "CLUSTER_NAME=demo",
+    "AWS_REGION=us-west-2",
+    "AWS_PROFILE=eks-sandbox",
+    "TAGS=project=agent-substrate auto-delete=no",
+    "PLAN=false",
+    "KEEP_CLUSTER=false",
+    "KUBERNETES_VERSION=1.37",
+    "AUTO_MODE=",
+    "SYSTEM_INSTANCE_TYPE=m8i.xlarge",
+    "GVISOR_INSTANCE_TYPE=m8i.2xlarge",
+    "MICROVM_INSTANCE_TYPE=m8i.2xlarge",
+    "SYSTEM_NODES=2",
+    "GVISOR_NODES=2",
+    "MICROVM_NODES=2",
+    "EKS_PUBLIC_ACCESS_CIDRS=auto",
+    "NODE_AMI_ID=",
+    "NODE_GROUP_TYPE=managed",
+    "NITRO_COMPUTE=auto-mode",
+    "NITRO_AMI_ID=",
+    "NITRO_INSTANCE_TYPE=m8i.xlarge",
+    "NITRO_NODES=1"
+   ],
+   "SimLines": [
+    "level=INFO msg=\"Creating the cluster...\" cluster=demo region=us-west-2",
+    "level=INFO msg=\"Step 1/9: Checking the account, Region and quotas...\"",
+    "level=INFO msg=\"Step 2/9: Creating the VPC and subnets...\"",
+    "level=INFO msg=\"Step 3/9: Creating the cluster and node IAM roles...\"",
+    "level=INFO msg=\"Step 4/9: Creating the EKS cluster...\"",
+    "level=INFO msg=\"Step 5/9: Granting cluster access...\"",
+    "level=INFO msg=\"Step 6/9: Installing EKS add-ons...\"",
+    "level=INFO msg=\"Step 7/9: Creating the node groups' launch templates...\"",
+    "level=INFO msg=\"Step 8/9: Creating the managed node groups...\"",
+    "level=INFO msg=\"Step 9/9: Waiting for the node groups to be ACTIVE...\"",
+    "level=INFO msg=\"Cluster ready.\" cluster=demo created=27 changed=0 took=19m40s"
+   ],
+   "Summary": false
+  },
+  "demo": {
+   "Label": "counter demo",
+   "Display": "bin/substrate-eks --deploy-demo --verify --tag v1.0.0 --sandbox-classes gvisor,microvm --cluster demo --region us-west-2 --profile eks-sandbox",
+   "Argv": [
+    "/w/native/bin/substrate-eks",
+    "--deploy-demo",
+    "--verify",
+    "--tag",
+    "v1.0.0",
+    "--sandbox-classes",
+    "gvisor,microvm",
+    "--cluster",
+    "demo",
+    "--region",
+    "us-west-2",
+    "--profile",
+    "eks-sandbox"
+   ],
+   "Env": [
+    "TAGS=project=agent-substrate auto-delete=no"
+   ],
+   "SimLines": [
+    "Deploying the counter demo on gvisor",
+    "actor counter-gvisor is Running",
+    "Deploying the counter demo on microvm",
+    "actor counter-microvm is Running",
+    "Checking suspend and resume on gvisor",
+    "suspended counter-gvisor; snapshot in s3://demo-snap-111122223333-us-west-2/",
+    "PASS: gvisor: memory, file and rootfs counters continued after resume",
+    "Checking suspend and resume on microvm",
+    "suspended counter-microvm; snapshot in s3://demo-snap-111122223333-us-west-2/",
+    "PASS: microvm: memory, file and rootfs counters continued after resume"
+   ],
+   "Summary": false
+  },
+  "inventory": {
+   "Label": "setup-aws inventory",
+   "Display": "CLUSTER_NAME=demo AWS_REGION=us-west-2 AWS_PROFILE=eks-sandbox go -C tools/setup-aws run . inventory",
+   "Argv": [
+    "go",
+    "-C",
+    "/w/native/tools/setup-aws",
+    "run",
+    ".",
+    "inventory"
+   ],
+   "Env": [
+    "CLUSTER_NAME=demo",
+    "AWS_REGION=us-west-2",
+    "AWS_PROFILE=eks-sandbox",
+    "TAGS=project=agent-substrate auto-delete=no",
+    "PLAN=false",
+    "KEEP_CLUSTER=false"
+   ],
+   "SimLines": null,
+   "Summary": false
+  },
+  "plugins": {
+   "Label": "plugins",
+   "Display": "bin/substrate-eks --plugin-action deploy --tag v1.0.0 --cluster demo --region us-west-2 --profile eks-sandbox",
+   "Argv": [
+    "/w/native/bin/substrate-eks",
+    "--plugin-action",
+    "deploy",
+    "--tag",
+    "v1.0.0",
+    "--cluster",
+    "demo",
+    "--region",
+    "us-west-2",
+    "--profile",
+    "eks-sandbox"
+   ],
+   "Env": [
+    "TAGS=project=agent-substrate auto-delete=no"
+   ],
+   "SimLines": null,
+   "Summary": false
+  },
+  "probe": {
+   "Label": "check other for an existing install",
+   "Display": "bin/substrate-eks --probe-installed --cluster other --region us-west-2 --profile eks-sandbox",
+   "Argv": [
+    "/w/native/bin/substrate-eks",
+    "--probe-installed",
+    "--cluster",
+    "other",
+    "--region",
+    "us-west-2",
+    "--profile",
+    "eks-sandbox"
+   ],
+   "Env": [
+    "TAGS=project=agent-substrate auto-delete=no"
+   ],
+   "SimLines": [
+    "SUBSTRATE_EKS_INSTALLED false pools=gvisor,microvm,system"
+   ],
+   "Summary": false
+  },
+  "rds": {
+   "Label": "setup-aws create rds",
+   "Display": "CLUSTER_NAME=demo AWS_REGION=us-west-2 AWS_PROFILE=eks-sandbox go -C tools/setup-aws run . create rds",
+   "Argv": [
+    "go",
+    "-C",
+    "/w/native/tools/setup-aws",
+    "run",
+    ".",
+    "create",
+    "rds"
+   ],
+   "Env": [
+    "CLUSTER_NAME=demo",
+    "AWS_REGION=us-west-2",
+    "AWS_PROFILE=eks-sandbox",
+    "TAGS=project=agent-substrate auto-delete=no",
+    "PLAN=false",
+    "KEEP_CLUSTER=false"
+   ],
+   "SimLines": [
+    "level=INFO msg=\"Starting RDS setup...\" cluster=demo region=us-west-2",
+    "level=INFO msg=\"Step 1/4: Creating the RDS subnet group and security group...\"",
+    "level=INFO msg=\"Step 2/4: Creating the RDS PostgreSQL instance...\"",
+    "level=INFO msg=\"Step 3/4: Creating the Substrate database logins in Secrets Manager...\"",
+    "level=INFO msg=\"Step 4/4: Waiting for the RDS instance to be available...\"",
+    "level=INFO msg=\"RDS setup completed successfully.\""
+   ],
+   "Summary": false
+  },
+  "remove": {
+   "Label": "ate-setup delete ate-system",
+   "Display": "bin/substrate-eks --remove-control-plane --tag v1.0.0 --cluster demo --region us-west-2 --profile eks-sandbox",
+   "Argv": [
+    "/w/native/bin/substrate-eks",
+    "--remove-control-plane",
+    "--tag",
+    "v1.0.0",
+    "--cluster",
+    "demo",
+    "--region",
+    "us-west-2",
+    "--profile",
+    "eks-sandbox"
+   ],
+   "Env": [
+    "TAGS=project=agent-substrate auto-delete=no"
+   ],
+   "SimLines": [
+    "Removing the recorded plugins before ate-system",
+    "Using cached substrate v1.0.0",
+    "$ go run ./cmd/ate-setup delete ate-system --context demo",
+    "namespace \"ate-system\" deleted",
+    "Substrate control plane removed"
+   ],
+   "Summary": false
+  },
+  "teardown": {
+   "Label": "setup-aws teardown",
+   "Display": "CLUSTER_NAME=demo AWS_REGION=us-west-2 AWS_PROFILE=eks-sandbox go -C tools/setup-aws run . teardown",
+   "Argv": [
+    "go",
+    "-C",
+    "/w/native/tools/setup-aws",
+    "run",
+    ".",
+    "teardown"
+   ],
+   "Env": [
+    "CLUSTER_NAME=demo",
+    "AWS_REGION=us-west-2",
+    "AWS_PROFILE=eks-sandbox",
+    "TAGS=project=agent-substrate auto-delete=no",
+    "PLAN=false",
+    "KEEP_CLUSTER=false"
+   ],
+   "SimLines": [
+    "level=INFO msg=\"Starting teardown of demo.us-west-2...\"",
+    "level=INFO msg=\"Step 1/10: Listing this deployment's resources...\"",
+    "level=INFO msg=\"Step 2/10: Deleting plugin resources...\"",
+    "level=INFO msg=\"Step 3/10: Deleting Pod Identity associations and IAM roles...\"",
+    "level=INFO msg=\"Step 4/10: Deleting the RDS instance and its logins...\"",
+    "level=INFO msg=\"Step 5/10: Emptying and deleting the S3 buckets...\"",
+    "level=INFO msg=\"Step 6/10: Deleting the ECR repositories...\"",
+    "level=INFO msg=\"Step 7/10: Deleting the managed node groups...\"",
+    "level=INFO msg=\"Step 8/10: Deleting the EKS cluster...\"",
+    "level=INFO msg=\"Step 9/10: Deleting the launch template, VPC and network...\"",
+    "level=INFO msg=\"Step 10/10: Checking that nothing is left...\"",
+    "level=INFO msg=\"Teardown complete: nothing left for demo.us-west-2\""
+   ],
+   "Summary": false
+  },
+  "verify": {
+   "Label": "verify",
+   "Display": "bin/substrate-eks --verify --tag v1.0.0 --sandbox-classes gvisor,microvm --cluster demo --region us-west-2 --profile eks-sandbox",
+   "Argv": [
+    "/w/native/bin/substrate-eks",
+    "--verify",
+    "--tag",
+    "v1.0.0",
+    "--sandbox-classes",
+    "gvisor,microvm",
+    "--cluster",
+    "demo",
+    "--region",
+    "us-west-2",
+    "--profile",
+    "eks-sandbox"
+   ],
+   "Env": [
+    "TAGS=project=agent-substrate auto-delete=no"
+   ],
+   "SimLines": null,
+   "Summary": false
+  }
+ },
+ "new, Auto Mode off, self-managed, bundled, demo": {
+  "bootstrap": {
+   "Label": "setup-aws bootstrap",
+   "Display": "CLUSTER_NAME=demo AWS_REGION=us-west-2 AWS_PROFILE=eks-sandbox go -C tools/setup-aws run . bootstrap",
+   "Argv": [
+    "go",
+    "-C",
+    "/w/native/tools/setup-aws",
+    "run",
+    ".",
+    "bootstrap"
+   ],
+   "Env": [
+    "CLUSTER_NAME=demo",
+    "AWS_REGION=us-west-2",
+    "AWS_PROFILE=eks-sandbox",
+    "TAGS=project=agent-substrate auto-delete=no",
+    "PLAN=false",
+    "KEEP_CLUSTER=false"
+   ],
+   "SimLines": [
+    "level=INFO msg=\"Starting full bootstrap...\" cluster=demo region=us-west-2",
+    "level=INFO msg=\"Step 1/4: Checking the EKS cluster...\"",
+    "level=INFO msg=\"Step 2/4: Creating S3 buckets for snapshots and microVM assets...\"",
+    "level=INFO msg=\"Step 3/4: Creating EKS Pod Identity roles for ate-api-server and atelet...\"",
+    "level=INFO msg=\"Step 4/4: Creating ECR repositories...\"",
+    "level=INFO msg=\"Bootstrap completed successfully.\""
+   ],
+   "Summary": false
+  },
+  "control plane": {
+   "Label": "ate-setup deploy ate-system",
+   "Display": "go run ./cmd/ate-setup deploy ate-system  (substrate v1.0.0 + deploy/eks, gvisor,microvm, database bundled)",
+   "Argv": [
+    "/w/native/bin/substrate-eks",
+    "--deploy-control-plane",
+    "--database",
+    "bundled",
+    "--snap-bucket",
+    "demo-snap-111122223333-us-west-2",
+    "--asset-bucket",
+    "demo-assets-111122223333-us-west-2",
+    "--tag",
+    "v1.0.0",
+    "--sandbox-classes",
+    "gvisor,microvm",
+    "--cluster",
+    "demo",
+    "--region",
+    "us-west-2",
+    "--profile",
+    "eks-sandbox"
+   ],
+   "Env": [
+    "TAGS=project=agent-substrate auto-delete=no"
+   ],
+   "SimLines": [
+    "Writing kubeconfig ~/.cache/substrate-eks/kubeconfig/demo.us-west-2.yaml",
+    "Using cached substrate v1.0.0",
+    "substrate-eks EKS overlay: added deploy/eks to manifests/ate-install/base/kustomization.yaml",
+    "substrate-eks EKS overlay: applied code patch ate-setup-s3-assets-v1.0.0.patch",
+    "Applying cluster prerequisites: StorageClass substrate-eks-ebs (ebs.csi.aws.com, encrypted gp3, 3 volume tags)",
+    "storageclass.storage.k8s.io/substrate-eks-ebs created",
+    "[step]: deploy_ate_system",
+    "[step]: prepare_microvm_deps",
+    "Uploading assets to s3://demo-assets-111122223333-us-west-2/microvm-assets/ ...",
+    "[step]: deploy_crds",
+    "[step]: ensure_apiserver_prerequisites",
+    "[step]: Waiting for ATE system components to be ready...",
+    "deployment \"ate-api-server\" successfully rolled out",
+    "daemon set \"atelet\" successfully rolled out",
+    "Substrate control plane is ready"
+   ],
+   "Summary": true
+  },
+  "create cluster": {
+   "Label": "setup-aws create cluster",
+   "Display": "NODE_GROUPS=system,gvisor,microvm NODE_GROUP_TYPE=self-managed CLUSTER_NAME=demo AWS_REGION=us-west-2 AWS_PROFILE=eks-sandbox go -C tools/setup-aws run . create cluster",
+   "Argv": [
+    "go",
+    "-C",
+    "/w/native/tools/setup-aws",
+    "run",
+    ".",
+    "create",
+    "cluster"
+   ],
+   "Env": [
+    "NODE_GROUPS=system,gvisor,microvm",
+    "NODE_GROUP_TYPE=self-managed",
+    "CLUSTER_NAME=demo",
+    "AWS_REGION=us-west-2",
+    "AWS_PROFILE=eks-sandbox",
+    "TAGS=project=agent-substrate auto-delete=no",
+    "PLAN=false",
+    "KEEP_CLUSTER=false",
+    "KUBERNETES_VERSION=1.37",
+    "AUTO_MODE=",
+    "SYSTEM_INSTANCE_TYPE=m8i.xlarge",
+    "GVISOR_INSTANCE_TYPE=m8i.2xlarge",
+    "MICROVM_INSTANCE_TYPE=m8i.2xlarge",
+    "SYSTEM_NODES=2",
+    "GVISOR_NODES=2",
+    "MICROVM_NODES=2",
+    "EKS_PUBLIC_ACCESS_CIDRS=auto",
+    "NODE_AMI_ID=",
+    "NODE_GROUP_TYPE=self-managed",
+    "NITRO_COMPUTE=auto-mode",
+    "NITRO_AMI_ID=",
+    "NITRO_INSTANCE_TYPE=m8i.xlarge",
+    "NITRO_NODES=1"
+   ],
+   "SimLines": [
+    "level=INFO msg=\"Creating the cluster...\" cluster=demo region=us-west-2",
+    "level=INFO msg=\"Step 1/9: Checking the account, Region and quotas...\"",
+    "level=INFO msg=\"Step 2/9: Creating the VPC and subnets...\"",
+    "level=INFO msg=\"Step 3/9: Creating the cluster and node IAM roles...\"",
+    "level=INFO msg=\"Step 4/9: Creating the EKS cluster...\"",
+    "level=INFO msg=\"Step 5/9: Granting cluster access...\"",
+    "level=INFO msg=\"Step 6/9: Installing EKS add-ons...\"",
+    "level=INFO msg=\"Step 7/9: Creating the node groups' launch templates...\"",
+    "level=INFO msg=\"Step 8/9: Creating the self-managed node groups...\"",
+    "level=INFO msg=\"Step 9/9: Waiting for the self-managed nodes to be Ready...\"",
+    "level=INFO msg=\"Cluster ready.\" cluster=demo created=27 changed=0 took=19m40s"
+   ],
+   "Summary": false
+  },
+  "demo": {
+   "Label": "counter demo",
+   "Display": "bin/substrate-eks --deploy-demo --verify --tag v1.0.0 --sandbox-classes gvisor,microvm --cluster demo --region us-west-2 --profile eks-sandbox",
+   "Argv": [
+    "/w/native/bin/substrate-eks",
+    "--deploy-demo",
+    "--verify",
+    "--tag",
+    "v1.0.0",
+    "--sandbox-classes",
+    "gvisor,microvm",
+    "--cluster",
+    "demo",
+    "--region",
+    "us-west-2",
+    "--profile",
+    "eks-sandbox"
+   ],
+   "Env": [
+    "TAGS=project=agent-substrate auto-delete=no"
+   ],
+   "SimLines": [
+    "Deploying the counter demo on gvisor",
+    "actor counter-gvisor is Running",
+    "Deploying the counter demo on microvm",
+    "actor counter-microvm is Running",
+    "Checking suspend and resume on gvisor",
+    "suspended counter-gvisor; snapshot in s3://demo-snap-111122223333-us-west-2/",
+    "PASS: gvisor: memory, file and rootfs counters continued after resume",
+    "Checking suspend and resume on microvm",
+    "suspended counter-microvm; snapshot in s3://demo-snap-111122223333-us-west-2/",
+    "PASS: microvm: memory, file and rootfs counters continued after resume"
+   ],
+   "Summary": false
+  },
+  "inventory": {
+   "Label": "setup-aws inventory",
+   "Display": "CLUSTER_NAME=demo AWS_REGION=us-west-2 AWS_PROFILE=eks-sandbox go -C tools/setup-aws run . inventory",
+   "Argv": [
+    "go",
+    "-C",
+    "/w/native/tools/setup-aws",
+    "run",
+    ".",
+    "inventory"
+   ],
+   "Env": [
+    "CLUSTER_NAME=demo",
+    "AWS_REGION=us-west-2",
+    "AWS_PROFILE=eks-sandbox",
+    "TAGS=project=agent-substrate auto-delete=no",
+    "PLAN=false",
+    "KEEP_CLUSTER=false"
+   ],
+   "SimLines": null,
+   "Summary": false
+  },
+  "plugins": {
+   "Label": "plugins",
+   "Display": "bin/substrate-eks --plugin-action deploy --tag v1.0.0 --cluster demo --region us-west-2 --profile eks-sandbox",
+   "Argv": [
+    "/w/native/bin/substrate-eks",
+    "--plugin-action",
+    "deploy",
+    "--tag",
+    "v1.0.0",
+    "--cluster",
+    "demo",
+    "--region",
+    "us-west-2",
+    "--profile",
+    "eks-sandbox"
+   ],
+   "Env": [
+    "TAGS=project=agent-substrate auto-delete=no"
+   ],
+   "SimLines": null,
+   "Summary": false
+  },
+  "probe": {
+   "Label": "check other for an existing install",
+   "Display": "bin/substrate-eks --probe-installed --cluster other --region us-west-2 --profile eks-sandbox",
+   "Argv": [
+    "/w/native/bin/substrate-eks",
+    "--probe-installed",
+    "--cluster",
+    "other",
+    "--region",
+    "us-west-2",
+    "--profile",
+    "eks-sandbox"
+   ],
+   "Env": [
+    "TAGS=project=agent-substrate auto-delete=no"
+   ],
+   "SimLines": [
+    "SUBSTRATE_EKS_INSTALLED false pools=gvisor,microvm,system"
+   ],
+   "Summary": false
+  },
+  "rds": {
+   "Label": "setup-aws create rds",
+   "Display": "CLUSTER_NAME=demo AWS_REGION=us-west-2 AWS_PROFILE=eks-sandbox go -C tools/setup-aws run . create rds",
+   "Argv": [
+    "go",
+    "-C",
+    "/w/native/tools/setup-aws",
+    "run",
+    ".",
+    "create",
+    "rds"
+   ],
+   "Env": [
+    "CLUSTER_NAME=demo",
+    "AWS_REGION=us-west-2",
+    "AWS_PROFILE=eks-sandbox",
+    "TAGS=project=agent-substrate auto-delete=no",
+    "PLAN=false",
+    "KEEP_CLUSTER=false"
+   ],
+   "SimLines": [
+    "level=INFO msg=\"Starting RDS setup...\" cluster=demo region=us-west-2",
+    "level=INFO msg=\"Step 1/4: Creating the RDS subnet group and security group...\"",
+    "level=INFO msg=\"Step 2/4: Creating the RDS PostgreSQL instance...\"",
+    "level=INFO msg=\"Step 3/4: Creating the Substrate database logins in Secrets Manager...\"",
+    "level=INFO msg=\"Step 4/4: Waiting for the RDS instance to be available...\"",
+    "level=INFO msg=\"RDS setup completed successfully.\""
+   ],
+   "Summary": false
+  },
+  "remove": {
+   "Label": "ate-setup delete ate-system",
+   "Display": "bin/substrate-eks --remove-control-plane --tag v1.0.0 --cluster demo --region us-west-2 --profile eks-sandbox",
+   "Argv": [
+    "/w/native/bin/substrate-eks",
+    "--remove-control-plane",
+    "--tag",
+    "v1.0.0",
+    "--cluster",
+    "demo",
+    "--region",
+    "us-west-2",
+    "--profile",
+    "eks-sandbox"
+   ],
+   "Env": [
+    "TAGS=project=agent-substrate auto-delete=no"
+   ],
+   "SimLines": [
+    "Removing the recorded plugins before ate-system",
+    "Using cached substrate v1.0.0",
+    "$ go run ./cmd/ate-setup delete ate-system --context demo",
+    "namespace \"ate-system\" deleted",
+    "Substrate control plane removed"
+   ],
+   "Summary": false
+  },
+  "teardown": {
+   "Label": "setup-aws teardown",
+   "Display": "CLUSTER_NAME=demo AWS_REGION=us-west-2 AWS_PROFILE=eks-sandbox go -C tools/setup-aws run . teardown",
+   "Argv": [
+    "go",
+    "-C",
+    "/w/native/tools/setup-aws",
+    "run",
+    ".",
+    "teardown"
+   ],
+   "Env": [
+    "CLUSTER_NAME=demo",
+    "AWS_REGION=us-west-2",
+    "AWS_PROFILE=eks-sandbox",
+    "TAGS=project=agent-substrate auto-delete=no",
+    "PLAN=false",
+    "KEEP_CLUSTER=false"
+   ],
+   "SimLines": [
+    "level=INFO msg=\"Starting teardown of demo.us-west-2...\"",
+    "level=INFO msg=\"Step 1/10: Listing this deployment's resources...\"",
+    "level=INFO msg=\"Step 2/10: Deleting plugin resources...\"",
+    "level=INFO msg=\"Step 3/10: Deleting Pod Identity associations and IAM roles...\"",
+    "level=INFO msg=\"Step 4/10: Deleting the RDS instance and its logins...\"",
+    "level=INFO msg=\"Step 5/10: Emptying and deleting the S3 buckets...\"",
+    "level=INFO msg=\"Step 6/10: Deleting the ECR repositories...\"",
+    "level=INFO msg=\"Step 7/10: Deleting the managed node groups...\"",
+    "level=INFO msg=\"Step 8/10: Deleting the EKS cluster...\"",
+    "level=INFO msg=\"Step 9/10: Deleting the launch template, VPC and network...\"",
+    "level=INFO msg=\"Step 10/10: Checking that nothing is left...\"",
+    "level=INFO msg=\"Teardown complete: nothing left for demo.us-west-2\""
+   ],
+   "Summary": false
+  },
+  "verify": {
+   "Label": "verify",
+   "Display": "bin/substrate-eks --verify --tag v1.0.0 --sandbox-classes gvisor,microvm --cluster demo --region us-west-2 --profile eks-sandbox",
+   "Argv": [
+    "/w/native/bin/substrate-eks",
+    "--verify",
+    "--tag",
+    "v1.0.0",
+    "--sandbox-classes",
+    "gvisor,microvm",
+    "--cluster",
+    "demo",
+    "--region",
+    "us-west-2",
+    "--profile",
+    "eks-sandbox"
+   ],
+   "Env": [
+    "TAGS=project=agent-substrate auto-delete=no"
+   ],
+   "SimLines": null,
+   "Summary": false
+  }
+ }
+}

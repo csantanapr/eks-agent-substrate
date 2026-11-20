@@ -65,6 +65,15 @@ type clusterConfig struct {
 	// must support Nitro Enclaves; and its nodes.
 	NitroAMIID, NitroInstanceType string
 	NitroNodes                    int
+	// Karpenter is KARPENTER: "on" makes the gvisor group NODE_GROUPS
+	// names a Karpenter NodePool (karpenter.go), on a new cluster without
+	// Auto Mode; "off" or empty makes it a node group.
+	Karpenter string
+	// KarpenterNodeOverlay is KARPENTER_NODE_OVERLAY: "on", with
+	// KARPENTER=on, turns on Karpenter's alpha NodeOverlay and makes the
+	// microvm and nitro groups NODE_GROUPS names NodePools too, each with a
+	// NodeOverlay; "off" or empty leaves them node groups.
+	KarpenterNodeOverlay string
 }
 
 var ccfg clusterConfig
@@ -90,8 +99,15 @@ the run waits until its nodes advertise Nitro sandbox capacity. Without Auto
 Mode the system group and a gvisor, microvm or nitro group are required.
 With it any of them, or none, will do: Auto Mode's nodes run what no group
 is made for, and NODE_GROUPS=none makes no node group (and no node IAM
-role). Idempotent: a rerun creates only what is missing, and --plan changes
-nothing.`,
+role). With KARPENTER=on (a new cluster without Auto Mode), the gvisor group
+is a Karpenter NodePool instead: the run makes Karpenter's IAM role, its
+interruption queue and EventBridge rules, then installs Karpenter on the
+system group and the pool's EC2NodeClass and NodePool, through the
+Kubernetes API. The microvm and nitro groups stay node groups, unless
+KARPENTER_NODE_OVERLAY=on: then they are NodePools too, each with a
+NodeOverlay (an alpha Karpenter API) that tells Karpenter the extended
+resource their worker Pods request. Idempotent: a rerun creates only what
+is missing, and --plan changes nothing.`,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		e, err := newEnv(cmd.Context())
 		if err != nil {
@@ -126,6 +142,10 @@ func init() {
 		"AMI of the nitro node group: a Nitro Sandbox AMI built with awslabs/amazon-eks-ami (enable_pod_isolation=true); required when NODE_GROUPS names nitro (NITRO_AMI_ID)")
 	f.StringVar(&ccfg.NitroInstanceType, "nitro-instance-type", getEnv("NITRO_INSTANCE_TYPE", "m8i.xlarge"), "instance type of the nitro node group; needs Nitro Enclaves (NITRO_INSTANCE_TYPE)")
 	f.IntVar(&ccfg.NitroNodes, "nitro-nodes", getEnv("NITRO_NODES", 1), "nodes in the nitro node group (NITRO_NODES)")
+	f.StringVar(&ccfg.Karpenter, "karpenter", getEnv("KARPENTER", ""),
+		`"on": Karpenter `+nodegroups.KarpenterVersion+` makes the gvisor nodes in a NodePool of up to GVISOR_NODES nodes, on a new cluster without Auto Mode; the microvm and nitro groups stay node groups; "off" or empty: a gvisor node group (KARPENTER)`)
+	f.StringVar(&ccfg.KarpenterNodeOverlay, "karpenter-node-overlay", getEnv("KARPENTER_NODE_OVERLAY", ""),
+		`"on", with KARPENTER=on: Karpenter's alpha NodeOverlay on, and the microvm and nitro nodes in NodePools too, of up to MICROVM_NODES and NITRO_NODES nodes; "off" or empty: microvm and nitro node groups (KARPENTER_NODE_OVERLAY)`)
 	createCmd.AddCommand(createClusterCmd)
 }
 
@@ -145,6 +165,15 @@ type clusterRun struct {
 	c    *ClusterClients
 	cfg  clusterConfig
 	auto bool
+	// karpenter is KARPENTER=on: the gvisor group is a Karpenter NodePool
+	// (pools), not a node group (groups).
+	karpenter bool
+	// nodeOverlay is KARPENTER_NODE_OVERLAY=on: the microvm and nitro
+	// groups are Karpenter NodePools too (nodegroups.KarpenterPools), each
+	// with a NodeOverlay, since their worker Pods request ate.dev/kvm and
+	// eks.amazonaws.com/nitro-sandbox, which only a NodeOverlay tells
+	// Karpenter about (karpenter_overlay.go).
+	nodeOverlay bool
 	// autoCIDRs is EKS_PUBLIC_ACCESS_CIDRS=auto: a new cluster gets this
 	// machine's /32 (resolvePublicAccess), an existing one keeps its ranges.
 	autoCIDRs bool
@@ -179,6 +208,16 @@ type clusterRun struct {
 	public    []string // subnet IDs
 	private   []string
 	templates map[string]ltRef // by node group
+
+	// vcpus are the vCPUs of each instance type, by type, for the
+	// NodePools' CPU limit.
+	vcpus map[string]int32
+	// poolImages are the AMIs of the Karpenter NodePools, by pool: the AMI
+	// an existing EC2NodeClass names (seeded), else NODE_AMI_ID or the
+	// recommended EKS optimized AL2023 AMI. seeded are the pools whose
+	// EC2NodeClass exists.
+	poolImages map[string]*nodeImage
+	seeded     map[string]bool
 }
 
 func newClusterRun(e *env, c *ClusterClients, cfg clusterConfig) *clusterRun {
@@ -189,11 +228,13 @@ func newClusterRun(e *env, c *ClusterClients, cfg clusterConfig) *clusterRun {
 	if strings.TrimSpace(cfg.NodeGroupType) == "" {
 		cfg.NodeGroupType = nodegroups.Managed
 	}
-	r := &clusterRun{e: e, c: c, cfg: cfg, auto: cfg.AutoMode == "on", tags: tags,
+	r := &clusterRun{e: e, c: c, cfg: cfg, auto: cfg.AutoMode == "on", karpenter: cfg.Karpenter == nodegroups.KarpenterOn,
+		nodeOverlay: cfg.KarpenterNodeOverlay == nodegroups.KarpenterOn, tags: tags,
 		autoCIDRs:  strings.TrimSpace(cfg.PublicAccessCIDRs) == publicAccessAuto,
 		nodegroups: map[string]*ekstypes.Nodegroup{}, addons: map[string]*ekstypes.Addon{},
 		amiTypes: map[string]ekstypes.AMITypes{}, enaRequired: map[string]bool{}, templates: map[string]ltRef{},
-		archImages: map[ec2types.ArchitectureValues]*nodeImage{}, asgs: map[string]*asgtypes.AutoScalingGroup{}}
+		archImages: map[ec2types.ArchitectureValues]*nodeImage{}, asgs: map[string]*asgtypes.AutoScalingGroup{},
+		vcpus: map[string]int32{}, poolImages: map[string]*nodeImage{}, seeded: map[string]bool{}}
 	// Empty is unset, as getEnv reads NODE_GROUPS: the default three.
 	ng := cfg.NodeGroups
 	if strings.TrimSpace(ng) == "" {
@@ -222,7 +263,10 @@ func (r *clusterRun) run(ctx context.Context) error {
 	if r.selfManaged() {
 		steps[7], steps[8] = r.ensureAutoScalingGroups, r.waitSelfManaged
 	}
-	list := phases.ClusterFor(r.cfg.NodeGroupType)
+	if r.karpenter {
+		steps = append(steps, r.ensureKarpenterAWS, r.ensureKarpenterKube)
+	}
+	list := phases.ClusterFor(r.cfg.NodeGroupType, r.karpenter)
 	if len(steps) != len(list) {
 		return fmt.Errorf("internal: %d cluster steps for %d phases", len(steps), len(list))
 	}
@@ -300,6 +344,9 @@ func (r *clusterRun) preflight(ctx context.Context) error {
 	if err := r.checkImage(ctx); err != nil {
 		return err
 	}
+	if err := r.checkPoolImages(ctx); err != nil {
+		return err
+	}
 	if r.cluster == nil {
 		// auto picks a new cluster's ranges only; an existing cluster's
 		// stay as they are (ensurePublicAccess).
@@ -354,7 +401,7 @@ func (r *clusterRun) validate() error {
 			return fmt.Errorf("the %s node group needs at least one node", g.Name)
 		}
 	}
-	return nil
+	return r.validateKarpenter()
 }
 
 // publicAccessAuto is EKS_PUBLIC_ACCESS_CIDRS's default: only this machine
@@ -469,6 +516,9 @@ func (r *clusterRun) readCluster(ctx context.Context) error {
 	if auto != r.auto {
 		return fmt.Errorf("cluster %s has Auto Mode %s, but AUTO_MODE=%q; set AUTO_MODE to match, or delete the cluster and start again", name, onOff(auto), r.cfg.AutoMode)
 	}
+	if err := r.checkKarpenterMarker(c); err != nil {
+		return err
+	}
 	if v := aws.ToString(c.Version); v != r.cfg.KubernetesVersion {
 		slog.Warn("the cluster runs another Kubernetes version than KUBERNETES_VERSION; keeping it", "cluster", v, "configured", r.cfg.KubernetesVersion)
 	}
@@ -505,10 +555,11 @@ func onOff(b bool) string {
 // checkInstanceTypes: the microvm type must support nested virtualization
 // (Kata needs /dev/kvm on a regular instance), the nitro type Nitro Enclaves
 // (the Nitro Sandbox AMI needs them on), and each type's architecture picks
-// its node group's AMI type.
+// its node group's AMI type. The Karpenter NodePools' types are checked the
+// same way, and their vCPUs read for the pools' CPU limit.
 func (r *clusterRun) checkInstanceTypes(ctx context.Context) error {
 	var types []ec2types.InstanceType
-	for _, g := range r.groups() {
+	for _, g := range r.computeSpecs() {
 		if t := ec2types.InstanceType(g.InstanceType); !slices.Contains(types, t) {
 			types = append(types, t)
 		}
@@ -527,18 +578,24 @@ func (r *clusterRun) checkInstanceTypes(ctx context.Context) error {
 	for _, it := range out.InstanceTypes {
 		info[string(it.InstanceType)] = it
 	}
-	for _, g := range r.groups() {
+	for _, g := range r.computeSpecs() {
 		it, ok := info[g.InstanceType]
 		if !ok || it.ProcessorInfo == nil {
-			return fmt.Errorf("instance type %s (%s node group) is not offered in %s", g.InstanceType, g.Name, r.e.names.Region)
+			return fmt.Errorf("instance type %s (%s) is not offered in %s", g.InstanceType, g.noun(), r.e.names.Region)
 		}
 		if g.NestedVirt && !slices.Contains(it.ProcessorInfo.SupportedFeatures, ec2types.SupportedAdditionalProcessorFeatureNestedVirtualization) {
-			return fmt.Errorf("%s does not support nested virtualization, which the microvm node group needs; list the types that do with:\n  aws ec2 describe-instance-types --filters Name=processor-info.supported-features,Values=nested-virtualization --query 'InstanceTypes[].InstanceType'", g.InstanceType)
+			return fmt.Errorf("%s does not support nested virtualization, which the %s needs; list the types that do with:\n  aws ec2 describe-instance-types --filters Name=processor-info.supported-features,Values=nested-virtualization --query 'InstanceTypes[].InstanceType'", g.InstanceType, g.noun())
 		}
 		if g.Enclave && it.NitroEnclavesSupport != ec2types.NitroEnclavesSupportSupported {
-			return fmt.Errorf("%s does not support Nitro Enclaves, which the nitro node group needs (NITRO_INSTANCE_TYPE); list the types that do with:\n  aws ec2 describe-instance-types --filters Name=nitro-enclaves-support,Values=supported --query 'InstanceTypes[].InstanceType'", g.InstanceType)
+			return fmt.Errorf("%s does not support Nitro Enclaves, which the %s needs (NITRO_INSTANCE_TYPE); list the types that do with:\n  aws ec2 describe-instance-types --filters Name=nitro-enclaves-support,Values=supported --query 'InstanceTypes[].InstanceType'", g.InstanceType, g.noun())
 		}
 		r.enaRequired[g.InstanceType] = it.NetworkInfo != nil && it.NetworkInfo.EnaSupport == ec2types.EnaSupportRequired
+		if g.Pool {
+			if it.VCpuInfo == nil || aws.ToInt32(it.VCpuInfo.DefaultVCpus) < 1 {
+				return fmt.Errorf("instance type %s (%s) reports no vCPU count, which the NodePool's CPU limit needs", g.InstanceType, g.noun())
+			}
+			r.vcpus[g.InstanceType] = aws.ToInt32(it.VCpuInfo.DefaultVCpus)
+		}
 		switch {
 		case slices.Contains(it.ProcessorInfo.SupportedArchitectures, ec2types.ArchitectureTypeX8664):
 			r.amiTypes[g.InstanceType] = ekstypes.AMITypesAl2023X8664Standard
@@ -563,7 +620,7 @@ func (r *clusterRun) pickAZs(ctx context.Context) error {
 		return fmt.Errorf("describe Availability Zones: %w", err)
 	}
 	var types []string
-	for _, g := range r.groups() {
+	for _, g := range r.computeSpecs() {
 		if !slices.Contains(types, g.InstanceType) {
 			types = append(types, g.InstanceType)
 		}
