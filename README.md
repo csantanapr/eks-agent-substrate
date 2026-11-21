@@ -316,7 +316,8 @@ already so (for example from `config.local.env`). A line under the class
 says so, and the Nitro AMI row appears: fill it in. When you turn the class
 off again, or Auto Mode on, Settings puts back the value it replaced, so
 `config.local.env` keeps only what you chose. A value you set yourself
-stays. In `config.local.env`:
+stays. Settings puts it back only within one run: a value a run wrote to
+`config.local.env` is yours on the next run, and stays. In `config.local.env`:
 
 ```bash
 SANDBOX_CLASSES=gvisor,microvm,nitro
