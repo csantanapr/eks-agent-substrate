@@ -35,3 +35,45 @@ func TestARecordOnlyClusterIsBadgedAndChosen(t *testing.T) {
 		t.Errorf("at %s, mode %q, record %+v", m.m.Current().Title(), m.cl.mode, s.ClusterRecord)
 	}
 }
+
+// Review refuses a chosen plugin recorded with another NITRO_COMPUTE than
+// the run's, or with one this installer does not know, as the control
+// plane step's record check would after Provision and RDS: the screen names
+// it with its ways out and y starts nothing. Both ways: the recorded
+// NITRO_COMPUTE starts; so does a run without that plugin (the class off),
+// and a chosen plugin the record holds no NITRO_COMPUTE for (t-efs).
+func TestReviewRefusesAPluginRecordedWithAnotherNitroCompute(t *testing.T) {
+	const ways = "run the wizard with --nitro-compute node-group, or remove it first with substrate-eks --plugin-action remove --plugins mode3-iso --cluster new --region us-west-2 (which removes it with NITRO_COMPUTE=node-group), then run the wizard again"
+	for _, tc := range []struct {
+		name, recorded, run, classes string
+		plugins                      []string
+		refused                      string
+	}{
+		{"another mode", plugin.NitroNodeGroup, plugin.NitroAutoMode, "gvisor,nitro", nil,
+			"plugin mode3-iso was deployed with NITRO_COMPUTE=node-group (recorded in kube-system/substrate-eks-plugins), not auto-mode: " + ways},
+		{"an unknown mode", "future-mode", plugin.NitroAutoMode, "gvisor,nitro", nil,
+			`plugin mode3-iso: kube-system/substrate-eks-plugins records nitro-compute="future-mode", which is not auto-mode or node-group: this installer cannot deploy, check or remove it`},
+		{"the recorded mode", plugin.NitroNodeGroup, plugin.NitroNodeGroup, "gvisor,nitro", nil, ""},
+		{"without the plugin", plugin.NitroNodeGroup, plugin.NitroAutoMode, "gvisor", []string{"t-efs"}, ""},
+	} {
+		r := &recorder{probes: map[string]string{"new": recordOnly(tc.recorded)}}
+		s := newSetup("new")
+		s.SandboxClasses, s.Plugins, s.NewClusterConfig.NitroCompute = tc.classes, tc.plugins, tc.run
+		m := sized(toStep(t, New(testDeps(r), s), state.Review))
+		if s.NewClusterConfig.NitroCompute != tc.run || state.HasClass(s.SandboxClasses, state.ClassNitro) != strings.Contains(tc.classes, "nitro") {
+			t.Fatalf("%s: Settings changed the run: NITRO_COMPUTE=%s, classes %s", tc.name, s.NewClusterConfig.NitroCompute, s.SandboxClasses)
+		}
+		v := strings.Join(strings.Fields(stripANSI(m.View())), " ")
+		m = press(m, "y")
+		if tc.refused == "" {
+			if strings.Contains(v, "Nothing can start") || m.m.Current() == state.Review || len(r.ran()) == 0 {
+				t.Errorf("%s: at %s, ran %q:\n%s", tc.name, m.m.Current().Title(), r.ran(), v)
+			}
+			continue
+		}
+		if !strings.Contains(v, "Nothing can start: "+tc.refused[:40]) || m.m.Current() != state.Review || len(r.ran()) != 0 ||
+			!strings.Contains(m.notice, "nothing started: "+tc.refused) {
+			t.Errorf("%s: at %s, ran %q, notice %q:\n%s", tc.name, m.m.Current().Title(), r.ran(), m.notice, v)
+		}
+	}
+}
