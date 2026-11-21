@@ -631,6 +631,26 @@ type Record struct {
 	// one). Only the pending write uses it, as its precondition
 	// (markPending); Equal ignores it and Manifest does not write it.
 	ResourceVersion string
+	// Unknown are the record's data keys this installer does not know (a
+	// newer installer's), sorted. Every write of the record would drop
+	// them: the pending write's replace sends the whole ConfigMap, an apply
+	// drops a key its last-applied configuration has and the manifest
+	// lacks, and a delete drops all. So while there are some, nothing writes
+	// the record (CheckKeys). Equal ignores it and Manifest does not write
+	// them.
+	Unknown []string
+}
+
+// CheckKeys refuses r while it holds data keys this installer does not
+// know (Unknown): a newer installer wrote them, and a write of the record
+// by this one would drop them. Every path that writes or deletes the
+// record checks it before its first write, cluster or AWS.
+func (r Record) CheckKeys() error {
+	if len(r.Unknown) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%s/%s holds data keys this installer does not know (%s), which a write of the record by this installer would drop: use the installer that wrote them (a newer one)",
+		RecordNamespace, RecordName, strings.Join(r.Unknown, ", "))
 }
 
 // RecordArgs are the kubectl arguments that print the record ConfigMap as
@@ -638,7 +658,7 @@ type Record struct {
 var RecordArgs = []string{"-n", RecordNamespace, "get", "configmap", RecordName, "--ignore-not-found", "-o", "json"}
 
 // ParseRecordJSON reads what RecordArgs printed: nothing is no record, and
-// data keys it does not know are ignored, so a record a newer installer
+// data keys it does not know go to Unknown, so a record a newer installer
 // wrote stays readable. Anything else it cannot read is an error.
 func ParseRecordJSON(js []byte) (Record, error) {
 	if len(bytes.TrimSpace(js)) == 0 {
@@ -653,8 +673,15 @@ func ParseRecordJSON(js []byte) (Record, error) {
 	if err := json.Unmarshal(js, &cm); err != nil {
 		return Record{}, fmt.Errorf("read ConfigMap %s/%s: %w", RecordNamespace, RecordName, err)
 	}
+	var unknown []string
+	for k := range cm.Data {
+		if k != RecordKey && k != PendingKey && k != NitroComputeKey {
+			unknown = append(unknown, k)
+		}
+	}
+	slices.Sort(unknown)
 	return Record{Plugins: ParseRecord(cm.Data[RecordKey]), Pending: ParseRecord(cm.Data[PendingKey]),
-		NitroCompute: strings.TrimSpace(cm.Data[NitroComputeKey]), ResourceVersion: cm.Metadata.ResourceVersion}, nil
+		NitroCompute: strings.TrimSpace(cm.Data[NitroComputeKey]), ResourceVersion: cm.Metadata.ResourceVersion, Unknown: unknown}, nil
 }
 
 // All are the installed and the pending plugins, sorted, once each: what a

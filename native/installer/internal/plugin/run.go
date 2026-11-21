@@ -164,8 +164,12 @@ func ReadRecord(ctx context.Context, w io.Writer, o Options) ([]string, error) {
 }
 
 // WriteRecord makes the record hold exactly r; with no plugin installed or
-// pending it deletes it.
+// pending it deletes it. A record with keys this installer does not know
+// (Record.CheckKeys) is refused, since either write would drop them.
 func WriteRecord(ctx context.Context, w io.Writer, o Options, r Record) error {
+	if err := r.CheckKeys(); err != nil {
+		return err
+	}
 	if r.Empty() {
 		return Kubectl(ctx, w, o, nil, nil, "-n", RecordNamespace, "delete", "configmap", RecordName, "--ignore-not-found")
 	}
@@ -251,6 +255,11 @@ func markPending(ctx context.Context, w io.Writer, o Options, p Plugin) error {
 	for try := 1; ; try++ {
 		rec, err := LoadRecord(ctx, w, o)
 		if err != nil {
+			return err
+		}
+		// The replace below sends the whole ConfigMap, so keys it does not
+		// write would be gone: a newer installer's record is left to it.
+		if err := rec.CheckKeys(); err != nil {
 			return err
 		}
 		// Checked again on this fresh read: another run may have recorded p
@@ -425,6 +434,11 @@ func (n Needs) carries(m Needs) bool {
 //     recorded plugin that requires one being removed stops it, and so does
 //     an AWS refusal, which `setup-aws plugin <id> --delete --plan` finds for
 //     every plugin before anything is removed.
+//
+// A record with data keys this installer does not know (a newer
+// installer's, Record.CheckKeys) stops a deploy or a removal before its
+// first write: every write of the record would drop them. Verify writes
+// nothing, so it runs.
 func Run(ctx context.Context, w io.Writer, action string, ids []string, o Options) error {
 	if o.Cluster == "" || o.Region == "" {
 		return errors.New("plugin: cluster and region are required")
@@ -498,6 +512,11 @@ func Run(ctx context.Context, w io.Writer, action string, ids []string, o Option
 		}
 		rec, err = LoadRecord(ctx, w, o)
 		if err != nil {
+			return err
+		}
+		// Before any write, cluster or AWS: the record writes below would
+		// drop keys a newer installer wrote.
+		if err := rec.CheckKeys(); err != nil {
 			return err
 		}
 		// Only the installed plugins carry needs: a pending one's deploy
@@ -610,6 +629,11 @@ func withRecordedNitroCompute(w io.Writer, rec Record, p Plugin, o Options, what
 func remove(ctx context.Context, w io.Writer, ids []string, o Options) error {
 	rec, err := LoadRecord(ctx, w, o)
 	if err != nil {
+		return err
+	}
+	// Before anything is removed: each removal ends in a write of the
+	// record, which would drop keys a newer installer wrote.
+	if err := rec.CheckKeys(); err != nil {
 		return err
 	}
 	// The pending plugins too: a deploy that failed may have made some of

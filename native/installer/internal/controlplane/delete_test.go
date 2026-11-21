@@ -56,13 +56,13 @@ func deleteEnv(t *testing.T, describeErr error, runErr func(argv []string) error
 	cacheTree(t, treeOf(o, plugin.Needs{}.Release(o.Tag, o.ImageRepo)), o.Tag)
 	kc = awsx.KubeconfigPath(o.Cluster, o.Region)
 	prevDescribe, prevRun := describeCluster, deleteRun
-	prevRead, prevRemove, prevOverlay, prevInstalled, prevDigest := readRecord, removePlugins, applyOverlay, readInstalled, overlayDigest
+	prevRead, prevRemove, prevOverlay, prevInstalled, prevDigest := loadRecord, removePlugins, applyOverlay, readInstalled, overlayDigest
 	t.Cleanup(func() {
 		describeCluster, deleteRun = prevDescribe, prevRun
-		readRecord, removePlugins, applyOverlay, readInstalled, overlayDigest = prevRead, prevRemove, prevOverlay, prevInstalled, prevDigest
+		loadRecord, removePlugins, applyOverlay, readInstalled, overlayDigest = prevRead, prevRemove, prevOverlay, prevInstalled, prevDigest
 	})
 	overlayDigest = func(string) (string, error) { return fakeDigest, nil }
-	readRecord = func(context.Context, io.Writer, plugin.Options) ([]string, error) { return nil, nil }
+	loadRecord = func(context.Context, io.Writer, plugin.Options) (plugin.Record, error) { return plugin.Record{}, nil }
 	readInstalled = func(context.Context, string) (probe.Result, error) {
 		return probe.Result{Installed: true, Atelet: true, Version: o.Tag}, nil
 	}
@@ -171,14 +171,40 @@ func TestDeletePrintsTheChecklistLinesInOrder(t *testing.T) {
 // refusal moved out of resolvePlugins.
 func TestDeleteRemovesARecordedAutoModePlugin(t *testing.T) {
 	o, calls, _ := deleteEnv(t, nil, nil)
-	readRecord = func(context.Context, io.Writer, plugin.Options) ([]string, error) {
-		return []string{"cp-test-auto"}, nil
+	loadRecord = func(context.Context, io.Writer, plugin.Options) (plugin.Record, error) {
+		return plugin.Record{Plugins: []string{"cp-test-auto"}}, nil
 	}
 	if err := Delete(context.Background(), io.Discard, o); err != nil {
 		t.Fatal(err)
 	}
 	if len(*calls) != 3 || (*calls)[0].argv[0] != "plugins" {
 		t.Errorf("calls %v", *calls)
+	}
+}
+
+// #22 (review R1 of #21), both ways: a record with a data key this
+// installer does not know stops --remove-control-plane before the plugins'
+// removal (which writes the record and would drop the key) and before
+// ate-setup delete, naming the key; without it the removal runs.
+func TestDeleteRefusesARecordWithUnknownKeys(t *testing.T) {
+	for _, unknown := range [][]string{{"future-key"}, nil} {
+		o, calls, _ := deleteEnv(t, nil, nil)
+		loadRecord = func(context.Context, io.Writer, plugin.Options) (plugin.Record, error) {
+			return plugin.Record{Plugins: []string{"cp-test-auto"}, Unknown: unknown}, nil
+		}
+		err := Delete(context.Background(), io.Discard, o)
+		if unknown == nil {
+			if err != nil || len(*calls) != 3 {
+				t.Errorf("without the key: %v, calls %v", err, *calls)
+			}
+			continue
+		}
+		if err == nil || !strings.Contains(err.Error(), "kube-system/substrate-eks-plugins holds data keys this installer does not know (future-key)") {
+			t.Fatalf("want the refusal, got %v", err)
+		}
+		if len(*calls) != 0 {
+			t.Errorf("ran after the refusal: %v", *calls)
+		}
 	}
 }
 

@@ -238,7 +238,10 @@ type deployFakes struct {
 	calls    []string
 	record   []string
 	recorded []string
-	runErr   error
+	// unknown are data keys the record holds that this installer does not
+	// know (plugin.Record.Unknown).
+	unknown []string
+	runErr  error
 	// installed is what the probe reads off the cluster (none by default).
 	installed probe.Result
 	// trees are the directories fetched into, in order.
@@ -249,12 +252,12 @@ type deployFakes struct {
 func deployEnv(t *testing.T, f *deployFakes) Options {
 	t.Helper()
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
-	prev := []any{describeCluster, writeKubeconfig, readRecord, fetchTree, checkCommit, applyOverlay, recordPlugins, runCommand, readInstalled, overlayDigest}
+	prev := []any{describeCluster, writeKubeconfig, loadRecord, fetchTree, checkCommit, applyOverlay, recordPlugins, runCommand, readInstalled, overlayDigest}
 	t.Cleanup(func() {
 		overlayDigest = prev[9].(func(string) (string, error))
 		describeCluster = prev[0].(func(context.Context, string, string, string) (awsx.Cluster, error))
 		writeKubeconfig = prev[1].(func(string, awsx.Cluster, string, string) error)
-		readRecord = prev[2].(func(context.Context, io.Writer, plugin.Options) ([]string, error))
+		loadRecord = prev[2].(func(context.Context, io.Writer, plugin.Options) (plugin.Record, error))
 		fetchTree = prev[3].(func(context.Context, io.Writer, string, string, string) error)
 		checkCommit = prev[4].(func(context.Context, string, string) error)
 		applyOverlay = prev[5].(func(io.Writer, string, string, string) error)
@@ -275,12 +278,12 @@ func deployEnv(t *testing.T, f *deployFakes) Options {
 			CA: base64.StdEncoding.EncodeToString([]byte("ca"))}, nil
 	}
 	writeKubeconfig = func(string, awsx.Cluster, string, string) error { f.calls = append(f.calls, "kubeconfig"); return nil }
-	readRecord = func(_ context.Context, _ io.Writer, po plugin.Options) ([]string, error) {
+	loadRecord = func(_ context.Context, _ io.Writer, po plugin.Options) (plugin.Record, error) {
 		if po.Kubeconfig == "" {
-			return nil, errors.New("record read without a kubeconfig")
+			return plugin.Record{}, errors.New("record read without a kubeconfig")
 		}
 		f.calls = append(f.calls, "read-record")
-		return f.record, nil
+		return plugin.Record{Plugins: f.record, Unknown: f.unknown}, nil
 	}
 	fetchTree = func(_ context.Context, _ io.Writer, dir, repo, tag string) error {
 		f.calls = append(f.calls, "fetch "+repo+" "+tag)
@@ -376,5 +379,30 @@ func TestDeployRefusesAnUnknownPlugin(t *testing.T) {
 	}
 	if slices.ContainsFunc(f.calls, func(c string) bool { return strings.HasPrefix(c, "fetch") }) {
 		t.Errorf("fetched after an unknown plugin: %q", f.calls)
+	}
+}
+
+// #22 (review R1 of #21), both ways: a record with a data key this
+// installer does not know stops the control plane deploy right after the
+// record is read, before the tree is fetched, the install runs or the
+// plugins are recorded (a write that would drop the key), naming it;
+// without it the deploy runs and records them.
+func TestDeployRefusesARecordWithUnknownKeys(t *testing.T) {
+	for _, unknown := range [][]string{{"future-key"}, nil} {
+		f := &deployFakes{record: []string{"cp-test-gate"}, unknown: unknown}
+		o := deployEnv(t, f)
+		err := Deploy(context.Background(), io.Discard, o)
+		if unknown == nil {
+			if err != nil || !slices.Equal(f.recorded, []string{"cp-test-gate"}) {
+				t.Errorf("without the key: %v, recorded %v", err, f.recorded)
+			}
+			continue
+		}
+		if err == nil || !strings.Contains(err.Error(), "kube-system/substrate-eks-plugins holds data keys this installer does not know (future-key)") {
+			t.Fatalf("want the refusal, got %v", err)
+		}
+		if want := []string{"kubeconfig", "read-record"}; !slices.Equal(f.calls, want) || len(f.recorded) != 0 {
+			t.Errorf("calls %q (want %q), recorded %v after the refusal", f.calls, want, f.recorded)
+		}
 	}
 }
