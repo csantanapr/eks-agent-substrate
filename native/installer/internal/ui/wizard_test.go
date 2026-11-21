@@ -442,11 +442,12 @@ func TestPluginsFlagPreselectsInsteadOfTheDefaults(t *testing.T) {
 }
 
 // The AWS Nitro sandbox is a sandbox class, chosen in Settings: it is not on
-// the Plugins screen, it is refused without Auto Mode (turning it on, and
-// turning Auto Mode off under it, both stop n with the reason), and with
-// Auto Mode its plugin gets its own step after the control plane, before
-// the demo (both directions).
-func TestNitroIsASandboxClassThatNeedsAutoMode(t *testing.T) {
+// the Plugins screen, and with Auto Mode its plugin gets its own step after
+// the control plane, before the demo. Without Auto Mode it runs only on the
+// nitro node group: turning it on sets NITRO_COMPUTE=node-group
+// (TestSettingsSwitchesNitroComputeWithTheClass), and auto-mode chosen
+// under it stops n with the reason (both directions).
+func TestNitroIsASandboxClassChosenInSettings(t *testing.T) {
 	for _, auto := range []bool{true, false} {
 		r := &recorder{}
 		s := newSetup("fresh")
@@ -458,23 +459,22 @@ func TestNitroIsASandboxClassThatNeedsAutoMode(t *testing.T) {
 		}
 		m = cursorTo(t, m, state.ClassNitro)
 		m = press(m, "enter")
-		if got := m.set.classOn(state.ClassNitro); got != auto {
-			t.Fatalf("auto=%v: nitro on %v:\n%s", auto, got, m.View())
+		if !m.set.classOn(state.ClassNitro) {
+			t.Fatalf("auto=%v: nitro off:\n%s", auto, m.View())
+		}
+		if got, want := m.set.values["NITRO_COMPUTE"], map[bool]string{true: plugin.NitroAutoMode, false: plugin.NitroNodeGroup}[auto]; got != want {
+			t.Fatalf("auto=%v: NITRO_COMPUTE=%s, want %s", auto, got, want)
 		}
 		if !auto {
-			if !strings.HasPrefix(m.notice, "AWS Nitro sandbox needs EKS Auto Mode") || !strings.Contains(m.View(), "[–] AWS Nitro sandbox") ||
-				!strings.Contains(m.View(), "Not available: needs EKS") {
-				t.Errorf("no refusal shown (notice %q):\n%s", m.notice, m.View())
-			}
-			// Auto Mode off under a chosen class: n names it and stays.
-			m = cursorTo(t, m, "AUTO_MODE")
-			m = press(m, "enter")
-			m = cursorTo(t, m, state.ClassNitro)
-			m = press(m, "enter")
-			m = cursorTo(t, m, "AUTO_MODE")
+			// auto-mode chosen under the class without Auto Mode: n names
+			// it and stays.
+			m = cursorTo(t, m, "NITRO_COMPUTE")
 			m = press(m, "enter", "n")
 			if m.m.Current() != state.Settings || !strings.Contains(m.View(), "AWS Nitro sandbox: needs EKS Auto Mode") {
-				t.Errorf("n went on with the class and Auto Mode off: at %s:\n%s", m.m.Current().Title(), m.View())
+				t.Errorf("n went on with auto-mode and Auto Mode off: at %s:\n%s", m.m.Current().Title(), m.View())
+			}
+			if m = cursorTo(t, m, state.ClassNitro); !strings.Contains(m.View(), "Not available: needs EKS") {
+				t.Errorf("no refusal on the class panel:\n%s", m.View())
 			}
 			continue
 		}

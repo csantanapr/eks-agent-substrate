@@ -152,10 +152,15 @@ screen per step, and Complete. Nothing changes in AWS before Review.
   the release (`SUBSTRATE_TAG`; with the `nitro` class, the fork's, which
   the screen says) and its image repository (`SUBSTRATE_IMAGE_REPO`), and
   the database. A class the cluster cannot have is shown `[–]` with the
-  reason. `m` picks the minimal profile, and clears a chosen plugin that would
-  add a node group (mode3, or one on `system`), naming it. The right side shows the setting's
-  help, taken from the comment above its key in `config.env`, and its
-  default. `n` checks every value and moves on once they are valid.
+  reason. Turning on the `nitro` class without Auto Mode, or Auto Mode off
+  under it, or opening Settings with the class on and Auto Mode off, sets
+  `NITRO_COMPUTE=node-group` and says so; turning it off, or Auto Mode on,
+  puts back the value it replaced. A value you set yourself stays. `m` picks
+  the minimal profile, and clears a chosen plugin that would add a node
+  group (mode3, or one on `system`), naming it. The right side shows the
+  setting's help, taken from the comment above its key in `config.env`, and
+  its default.
+  `n` checks every value and moves on once they are valid.
   ![Settings](installer/docs/settings.png)
 - **Choose plugins** lists every plugin but `mode3-iso` (the `nitro` class)
   with its time and hourly cost. `space` picks one, and the plugins it needs

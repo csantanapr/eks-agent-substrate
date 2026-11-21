@@ -29,6 +29,17 @@ type settingsScreen struct {
 	errs    map[string]string
 	editing bool
 	input   string
+	// nitro is the NITRO_COMPUTE=node-group Settings set for the nitro
+	// class without Auto Mode (switchNitro), and nitroApplied the one n
+	// applied with the values, which the next visit starts from.
+	nitro, nitroApplied nitroSwitch
+}
+
+// nitroSwitch records a NITRO_COMPUTE=node-group that Settings set, not the
+// operator, and the value it replaced (was).
+type nitroSwitch struct {
+	on  bool
+	was string
 }
 
 type fieldKind int
@@ -111,7 +122,7 @@ const classesHelp = " The classes decide a new cluster's node groups: gVisor and
 // help is a setting's explanation when config.env has no comment above it.
 var help = map[string]string{
 	"KUBERNETES_VERSION":      "The EKS version of the new cluster. Substrate needs 1.37 or newer (the PodCertificate APIs).",
-	"AUTO_MODE":               "EKS Auto Mode, with its general-purpose and system NodePools next to the node groups. Fixed when the cluster is created. The AWS Nitro sandbox class needs it.",
+	"AUTO_MODE":               "EKS Auto Mode, with its general-purpose and system NodePools next to the node groups. Fixed when the cluster is created. The AWS Nitro sandbox class needs it, unless it runs on the nitro node group (NITRO_COMPUTE=node-group).",
 	"EKS_PUBLIC_ACCESS_CIDRS": "Address ranges allowed to reach the Kubernetes API endpoint, space-separated. Requests are still authenticated by IAM.",
 	"NODE_AMI_ID":             "The AMI of the node groups. Empty: the Amazon EKS optimized Amazon Linux 2023 AMI, which EKS picks. An AMI you bring must join the cluster with nodeadm (Amazon Linux 2023).",
 	"NODE_GROUP_TYPE":         "managed: EKS managed node groups. self-managed: an Auto Scaling group per node group, which you own, whose nodes join with the NodeConfig in their launch template. A cluster has one type.",
@@ -125,7 +136,9 @@ var help = map[string]string{
 		"(NITRO_COMPUTE) it runs on the nitro node group instead, from a Nitro Sandbox AMI you build, and needs no Auto Mode. " +
 		"It installs the fork's release (one release per install), and is set up and checked in its own step after the control plane." + classesHelp,
 	"NITRO_COMPUTE": "Where the AWS Nitro sandbox runs. auto-mode: on nodes EKS Auto Mode launches (NodePool ate-isolated), which needs Auto Mode. " +
-		"node-group: on the nitro node group, of the node group type, with Nitro Enclaves on, from a Nitro Sandbox AMI (Nitro AMI); no Auto Mode needed.",
+		"node-group: on the nitro node group, of the node group type, with Nitro Enclaves on, from a Nitro Sandbox AMI (Nitro AMI); no Auto Mode needed. " +
+		"With Auto Mode off, Settings sets node-group when you turn the class on, and puts the old value back when you turn the class off or Auto Mode on. " +
+		"A value you pick yourself stays.",
 	// The panel adds the build command for the version Settings has
 	// (nitroAMIBuild) and shows this, not config.env's comment, whose
 	// command is for one version.
@@ -154,6 +167,14 @@ var classNote = map[string]string{
 // nitroGroupNote is the nitro class's note on the nitro node group.
 const nitroGroupNote = "nitro node group"
 
+// nitroSwitchLine is the line under the nitro class while Settings' own
+// NITRO_COMPUTE=node-group holds (switchNitro).
+const nitroSwitchLine = "NITRO_COMPUTE is now node-group: Auto Mode is off"
+
+// nitroSwitchHint is the nitro class's panel line while turning the class
+// on would make that switch (nitroSwitches).
+const nitroSwitchHint = "Turning the class on sets NITRO_COMPUTE=node-group: Auto Mode is off."
+
 // nitroAMIBuild is the panel's line on how to build NITRO_AMI_ID for
 // Kubernetes version, the KUBERNETES_VERSION Settings has now.
 func nitroAMIBuild(version string) string {
@@ -174,10 +195,67 @@ func (st *settingsScreen) nitroGroup() bool {
 	return st.values["NITRO_COMPUTE"] == plugin.NitroNodeGroup
 }
 
+// nitroCompute is the NITRO_COMPUTE the nitro class is judged on: Settings'
+// value, except node-group while turning the class on sets it
+// (nitroSwitches).
+func (m *Model) nitroCompute() string {
+	if m.nitroSwitches() {
+		return plugin.NitroNodeGroup
+	}
+	return m.set.values["NITRO_COMPUTE"]
+}
+
+// nitroSwitches reports that turning the nitro class on now sets
+// NITRO_COMPUTE=node-group (switchNitro): the class is off, Auto Mode is
+// off, and the value is auto-mode or empty.
+func (m *Model) nitroSwitches() bool {
+	st := m.set
+	return !st.classOn(state.ClassNitro) && !m.settingsAutoMode() && nitroSwitchable(st.values["NITRO_COMPUTE"])
+}
+
+// nitroSwitchable reports a NITRO_COMPUTE Settings may replace with
+// node-group: auto-mode, or empty, which means auto-mode.
+func nitroSwitchable(v string) bool { return v == plugin.NitroAutoMode || v == "" }
+
+// switchNitro sets NITRO_COMPUTE=node-group when the nitro class is on with
+// Auto Mode off and NITRO_COMPUTE is auto-mode or empty: without Auto Mode
+// the class runs only on the nitro node group. It runs when the class is
+// turned on, when Auto Mode is turned off and when Settings opens, and
+// keeps the value it replaced for restoreNitro.
+func (m *Model) switchNitro() {
+	st := m.set
+	if v := st.values["NITRO_COMPUTE"]; st.classOn(state.ClassNitro) && !m.settingsAutoMode() && nitroSwitchable(v) {
+		st.values["NITRO_COMPUTE"], st.nitro = plugin.NitroNodeGroup, nitroSwitch{on: true, was: v}
+	}
+}
+
+// restoreNitro puts back the NITRO_COMPUTE switchNitro replaced once the
+// switch is not needed: the nitro class is off or Auto Mode is on. It
+// returns the notice, or "". A value the operator set is never changed.
+// The value put back is auto-mode or empty, which means auto-mode, so the
+// notice says auto-mode.
+func (m *Model) restoreNitro() string {
+	st := m.set
+	if !st.nitro.on || (st.classOn(state.ClassNitro) && !m.settingsAutoMode()) {
+		return ""
+	}
+	st.values["NITRO_COMPUTE"], st.nitro = st.nitro.was, nitroSwitch{}
+	return "Back to NITRO_COMPUTE=" + plugin.NitroAutoMode
+}
+
+// fitNitro follows the nitro class or Auto Mode turned on or off: it sets
+// NITRO_COMPUTE=node-group, or puts back the value Settings replaced.
+func (m *Model) fitNitro() {
+	m.switchNitro()
+	if back := m.restoreNitro(); back != "" {
+		m.notice = back
+	}
+}
+
 // classShort is the note of a class this run cannot have; the panel beside
 // says why in full.
 func (m *Model) classShort(c string) string {
-	if c == state.ClassNitro && !m.set.nitroGroup() {
+	if c == state.ClassNitro && m.nitroCompute() != plugin.NitroNodeGroup {
 		return "needs EKS Auto Mode"
 	}
 	return "no " + c + " node group"
@@ -189,6 +267,16 @@ func (m *Model) enterSettings() {
 	st.values[dbKey] = m.s.Database
 	st.errs = map[string]string{}
 	st.editing = false
+	// The values are the Setup's again, and so is Settings' switch. A
+	// cluster with Auto Mode, connected or new, does not need it, so the
+	// old value comes back. Without Auto Mode, a class already on with
+	// auto-mode (from another cluster, config.local.env or
+	// --sandbox-classes) gets node-group, as when it is turned on.
+	st.nitro = st.nitroApplied
+	if back := m.restoreNitro(); back != "" {
+		m.notice = back
+	}
+	m.switchNitro()
 	m.refreshFields()
 	st.cursor = min(st.cursor, len(st.fields)-1)
 	m.checkSettings()
@@ -231,9 +319,11 @@ func (m *Model) refreshFields() {
 
 func (st *settingsScreen) classOn(c string) bool { return state.HasClass(st.values[classKey], c) }
 
-// classProblem is why class c cannot be on for this run, or "".
+// classProblem is why class c cannot be on for this run, or "". The nitro
+// class is judged on nitroCompute: off Auto Mode, on the node group that
+// turning it on sets.
 func (m *Model) classProblem(c string) string {
-	return state.ClassProblem(c, m.settingsAutoMode(), m.s.ClusterIsNew, m.s.ClusterName, m.s.ClusterPools, m.set.values["NITRO_COMPUTE"])
+	return state.ClassProblem(c, m.settingsAutoMode(), m.s.ClusterIsNew, m.s.ClusterName, m.s.ClusterPools, m.nitroCompute())
 }
 
 // toggleClass turns a sandbox class on or off, keeping at least one, in
@@ -264,8 +354,10 @@ func (m *Model) minimal() string {
 	} else if !m.s.AutoMode {
 		return "The minimal profile needs EKS Auto Mode, and " + m.s.ClusterName + " has it off."
 	}
-	// The minimal profile runs the Nitro sandbox on Auto Mode's nodes.
+	// The minimal profile runs the Nitro sandbox on Auto Mode's nodes. It
+	// sets NITRO_COMPUTE itself, so no switch of Settings' is left to undo.
 	st.values[classKey], st.values[dbKey], st.values["NITRO_COMPUTE"] = state.ClassNitro, state.DatabaseBundled, plugin.NitroAutoMode
+	st.nitro = nitroSwitch{}
 	if !m.s.ClusterIsNew {
 		return "Minimal profile: the AWS Nitro sandbox only and the bundled PostgreSQL."
 	}
@@ -383,6 +475,7 @@ func (m *Model) applySettings() {
 	} {
 		*k.dst = v[k.key]
 	}
+	m.set.nitroApplied = m.set.nitro
 	if m.s.ClusterIsNew {
 		m.s.NewCluster(m.s.ClusterName)
 	}
@@ -431,9 +524,14 @@ func (m *Model) settingsKey(msg tea.KeyMsg) tea.Cmd {
 			} else {
 				st.values[f.key] = "on"
 			}
+			if f.key == "AUTO_MODE" {
+				m.fitNitro()
+			}
 		case fClass:
 			if why := m.toggleClass(f.key); why != "" {
 				m.notice = why
+			} else if f.key == state.ClassNitro {
+				m.fitNitro()
 			}
 		case fDatabase:
 			if st.values[dbKey] == state.DatabaseRDS {
@@ -453,6 +551,8 @@ func (m *Model) settingsKey(msg tea.KeyMsg) tea.Cmd {
 			} else {
 				st.values[f.key] = plugin.NitroNodeGroup
 			}
+			// The operator's value now, which Settings never changes back.
+			st.nitro = nitroSwitch{}
 		default:
 			if rel, by := m.settingsRelease(); f.key == "SUBSTRATE_TAG" && by != "" {
 				m.notice = by + " installs " + rel.Tag + " (one release per install); turn it off to choose the release"
@@ -589,7 +689,7 @@ func (m Model) settingsView() string {
 		switch {
 		case f.kind == fClass:
 			note := classNote[f.key]
-			if f.key == state.ClassNitro && st.nitroGroup() {
+			if f.key == state.ClassNitro && m.nitroCompute() == plugin.NitroNodeGroup {
 				note = nitroGroupNote
 			}
 			if m.classProblem(f.key) != "" {
@@ -616,6 +716,9 @@ func (m Model) settingsView() string {
 			if msg, bad := st.errs[classKey]; bad {
 				left = append(left, "  "+theme.Bad.Render(truncate(msg, leftW-2)))
 			}
+			if st.nitro.on {
+				left = append(left, "  "+theme.Fainted.Render(truncate(nitroSwitchLine, leftW-2)))
+			}
 		}
 	}
 
@@ -633,6 +736,10 @@ func (m Model) settingsView() string {
 			"SUBSTRATE_TAG (" + st.values["SUBSTRATE_TAG"] + ") is kept for a run without it."
 	}
 	para := lipgloss.NewStyle().Width(rightW)
+	// First, as the class's help is long: what turning it on changes.
+	if f.key == state.ClassNitro && m.nitroSwitches() && m.classProblem(f.key) == "" {
+		right = append(right, theme.Fainted.Render(para.Render(nitroSwitchHint)))
+	}
 	right = append(right, theme.Subtle.Render(para.Render(joinParagraphs(text))))
 	if f.kind == fText || f.kind == fToggle || f.kind == fNodeGroupType || f.kind == fNitroCompute {
 		right = append(right, "", theme.Fainted.Render(para.Render("Now: "+f.key+"="+st.values[f.key])))
