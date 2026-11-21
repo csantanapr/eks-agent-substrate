@@ -44,6 +44,9 @@ type Result struct {
 	// (RecordOnly): the NITRO_COMPUTE its plugin that follows it was
 	// deployed with, "" when it records none.
 	NitroCompute string
+	// Unknown are the record's data keys this installer does not know, on a
+	// record-only cluster (plugin.Record.Unknown), which Review refuses.
+	Unknown []string
 	// Pools are the ate.dev/pool values of the cluster's nodes (plugin
 	// PoolsArgs): the node groups a connected cluster has, which decide the
 	// sandbox classes and plugins the wizard offers on it.
@@ -58,7 +61,7 @@ func (r Result) Removed() []string {
 
 // Record is the plugin record the probe read: empty when it read none.
 func (r Result) Record() plugin.Record {
-	return plugin.Record{Plugins: r.Plugins, Pending: r.Pending, NitroCompute: r.NitroCompute}
+	return plugin.Record{Plugins: r.Plugins, Pending: r.Pending, NitroCompute: r.NitroCompute, Unknown: r.Unknown}
 }
 
 // Partial reports the namespace-without-atelet state.
@@ -150,7 +153,11 @@ func Check(ctx context.Context, kubectl Kubectl) (string, error) {
 		if len(rec.All()) > 0 {
 			line += recordFields(rec)
 			if rec.NitroCompute != "" {
-				line += " nitro-compute=" + rec.NitroCompute
+				line += " nitro-compute=" + oneField(rec.NitroCompute)
+			}
+			// ConfigMap keys hold no space or comma ([-._a-zA-Z0-9]+).
+			if len(rec.Unknown) > 0 {
+				line += " unknown=" + strings.Join(rec.Unknown, ",")
 			}
 		}
 		return line, nil
@@ -183,12 +190,18 @@ func Check(ctx context.Context, kubectl Kubectl) (string, error) {
 // recordFields are the marker fields of rec's plugins: the installed ones,
 // and the pending ones only when there are some.
 func recordFields(rec plugin.Record) string {
-	s := " plugins=" + plugin.FormatRecord(rec.Plugins)
+	s := " plugins=" + oneField(plugin.FormatRecord(rec.Plugins))
 	if len(rec.Pending) > 0 {
-		s += " pending=" + plugin.FormatRecord(rec.Pending)
+		s += " pending=" + oneField(plugin.FormatRecord(rec.Pending))
 	}
 	return s
 }
+
+// oneField is v as one marker field: ParseInstalled splits the line on
+// whitespace, so a record value with a space (a hand edit, or a newer
+// installer's) would start a field of its own. Joined with "_", it stays one
+// value this installer does not know, and is refused as such.
+func oneField(v string) string { return strings.Join(strings.Fields(v), "_") }
 
 // ParseInstalled reads the line Check printed, as substrate-gke's.
 func ParseInstalled(lines []string) (Result, error) {
@@ -213,6 +226,8 @@ func ParseInstalled(lines []string) (Result, error) {
 				r.Pending = plugin.ParseRecord(v)
 			case "nitro-compute":
 				r.NitroCompute = v
+			case "unknown":
+				r.Unknown = plugin.ParseRecord(v)
 			}
 		}
 		return r, nil

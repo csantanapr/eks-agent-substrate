@@ -184,6 +184,11 @@ func (m Model) startErr() error {
 	if err := m.settingsErr(); err != nil {
 		return err
 	}
+	// The control plane step refuses it too (controlplane.resolvePlugins),
+	// but only after Provision and RDS.
+	if err := m.s.ClusterRecord.CheckKeys(); err != nil {
+		return err
+	}
 	return m.nitroRecordErr()
 }
 

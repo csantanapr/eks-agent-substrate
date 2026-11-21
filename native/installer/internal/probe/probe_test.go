@@ -141,11 +141,12 @@ func TestARecordWithoutTheControlPlaneIsReported(t *testing.T) {
 	n := 0
 	line, err := Check(context.Background(), countingKubectl(fakeKubectl(absent(
 		`{"data":{"plugins":"efs","pending":"probe-test-iso","nitro-compute":"node-group","future-key":"x"}}`), nil), &n))
-	if want := Marker + "false pools=nitro,system plugins=efs pending=probe-test-iso nitro-compute=node-group"; err != nil || line != want || n != 3 {
+	if want := Marker + "false pools=nitro,system plugins=efs pending=probe-test-iso nitro-compute=node-group unknown=future-key"; err != nil || line != want || n != 3 {
 		t.Fatalf("record-only: %q (%v, %d calls), want %q", line, err, n, want)
 	}
 	r, err := ParseInstalled([]string{line})
 	if err != nil || r.Installed || r.Partial() || !r.RecordOnly() || !r.PluginsRead || r.NitroCompute != plugin.NitroNodeGroup ||
+		strings.Join(r.Unknown, ",") != "future-key" || r.Record().CheckKeys() == nil ||
 		strings.Join(r.Removed(), ",") != "efs,probe-test-iso" || !r.Record().Equal(plugin.Record{Plugins: []string{"efs"}, Pending: []string{"probe-test-iso"}, NitroCompute: plugin.NitroNodeGroup}) {
 		t.Errorf("record-only read as %+v (%v)", r, err)
 	}
