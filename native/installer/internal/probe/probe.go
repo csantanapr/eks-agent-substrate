@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/awsx"
@@ -39,6 +40,10 @@ type Result struct {
 	// read: without it the plugins are unknown, not none.
 	Plugins, Pending []string
 	PluginsRead      bool
+	// NitroCompute is the record's nitro-compute on a record-only cluster
+	// (RecordOnly): the NITRO_COMPUTE its plugin that follows it was
+	// deployed with, "" when it records none.
+	NitroCompute string
 	// Pools are the ate.dev/pool values of the cluster's nodes (plugin
 	// PoolsArgs): the node groups a connected cluster has, which decide the
 	// sandbox classes and plugins the wizard offers on it.
@@ -48,11 +53,22 @@ type Result struct {
 // Removed are the plugins --remove-control-plane removes first: the
 // installed and the pending ones, once each.
 func (r Result) Removed() []string {
-	return plugin.Record{Plugins: r.Plugins, Pending: r.Pending}.All()
+	return r.Record().All()
+}
+
+// Record is the plugin record the probe read: empty when it read none.
+func (r Result) Record() plugin.Record {
+	return plugin.Record{Plugins: r.Plugins, Pending: r.Pending, NitroCompute: r.NitroCompute}
 }
 
 // Partial reports the namespace-without-atelet state.
 func (r Result) Partial() bool { return r.Installed && !r.Atelet }
+
+// RecordOnly reports a cluster without ate-system whose plugin record lists
+// plugins, installed or pending (issue #22): the control plane is gone, a
+// manual ate-setup delete for one, and the record stayed. Unlike Partial it
+// does not hold the install, which runs there as on a clean cluster.
+func (r Result) RecordOnly() bool { return !r.Installed && len(r.Removed()) > 0 }
 
 // Badge is the picker's install-state label (issue #5 AC5.1).
 func (r Result) Badge() string {
@@ -63,8 +79,31 @@ func (r Result) Badge() string {
 		return "installed " + r.Version
 	case r.Installed:
 		return "installed"
+	case r.RecordOnly():
+		return "partial install: plugins " + strings.Join(r.Removed(), ", ")
 	}
 	return "ready"
+}
+
+// Recorded names the record's plugins, each with what the record holds for
+// it: pending, and the NITRO_COMPUTE it was deployed with.
+func (r Result) Recorded() string {
+	rec := r.Record()
+	var ids []string
+	for _, id := range rec.All() {
+		var notes []string
+		if !slices.Contains(r.Plugins, id) {
+			notes = append(notes, "pending")
+		}
+		if p, ok := plugin.Get(id); ok && rec.NitroComputeOf(p) != "" {
+			notes = append(notes, rec.NitroComputeOf(p))
+		}
+		if len(notes) > 0 {
+			id += " (" + strings.Join(notes, ", ") + ")"
+		}
+		ids = append(ids, id)
+	}
+	return strings.Join(ids, ", ")
 }
 
 // Kubectl runs one kubectl command against the probed cluster and returns
@@ -74,7 +113,11 @@ type Kubectl func(ctx context.Context, args ...string) (string, error)
 // Check reads the cluster through kubectl and returns the marker line. A
 // failed namespace or DaemonSet read stops it with that error rather than
 // reporting "absent": a cluster the probe cannot read has not been shown to
-// be free of Substrate. The image read is best effort, as in substrate-gke.
+// be free of Substrate. So does a failed record read on a cluster without
+// ate-system. The image read is best effort, as in substrate-gke, and so is
+// the record read on a cluster with ate-system. It runs three kubectl
+// commands on a cluster without ate-system (namespace, nodes, record), four
+// with ate-system and no atelet, and five with both.
 func Check(ctx context.Context, kubectl Kubectl) (string, error) {
 	ns, err := kubectl(ctx, "get", "namespace", "ate-system", "--ignore-not-found", "-o", "jsonpath={.metadata.name}")
 	if err != nil {
@@ -88,7 +131,29 @@ func Check(ctx context.Context, kubectl Kubectl) (string, error) {
 	}
 	pools := " pools=" + strings.Join(plugin.ParsePools(nodes), ",")
 	if strings.TrimSpace(ns) == "" {
-		return Marker + "false" + pools, nil
+		// Without ate-system the record is still read (issue #22): one left
+		// behind by a manual ate-setup delete makes a record-only cluster,
+		// whose recorded NITRO_COMPUTE the Review screen checks. Unlike on
+		// an installed cluster, a failed read, or one that cannot be
+		// parsed, stops the probe: it is all that tells such a cluster from
+		// a clean one. With no record, or one that lists no plugin, the
+		// line is the one written before, byte for byte.
+		out, err := kubectl(ctx, plugin.RecordArgs...)
+		if err != nil {
+			return "", err
+		}
+		rec, err := plugin.ParseRecordJSON([]byte(out))
+		if err != nil {
+			return "", err
+		}
+		line := Marker + "false" + pools
+		if len(rec.All()) > 0 {
+			line += recordFields(rec)
+			if rec.NitroCompute != "" {
+				line += " nitro-compute=" + rec.NitroCompute
+			}
+		}
+		return line, nil
 	}
 	atelet, err := kubectl(ctx, "-n", "ate-system", "get", "daemonset", "atelet", "--ignore-not-found", "-o", "name")
 	if err != nil {
@@ -109,13 +174,20 @@ func Check(ctx context.Context, kubectl Kubectl) (string, error) {
 	// otherwise.
 	if out, err := kubectl(ctx, plugin.RecordArgs...); err == nil {
 		if rec, err := plugin.ParseRecordJSON([]byte(out)); err == nil {
-			line += " plugins=" + plugin.FormatRecord(rec.Plugins)
-			if len(rec.Pending) > 0 {
-				line += " pending=" + plugin.FormatRecord(rec.Pending)
-			}
+			line += recordFields(rec)
 		}
 	}
 	return line, nil
+}
+
+// recordFields are the marker fields of rec's plugins: the installed ones,
+// and the pending ones only when there are some.
+func recordFields(rec plugin.Record) string {
+	s := " plugins=" + plugin.FormatRecord(rec.Plugins)
+	if len(rec.Pending) > 0 {
+		s += " pending=" + plugin.FormatRecord(rec.Pending)
+	}
+	return s
 }
 
 // ParseInstalled reads the line Check printed, as substrate-gke's.
@@ -139,6 +211,8 @@ func ParseInstalled(lines []string) (Result, error) {
 				r.Plugins, r.PluginsRead = plugin.ParseRecord(v), true
 			case "pending":
 				r.Pending = plugin.ParseRecord(v)
+			case "nitro-compute":
+				r.NitroCompute = v
 			}
 		}
 		return r, nil
@@ -209,7 +283,9 @@ func KubectlWith(kubeconfig string) Kubectl {
 // SimLine is the answer a --dry-run replays for a cluster, chosen by name as
 // substrate-gke's dry run does, so the guard's whole story is on display: a
 // name with "partial" reads as an interrupted install, one with "installed"
-// as a running v1.0.0, and every other as clean.
+// as a running v1.0.0, one with "leftover" as a control plane deleted by
+// hand whose record still lists efs and mode3-iso, pending on the nitro
+// node group the cluster has (issue #22), and every other as clean.
 func SimLine(cluster string) string {
 	const pools = " pools=gvisor,microvm,system"
 	switch {
@@ -217,6 +293,8 @@ func SimLine(cluster string) string {
 		return Marker + "true" + pools
 	case strings.Contains(cluster, "installed"):
 		return Marker + "true" + pools + " atelet image=ghcr.io/agent-substrate/substrate/ate-api-server:v1.0.0 plugins=efs,llm-gateway"
+	case strings.Contains(cluster, "leftover"):
+		return Marker + "false pools=gvisor,microvm,nitro,system plugins=efs pending=mode3-iso nitro-compute=" + plugin.NitroNodeGroup
 	}
 	return Marker + "false" + pools
 }
