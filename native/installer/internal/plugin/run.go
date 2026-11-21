@@ -420,10 +420,12 @@ func (n Needs) carries(m Needs) bool {
 //     would not work: run --deploy-control-plane --plugins <id> first, or,
 //     for one that replaces the release, remove the control plane and install
 //     again. A plugin that follows NITRO_COMPUTE (Plugin.FollowsNitroCompute)
-//     is recorded as pending, with its NITRO_COMPUTE, just before its first
-//     write (Options.BeforeWrite), and is refused with another
-//     NITRO_COMPUTE than the one recorded for it, there too: the pending
-//     write succeeds only while the record is as it was read (markPending).
+//     is refused with another NITRO_COMPUTE than the one recorded for it,
+//     before the Auto Mode and node checks (which judge the run's value),
+//     and is recorded as pending, with its NITRO_COMPUTE, just before its
+//     first write (Options.BeforeWrite), where it is checked again: the
+//     pending write succeeds only while the record is as it was read
+//     (markPending).
 //   - verify: Verify for ids and what they require. A plugin that follows
 //     NITRO_COMPUTE is checked with the recorded one when there is one.
 //   - remove: ids (every recorded plugin, installed or pending, when ids is
@@ -449,14 +451,25 @@ func Run(ctx context.Context, w io.Writer, action string, ids []string, o Option
 		if err != nil {
 			return err
 		}
-		// Verify checks a plugin that follows NITRO_COMPUTE with the value
-		// its deploy ran with, as removal does: the record is read first
-		// (a read only), so the Auto Mode check below judges that value,
-		// not the run's.
+		// For a plugin that follows NITRO_COMPUTE the record is read first
+		// (a read only). Verify checks it with the value its deploy ran with,
+		// as removal does, so the Auto Mode check below judges that value,
+		// not the run's. A deploy with another value than the recorded one
+		// is refused here, before the Auto Mode and node checks, which judge
+		// the run's value: the refusal names the recorded value and the ways
+		// out, as the control plane step's does (CheckNitroRecord).
 		var rec Record
-		if action == ActionVerify && anyFollowsNitroCompute(ps) {
+		followers := anyFollowsNitroCompute(ps)
+		if followers {
 			if rec, err = LoadRecord(ctx, w, o); err != nil {
 				return err
+			}
+		}
+		if action == ActionDeploy {
+			for _, p := range ps {
+				if err := checkRecordedNitroCompute(rec, p, o); err != nil {
+					return err
+				}
 			}
 		}
 		for _, p := range ps {
@@ -478,9 +491,10 @@ func Run(ctx context.Context, w io.Writer, action string, ids []string, o Option
 					p.ID, p.NeedsRDS, o.Cluster)
 			}
 		}
-		// Before the record is read and before any plugin's AWS half or
-		// hooks: a setting one of them cannot work with stops the run with
-		// nothing done (review of 86ba13f, finding 3).
+		// Before any plugin's AWS half or hooks, and before the record is
+		// read when no plugin follows NITRO_COMPUTE: a setting one of them
+		// cannot work with stops the run with nothing done (review of
+		// 86ba13f, finding 3).
 		if err := CheckSettings(ps, os.LookupEnv); err != nil {
 			return err
 		}
@@ -510,9 +524,12 @@ func Run(ctx context.Context, w io.Writer, action string, ids []string, o Option
 			}
 			return nil
 		}
-		rec, err = LoadRecord(ctx, w, o)
-		if err != nil {
-			return err
+		// The record, read above for a plugin that follows NITRO_COMPUTE
+		// (and its value checked there), else now: one read either way.
+		if !followers {
+			if rec, err = LoadRecord(ctx, w, o); err != nil {
+				return err
+			}
 		}
 		// Before any write, cluster or AWS: the record writes below would
 		// drop keys a newer installer wrote.
@@ -523,9 +540,6 @@ func Run(ctx context.Context, w io.Writer, action string, ids []string, o Option
 		// did not finish.
 		carried := recordedNeeds(rec.Plugins)
 		for _, p := range ps {
-			if err := checkRecordedNitroCompute(rec, p, o); err != nil {
-				return err
-			}
 			if !hasNeeds(p) || slices.Contains(rec.Plugins, p.ID) || carried.carries(p.Needs) {
 				continue
 			}

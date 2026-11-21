@@ -411,16 +411,14 @@ func TestControlPlaneForMode3IsoAloneCarriesTheFork(t *testing.T) {
 // mode 3's counter image once the worker Pods and atelet-iso are up.
 func TestDeploy(t *testing.T) {
 	// Without Auto Mode, Run refuses deploy and verify through the
-	// registration's NeedsAutoMode: deploy before anything runs, verify after
-	// one read of the record (which holds the value its deploy ran with).
+	// registration's NeedsAutoMode after one read of the record, which
+	// holds the value its deploy ran with: verify checks with it, and a
+	// deploy with another one is refused before the Auto Mode check.
 	var err error
 	for _, action := range []string{plugin.ActionDeploy, plugin.ActionVerify} {
 		f := newFake(t)
 		err = plugin.Run(context.Background(), io.Discard, action, []string{ID}, testOptions(t, false))
-		reads := 0
-		if action == plugin.ActionVerify {
-			reads = 1
-		}
+		reads := 1
 		if err == nil || !strings.Contains(err.Error(), needsAutoMode) || !strings.Contains(err.Error(), "c1 has EKS Auto Mode off") || len(f.log) != reads ||
 			(reads == 1 && !strings.HasPrefix(f.log[0], "kubectl -n kube-system get configmap substrate-eks-plugins")) {
 			t.Errorf("Run %s without Auto Mode: err = %v, ran %q", action, err, f.log)

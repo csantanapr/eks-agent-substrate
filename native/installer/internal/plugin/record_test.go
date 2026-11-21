@@ -252,6 +252,70 @@ func TestRunDeployRefusesAnotherNitroComputeThanTheRecorded(t *testing.T) {
 	}
 }
 
+// #22 (review N2 of #21), both ways: a deploy with another NITRO_COMPUTE
+// than the one recorded for its plugin gets the record's refusal, with its
+// ways out, before the Auto Mode check and the node check judge the run's
+// value: on a cluster without Auto Mode (isoauto runs there only with
+// node-group, as mode3-iso does) and on one without the nodes isonodes
+// runs on. With nothing recorded those checks still refuse the run's
+// value, before any write.
+func TestRunDeployChecksTheRecordedNitroComputeFirst(t *testing.T) {
+	for _, c := range []struct{ id, check string }{
+		{"isoauto", "plugin isoauto needs EKS Auto Mode; demo has EKS Auto Mode off"},
+		{"isonodes", "plugin isonodes runs on the nitro node group, and demo has no node labeled ate.dev/pool=nitro"},
+	} {
+		for _, recorded := range []bool{true, false} {
+			f := &fakeCluster{}
+			if recorded {
+				f.record, f.nitro = c.id, NitroNodeGroup
+			}
+			o := nitroFixture(t, f, nil, nil)
+			Register(Plugin{ID: "isoauto", Order: 6, FollowsNitroCompute: true, NeedsAutoMode: "needs EKS Auto Mode",
+				AutoModeOptional: func(o Options) bool { return o.NitroCompute == NitroNodeGroup }, Deploy: modeHook(f, "deploy isoauto", nil)})
+			Register(Plugin{ID: "isonodes", Order: 7, FollowsNitroCompute: true, Nodes: []string{"nitro"}, Deploy: modeHook(f, "deploy isonodes", nil)})
+			o.NitroCompute, o.Pools = NitroAutoMode, []string{"system"}
+			err := Run(context.Background(), io.Discard, ActionDeploy, []string{c.id}, o)
+			want := c.check
+			if recorded {
+				want = "plugin " + c.id + " was deployed with NITRO_COMPUTE=node-group (recorded in kube-system/substrate-eks-plugins), not auto-mode: " +
+					"deploy it with --nitro-compute node-group, or remove it first"
+			}
+			if err == nil || !strings.Contains(err.Error(), want) {
+				t.Errorf("%s, recorded %v: want %q, got %v", c.id, recorded, want, err)
+			}
+			if len(f.log) != 0 || len(f.writes) != 0 || f.reads != 1 {
+				t.Errorf("%s, recorded %v: ran %q, record writes %q, %d record reads (want 1)", c.id, recorded, f.log, f.writes, f.reads)
+			}
+		}
+	}
+}
+
+// #22 (review N2 of #21): the deploy reads the record before its checks
+// only for a plugin that follows NITRO_COMPUTE, as verify does, and then
+// uses that read, so neither makes a read more than before: a deploy of
+// base reads it in Run and in AddToRecord, one of iso also in markPending;
+// a verify reads it once for iso and never for base.
+func TestRunReadsTheRecordOnceBeforeItsChecks(t *testing.T) {
+	for _, c := range []struct {
+		action, id, record string
+		reads              int
+	}{
+		{ActionDeploy, "base", "solo", 2},
+		{ActionDeploy, "iso", "solo", 3},
+		{ActionVerify, "base", "base,iso", 0},
+		{ActionVerify, "iso", "base,iso", 1},
+	} {
+		f := &fakeCluster{record: c.record}
+		o := nitroFixture(t, f, nil, nil)
+		if err := Run(context.Background(), io.Discard, c.action, []string{c.id}, o); err != nil {
+			t.Fatalf("%s %s: %v", c.action, c.id, err)
+		}
+		if f.reads != c.reads {
+			t.Errorf("%s %s: %d record reads, want %d", c.action, c.id, f.reads, c.reads)
+		}
+	}
+}
+
 // A NITRO_COMPUTE in the record that this installer does not know stops a
 // removal, a deploy or a check of its plugin before anything is removed,
 // written or checked, as an unknown plugin does; the record is left as it
