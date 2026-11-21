@@ -23,8 +23,10 @@
 //   - Remove: the pool and its counter image, atelet-iso and its ConfigMap,
 //     then the NodePool, whose nodes Auto Mode drains and terminates; it
 //     waits for them, then deletes the NodeClass. It is one Remove for
-//     both NITRO_COMPUTE values (remove), since a deploy may have run under
-//     either, but only auto-mode's deletes the NodePool and NodeClass.
+//     both NITRO_COMPUTE values (remove), but only auto-mode's deletes the
+//     NodePool and NodeClass. plugin.Run records the NITRO_COMPUTE a deploy
+//     runs with (FollowsNitroCompute), just before Deploy's first write
+//     (Options.BeforeWrite), and runs Verify and Remove with it.
 //
 // It makes no AWS resources of its own (Auto Mode owns the nodes, and the
 // counter repository is the deployment's), so it has no setup-aws half.
@@ -104,7 +106,10 @@ func init() {
 		// Minutes as measured on sub-p15 (2026-11-15): 7m29s, the counter
 		// image build and push included.
 		Order: mode3.Order + 1, Minutes: 8, NeedsAutoMode: needsAutoMode, AutoModeOptional: nodeGroupMode,
-		Needs: mode3.Needs,
+		// Run records the NITRO_COMPUTE of a deploy, and checks and removes
+		// with it.
+		FollowsNitroCompute: true,
+		Needs:               mode3.Needs,
 		// One node for the two worker Pods, launched by Auto Mode: a
 		// c6i.xlarge on-demand on sub-p15, $0.17 in us-west-2, plus the
 		// $0.0204 Auto Mode fee. (With NITRO_COMPUTE=node-group the nodes
@@ -224,6 +229,12 @@ func deploy(ctx context.Context, w io.Writer, o plugin.Options) error {
 	if err != nil {
 		return err
 	}
+	// The reads are done: plugin.Run records the plugin as pending now,
+	// before the first write, so a refusal above leaves the record as it
+	// was.
+	if err := o.BeforeWrite(); err != nil {
+		return err
+	}
 	// The NodeClass first: the NodePool names it.
 	for _, m := range [][]byte{nc, np} {
 		if err := plugin.Kubectl(ctx, w, o, m, nil, "apply", "-f", "-"); err != nil {
@@ -291,7 +302,8 @@ func deployPool(ctx context.Context, w io.Writer, o plugin.Options, tree string,
 	return pool.Deploy(ctx, w, o, worker, counter, waitNodes)
 }
 
-// verify checks the counter pool of o's NITRO_COMPUTE (Counter.Verify).
+// verify checks the counter pool of o's NITRO_COMPUTE (Counter.Verify):
+// plugin.Run passes the one the plugin record holds, when it holds one.
 func verify(ctx context.Context, w io.Writer, o plugin.Options) error {
 	pool, err := iso(o)
 	if err != nil {
@@ -308,12 +320,13 @@ const nodesTries = 300
 // tests replace it.
 var deleteImage = mode3.DeleteCounterImage
 
-// remove takes away what deploy makes under either NITRO_COMPUTE, whichever
-// the run names: NITRO_COMPUTE is not recorded with the plugin, and a deploy
-// under one after the other leaves the first one's objects. So it deletes
-// the counter pool and its image tag, atelet-iso, the credential provider
-// ConfigMap, and RuntimeClass isolated-sandbox when the installer made it
-// and no Pod uses it (node-group's, removeRuntimeClass). Only under
+// remove takes away what deploy makes under o's NITRO_COMPUTE. plugin.Run
+// passes the one the plugin record holds for mode3-iso, the one its deploy
+// ran with, and the run's only when the record holds none (one an older
+// installer wrote). Under either value it deletes the counter pool and its
+// image tag, atelet-iso, the credential provider ConfigMap, and
+// RuntimeClass isolated-sandbox when the installer made it and no Pod uses
+// it (node-group's, removeRuntimeClass). Only under
 // auto-mode does it delete NodePool ate-isolated with its NodeClass, as
 // before NITRO_COMPUTE; under node-group it leaves them (nodePoolLeft):
 // node-group never makes them, and ones of that name may be another's.

@@ -24,6 +24,12 @@ func fakeKubectl(answers map[string]string, fail map[string]error) Kubectl {
 	}
 }
 
+// recordJSON is a record listing plugins as kubectl prints it
+// (plugin.RecordArgs), with only the plugins key, as older installers write it.
+func recordJSON(plugins string) string {
+	return `{"apiVersion":"v1","kind":"ConfigMap","metadata":{"name":"substrate-eks-plugins","namespace":"kube-system"},"data":{"plugins":"` + plugins + `"}}`
+}
+
 func checkThenParse(t *testing.T, k Kubectl) Result {
 	t.Helper()
 	line, err := Check(context.Background(), k)
@@ -90,12 +96,12 @@ func TestFailedReadsAreErrors(t *testing.T) {
 // An absent cluster's record is not read.
 func TestInstalledPluginsAreReadFromTheRecord(t *testing.T) {
 	full := map[string]string{"namespace": "ate-system", "daemonset": "daemonset.apps/atelet",
-		"deployment": "ghcr.io/x/ate-api-server:v1.0.0", "configmap": "mode3,efs"}
+		"deployment": "ghcr.io/x/ate-api-server:v1.0.0", "configmap": recordJSON("mode3,efs")}
 	r := checkThenParse(t, fakeKubectl(full, nil))
 	if !r.PluginsRead || strings.Join(r.Plugins, ",") != "efs,mode3" || r.Version != "v1.0.0" || !r.Atelet {
 		t.Errorf("recorded plugins read as %+v", r)
 	}
-	partial := map[string]string{"namespace": "ate-system", "configmap": "efs"}
+	partial := map[string]string{"namespace": "ate-system", "configmap": recordJSON("efs")}
 	if r := checkThenParse(t, fakeKubectl(partial, nil)); !r.Partial() || !r.PluginsRead || strings.Join(r.Plugins, ",") != "efs" {
 		t.Errorf("partial install's plugins read as %+v", r)
 	}
@@ -107,8 +113,43 @@ func TestInstalledPluginsAreReadFromTheRecord(t *testing.T) {
 	if r.PluginsRead || len(r.Plugins) != 0 || !r.Installed || r.Version != "v1.0.0" {
 		t.Errorf("an unreadable record read as %+v, want unknown plugins on an installed cluster", r)
 	}
-	if line, _ := Check(context.Background(), fakeKubectl(map[string]string{"configmap": "efs"}, nil)); strings.Contains(line, "plugins") {
+	if line, _ := Check(context.Background(), fakeKubectl(map[string]string{"configmap": recordJSON("efs")}, nil)); strings.Contains(line, "plugins") {
 		t.Errorf("absent cluster: %q", line)
+	}
+}
+
+// The record's pending plugins are reported, and removed with the installed
+// ones (Removed), when there are some; without, and with a NITRO_COMPUTE,
+// the line is the one written before, byte for byte. A record that cannot
+// be read as the ConfigMap leaves the plugins unknown, as a failed read
+// does.
+func TestPendingPluginsAreReported(t *testing.T) {
+	base := map[string]string{"namespace": "ate-system", "daemonset": "daemonset.apps/atelet", "nodes": "nitro system"}
+	with := func(rec string) map[string]string {
+		m := map[string]string{"configmap": rec}
+		for k, v := range base {
+			m[k] = v
+		}
+		return m
+	}
+	line, err := Check(context.Background(), fakeKubectl(with(`{"data":{"plugins":"efs","pending":"mode3-iso","nitro-compute":"node-group"}}`), nil))
+	if err != nil || line != Marker+"true pools=nitro,system atelet plugins=efs pending=mode3-iso" {
+		t.Errorf("pending: %q, %v", line, err)
+	}
+	r, err := ParseInstalled([]string{line})
+	if err != nil || !r.PluginsRead || strings.Join(r.Plugins, ",") != "efs" || strings.Join(r.Pending, ",") != "mode3-iso" ||
+		strings.Join(r.Removed(), ",") != "efs,mode3-iso" {
+		t.Errorf("pending read as %+v (%v)", r, err)
+	}
+	line, err = Check(context.Background(), fakeKubectl(with(`{"data":{"plugins":"mode3-iso","nitro-compute":"auto-mode","future-key":"x"}}`), nil))
+	if err != nil || line != Marker+"true pools=nitro,system atelet plugins=mode3-iso" {
+		t.Errorf("no pending: %q, %v", line, err)
+	}
+	if r := checkThenParse(t, fakeKubectl(with(`{"data":{"pending":"mode3-iso"}}`), nil)); !r.PluginsRead || strings.Join(r.Removed(), ",") != "mode3-iso" {
+		t.Errorf("pending only: %+v", r)
+	}
+	if r := checkThenParse(t, fakeKubectl(with("mode3-iso"), nil)); r.PluginsRead || len(r.Removed()) != 0 || !r.Installed {
+		t.Errorf("an unreadable record read as %+v, want unknown plugins", r)
 	}
 }
 

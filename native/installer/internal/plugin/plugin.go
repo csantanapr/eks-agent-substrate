@@ -25,9 +25,11 @@
 package plugin
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -246,6 +248,21 @@ type Options struct {
 	// sandbox class runs, NitroAutoMode (EKS Auto Mode's nodes, the default;
 	// empty reads as it) or NitroNodeGroup (the nitro node group).
 	NitroCompute string
+	// BeforeFirstWrite, when set, is what Deploy calls (BeforeWrite) after
+	// its read-only checks and just before its first write to the cluster.
+	// Run's deploy sets it to record a plugin that follows NITRO_COMPUTE as
+	// pending (Plugin.FollowsNitroCompute), so a Deploy that refuses after
+	// its reads leaves the record as it was.
+	BeforeFirstWrite func() error
+}
+
+// BeforeWrite runs o.BeforeFirstWrite when it is set. A Deploy that follows
+// NITRO_COMPUTE calls it just before it creates or applies anything.
+func (o Options) BeforeWrite() error {
+	if o.BeforeFirstWrite == nil {
+		return nil
+	}
+	return o.BeforeFirstWrite()
 }
 
 // NITRO_COMPUTE's values: the AWS Nitro sandbox class (mode3-iso) on nodes
@@ -258,6 +275,14 @@ const (
 
 // NitroComputes are NITRO_COMPUTE's values; NitroAutoMode is the default.
 var NitroComputes = []string{NitroAutoMode, NitroNodeGroup}
+
+// nitroCompute is o's NITRO_COMPUTE, NitroAutoMode when it is empty.
+func (o Options) nitroCompute() string {
+	if o.NitroCompute == "" {
+		return NitroAutoMode
+	}
+	return o.NitroCompute
+}
 
 // CheckNitroCompute refuses a NITRO_COMPUTE that is not one of NitroComputes.
 func CheckNitroCompute(v string) error {
@@ -331,6 +356,16 @@ type Plugin struct {
 	// with NeedsAutoMode runs without Auto Mode all the same (mode3-iso with
 	// NITRO_COMPUTE=node-group, on the nitro node group).
 	AutoModeOptional func(Options) bool
+	// FollowsNitroCompute reports that Deploy, Verify and Remove act on
+	// Options.NitroCompute (mode3-iso), so the record keeps the one a deploy
+	// ran with. Run's deploy writes the plugin as pending, with its
+	// NITRO_COMPUTE, just before the plugin's first write: before its AWS
+	// half, or when Deploy calls Options.BeforeWrite after its read-only
+	// checks, and at the latest once Deploy returns. It refuses another
+	// NITRO_COMPUTE than the one recorded for it. Run's verify and remove run
+	// Verify and Remove with the recorded one. Only such a plugin is ever
+	// pending, so a deploy of any other writes the record as before.
+	FollowsNitroCompute bool
 	// NeedsRDS, when set, is why the plugin needs the RDS database (login
 	// rotation rotates its logins): the wizard offers it only with RDS, and
 	// Run refuses to deploy or check it, before any child, on a cluster
@@ -535,14 +570,33 @@ func Merge(ps []Plugin) (Needs, error) {
 }
 
 // RecordNamespace/RecordName are the ConfigMap that records which plugins are
-// installed, in kube-system so that removing ate-system keeps it, and its data
-// key holds a comma-separated, sorted list of IDs. The control plane deploy
-// adds the plugins whose needs it now carries, Run's deploy adds a plugin once
-// it is deployed and checked, and Run's remove drops it.
+// installed, in kube-system so that removing ate-system keeps it. Its data
+// keys:
+//   - RecordKey holds a comma-separated, sorted list of the installed IDs.
+//     The control plane deploy adds the plugins whose needs it now carries,
+//     Run's deploy adds a plugin once it is deployed and checked, and Run's
+//     remove drops it. Its format is the one older installers read.
+//   - PendingKey lists, the same way, each plugin that follows NITRO_COMPUTE
+//     (Plugin.FollowsNitroCompute) whose deploy has started and not
+//     finished: Run's deploy writes it just before the plugin's first
+//     write, only while the record is as it read it (markPending), and
+//     AddToRecord moves it to RecordKey, after Run's deploy and
+//     check, or in the control plane deploy's record. A plugin the control
+//     plane deploy recorded first is in both keys while its own deploy
+//     runs, and after it fails. A failed deploy leaves it there, and a
+//     removal of every plugin removes it too.
+//   - NitroComputeKey is the NITRO_COMPUTE such a plugin was (being)
+//     deployed with, written with its pending entry. Its removal runs with
+//     it, and drops it.
+//
+// The last two are written only when used, so a record without them is the
+// one an older installer, or a deploy of other plugins, writes.
 const (
 	RecordNamespace = "kube-system"
 	RecordName      = "substrate-eks-plugins"
 	RecordKey       = "plugins"
+	PendingKey      = "pending"
+	NitroComputeKey = "nitro-compute"
 )
 
 // ParseRecord reads the record's data value into IDs.
@@ -562,4 +616,98 @@ func FormatRecord(ids []string) string {
 	ids = slices.Clone(ids)
 	slices.Sort(ids)
 	return strings.Join(slices.Compact(ids), ",")
+}
+
+// Record is what the record ConfigMap holds.
+type Record struct {
+	// Plugins are the installed plugins (RecordKey), Pending the ones whose
+	// deploy has started and not finished (PendingKey), each sorted.
+	Plugins, Pending []string
+	// NitroCompute is NitroComputeKey: "" when the record has none (one an
+	// older installer wrote, or with no plugin that follows NITRO_COMPUTE).
+	NitroCompute string
+	// ResourceVersion is the ConfigMap's metadata.resourceVersion as it was
+	// read: "" when there is no ConfigMap (the API server gives every object
+	// one). Only the pending write uses it, as its precondition
+	// (markPending); Equal ignores it and Manifest does not write it.
+	ResourceVersion string
+}
+
+// RecordArgs are the kubectl arguments that print the record ConfigMap as
+// JSON, or nothing when it is missing (ParseRecordJSON).
+var RecordArgs = []string{"-n", RecordNamespace, "get", "configmap", RecordName, "--ignore-not-found", "-o", "json"}
+
+// ParseRecordJSON reads what RecordArgs printed: nothing is no record, and
+// data keys it does not know are ignored, so a record a newer installer
+// wrote stays readable. Anything else it cannot read is an error.
+func ParseRecordJSON(js []byte) (Record, error) {
+	if len(bytes.TrimSpace(js)) == 0 {
+		return Record{}, nil
+	}
+	var cm struct {
+		Metadata struct {
+			ResourceVersion string `json:"resourceVersion"`
+		} `json:"metadata"`
+		Data map[string]string `json:"data"`
+	}
+	if err := json.Unmarshal(js, &cm); err != nil {
+		return Record{}, fmt.Errorf("read ConfigMap %s/%s: %w", RecordNamespace, RecordName, err)
+	}
+	return Record{Plugins: ParseRecord(cm.Data[RecordKey]), Pending: ParseRecord(cm.Data[PendingKey]),
+		NitroCompute: strings.TrimSpace(cm.Data[NitroComputeKey]), ResourceVersion: cm.Metadata.ResourceVersion}, nil
+}
+
+// All are the installed and the pending plugins, sorted, once each: what a
+// removal of every plugin removes.
+func (r Record) All() []string {
+	return ParseRecord(FormatRecord(append(slices.Clone(r.Plugins), r.Pending...)))
+}
+
+// Empty reports a record with no plugin installed or pending, which
+// WriteRecord deletes.
+func (r Record) Empty() bool { return len(r.Plugins) == 0 && len(r.Pending) == 0 }
+
+// Equal reports that r and s hold the same, whatever their ResourceVersion.
+func (r Record) Equal(s Record) bool {
+	return slices.Equal(r.Plugins, s.Plugins) && slices.Equal(r.Pending, s.Pending) && r.NitroCompute == s.NitroCompute
+}
+
+// NitroComputeOf is the NITRO_COMPUTE r records for p: NitroCompute while p
+// follows NITRO_COMPUTE and is installed or pending, else "".
+func (r Record) NitroComputeOf(p Plugin) string {
+	if !p.FollowsNitroCompute || !slices.Contains(r.All(), p.ID) {
+		return ""
+	}
+	return r.NitroCompute
+}
+
+// Manifest is the ConfigMap that holds r. It always has RecordKey, and the
+// other keys only when they hold something, so with only Plugins it is the
+// ConfigMap older installers write, byte for byte. It has no
+// resourceVersion, so a write of it has no precondition.
+func (r Record) Manifest() []byte { return r.manifest("") }
+
+// manifest is Manifest with metadata.resourceVersion rv when rv is not "":
+// a replace of it then succeeds only while the ConfigMap is at rv.
+func (r Record) manifest(rv string) []byte {
+	data := fmt.Sprintf("  %s: %q\n", RecordKey, FormatRecord(r.Plugins))
+	if len(r.Pending) > 0 {
+		data += fmt.Sprintf("  %s: %q\n", PendingKey, FormatRecord(r.Pending))
+	}
+	if r.NitroCompute != "" {
+		data += fmt.Sprintf("  %s: %q\n", NitroComputeKey, r.NitroCompute)
+	}
+	version := ""
+	if rv != "" {
+		version = fmt.Sprintf("  resourceVersion: %q\n", rv)
+	}
+	return []byte(fmt.Sprintf(`apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: %s
+  namespace: %s
+%s  labels:
+    app.kubernetes.io/managed-by: substrate-eks
+data:
+%s`, RecordName, RecordNamespace, version, data))
 }

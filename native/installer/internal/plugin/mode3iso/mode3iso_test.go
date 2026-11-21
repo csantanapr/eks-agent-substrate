@@ -192,7 +192,10 @@ type fake struct {
 	applies []string
 	// creates is the stdin of every `kubectl create -f -`, in order.
 	creates []string
-	tmpls   map[string]string
+	// replaces is the stdin of every `kubectl replace --save-config -f -`
+	// (the plugin record's pending entry), in order.
+	replaces []string
+	tmpls    map[string]string
 	// actors are the actors the ate API holds, each running on pod-1.
 	actors map[string]bool
 	// deleted are the counter image tags Remove deleted.
@@ -250,6 +253,8 @@ func newFake(t *testing.T) *fake {
 				f.applies = append(f.applies, string(c.Stdin))
 			case "create -f -":
 				f.creates = append(f.creates, string(c.Stdin))
+			case "replace --save-config -f -":
+				f.replaces = append(f.replaces, string(c.Stdin))
 			}
 		}
 		for k, v := range f.out {
@@ -406,12 +411,18 @@ func TestControlPlaneForMode3IsoAloneCarriesTheFork(t *testing.T) {
 // mode 3's counter image once the worker Pods and atelet-iso are up.
 func TestDeploy(t *testing.T) {
 	// Without Auto Mode, Run refuses deploy and verify through the
-	// registration's NeedsAutoMode, before anything runs.
+	// registration's NeedsAutoMode: deploy before anything runs, verify after
+	// one read of the record (which holds the value its deploy ran with).
 	var err error
 	for _, action := range []string{plugin.ActionDeploy, plugin.ActionVerify} {
 		f := newFake(t)
 		err = plugin.Run(context.Background(), io.Discard, action, []string{ID}, testOptions(t, false))
-		if err == nil || !strings.Contains(err.Error(), needsAutoMode) || !strings.Contains(err.Error(), "c1 has EKS Auto Mode off") || len(f.log) != 0 {
+		reads := 0
+		if action == plugin.ActionVerify {
+			reads = 1
+		}
+		if err == nil || !strings.Contains(err.Error(), needsAutoMode) || !strings.Contains(err.Error(), "c1 has EKS Auto Mode off") || len(f.log) != reads ||
+			(reads == 1 && !strings.HasPrefix(f.log[0], "kubectl -n kube-system get configmap substrate-eks-plugins")) {
 			t.Errorf("Run %s without Auto Mode: err = %v, ran %q", action, err, f.log)
 		}
 	}

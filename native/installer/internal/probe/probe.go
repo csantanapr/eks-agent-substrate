@@ -33,15 +33,22 @@ type Result struct {
 	Atelet    bool
 	Version   string
 	// Plugins are the plugins the cluster records as installed (the
-	// plugin record, kube-system/substrate-eks-plugins), which
-	// --remove-control-plane removes first. PluginsRead reports that the
-	// record was read: without it the plugins are unknown, not none.
-	Plugins     []string
-	PluginsRead bool
+	// plugin record, kube-system/substrate-eks-plugins), and Pending the
+	// ones whose deploy started and did not finish: --remove-control-plane
+	// removes both first (Removed). PluginsRead reports that the record was
+	// read: without it the plugins are unknown, not none.
+	Plugins, Pending []string
+	PluginsRead      bool
 	// Pools are the ate.dev/pool values of the cluster's nodes (plugin
 	// PoolsArgs): the node groups a connected cluster has, which decide the
 	// sandbox classes and plugins the wizard offers on it.
 	Pools []string
+}
+
+// Removed are the plugins --remove-control-plane removes first: the
+// installed and the pending ones, once each.
+func (r Result) Removed() []string {
+	return plugin.Record{Plugins: r.Plugins, Pending: r.Pending}.All()
 }
 
 // Partial reports the namespace-without-atelet state.
@@ -97,11 +104,16 @@ func Check(ctx context.Context, kubectl Kubectl) (string, error) {
 		}
 	}
 	// The plugins a removal removes first; best effort, like the image: a
-	// failed read leaves them unknown.
-	rec, err := kubectl(ctx, "-n", plugin.RecordNamespace, "get", "configmap", plugin.RecordName, "--ignore-not-found",
-		"-o", "jsonpath={.data."+plugin.RecordKey+"}")
-	if err == nil {
-		line += " plugins=" + plugin.FormatRecord(plugin.ParseRecord(rec))
+	// failed read, or one that cannot be parsed, leaves them unknown. The
+	// pending ones only when there are some, so the line is as before
+	// otherwise.
+	if out, err := kubectl(ctx, plugin.RecordArgs...); err == nil {
+		if rec, err := plugin.ParseRecordJSON([]byte(out)); err == nil {
+			line += " plugins=" + plugin.FormatRecord(rec.Plugins)
+			if len(rec.Pending) > 0 {
+				line += " pending=" + plugin.FormatRecord(rec.Pending)
+			}
+		}
 	}
 	return line, nil
 }
@@ -125,6 +137,8 @@ func ParseInstalled(lines []string) (Result, error) {
 				r.Version = imageTagVersion(v)
 			case "plugins":
 				r.Plugins, r.PluginsRead = plugin.ParseRecord(v), true
+			case "pending":
+				r.Pending = plugin.ParseRecord(v)
 			}
 		}
 		return r, nil

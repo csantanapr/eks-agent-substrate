@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -338,7 +339,7 @@ func (m *Model) startRemoval(c awsx.Cluster) tea.Cmd {
 	found := *m.s
 	found.ClusterName = c.Name
 	res := m.cl.probed[c.Name]
-	t := newTask(m.d.RemoveControlPlane(&found), steps.RemoveControlPlane(res.Plugins, res.PluginsRead))
+	t := newTask(m.d.RemoveControlPlane(&found), steps.RemoveControlPlane(res.Removed(), res.PluginsRead))
 	m.cl.removal, m.cl.mode = t, "removing"
 	return m.run(t)
 }
@@ -520,20 +521,30 @@ func (m Model) clusterPanel(cut int) string {
 }
 
 // pluginsRemoved names what --remove-control-plane removes before ate-system,
-// as the probe read the plugin record: the recorded plugins, "every
-// installed plugin" when the record could not be read, and "" when it lists
-// none.
+// as the probe read the plugin record: the installed plugins, then the
+// pending ones (a deploy that did not finish) apart, "every installed
+// plugin" when the record could not be read, and "" when it lists none.
 func pluginsRemoved(r probe.Result) string {
-	switch n := len(r.Plugins); {
-	case !r.PluginsRead:
+	if !r.PluginsRead {
 		return "every installed plugin"
-	case n == 0:
-		return ""
-	case n == 1:
-		return "the installed plugin " + r.Plugins[0]
-	default:
-		return "the installed plugins " + strings.Join(r.Plugins[:n-1], ", ") + " and " + r.Plugins[n-1]
 	}
+	var parts []string
+	for _, l := range []struct {
+		kind string
+		ids  []string
+	}{
+		{"installed", r.Plugins},
+		{"pending", slices.DeleteFunc(slices.Clone(r.Pending), func(id string) bool { return slices.Contains(r.Plugins, id) })},
+	} {
+		switch n := len(l.ids); n {
+		case 0:
+		case 1:
+			parts = append(parts, "the "+l.kind+" plugin "+l.ids[0])
+		default:
+			parts = append(parts, "the "+l.kind+" plugins "+strings.Join(l.ids[:n-1], ", ")+" and "+l.ids[n-1])
+		}
+	}
+	return strings.Join(parts, " and ")
 }
 
 // removalText is what t does on a guarded cluster, after "t ".

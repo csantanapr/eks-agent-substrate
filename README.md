@@ -365,21 +365,52 @@ two worker Pods, counting only the nodes labeled
 runs `atelet-iso` there with atelet's own AL2023 credential provider paths,
 builds the counter image for those nodes' architecture and puts
 `counter-iso` on them. It reads the RuntimeClass and the nodes before it
-creates or applies anything, so a refusal leaves the cluster as it was.
+creates or applies anything, so a refusal leaves the cluster as it was. It
+leaves the plugin record as it was too: the deploy records `mode3-iso` as
+pending only after those reads, just before its first write.
 
-Removing `mode3-iso` follows the run's `NITRO_COMPUTE`, which the cluster
-does not record. Whichever value the run has, it deletes the pool and its counter
-image tag, `atelet-iso`, the `atelet-iso-credential-provider` ConfigMap, and
-the RuntimeClass only when it carries those labels and no Pod uses it. Only
-a run with `auto-mode` deletes NodePool and NodeClass `ate-isolated`. With
-`node-group` the installer never makes them, and objects of those names may
-belong to someone else, so a run with `node-group` leaves them and prints
-the ones it found. To delete the ones an Auto Mode deploy made, remove
-`mode3-iso` again with `--plugin-action remove --plugins mode3-iso
---nitro-compute auto-mode`: name the plugin, since the first removal took it
-out of the cluster's record. On an Auto Mode cluster
-with `auto-mode` it does not read the RuntimeClass, which is Auto Mode's own
-there.
+The cluster records the `NITRO_COMPUTE` that `mode3-iso` was deployed with,
+in the plugin record (ConfigMap `kube-system/substrate-eks-plugins`, see
+[Plugins](#plugins)). The plugin's own deploy writes it. The control plane
+step writes none, so the value is there once this installer has run the
+`mode3-iso` deploy itself (the wizard's "Set up Nitro sandboxes" step, or
+`--plugin-action deploy`). Checking and removing `mode3-iso` follow the
+recorded value, not the run's, and say so when the two differ. So
+the wizard's teardown, `--remove-control-plane` and `--plugin-action
+remove` remove a `node-group` deployment the `node-group` way with no
+`--nitro-compute` flag, and an `auto-mode` one the `auto-mode` way.
+`--verify` and `--plugin-action verify` check each the same way.
+
+A deploy of `mode3-iso` with another `NITRO_COMPUTE` than the recorded one
+is refused, since the objects of the first would stay behind. So is a
+control plane step that carries `mode3-iso`, before it runs `ate-setup`.
+Deploy it with the recorded value, or move it to the new one:
+
+1. Remove it with `--plugin-action remove --plugins mode3-iso`. This uses
+   the recorded value, and takes `mode3-iso` out of the record.
+2. Run the control plane step again, with the `nitro` class and the new
+   `--nitro-compute` (`--deploy-control-plane` as below). It records
+   `mode3-iso` again. A plugin deploy needs that, since `mode3-iso` carries
+   its own Substrate release. Rerunning the wizard with the new value does
+   this step and the next.
+3. Deploy it with `--plugin-action deploy --plugins mode3-iso
+   --nitro-compute <new value>`.
+
+With either value, removal deletes the pool and its counter image tag,
+`atelet-iso`, the `atelet-iso-credential-provider` ConfigMap, and the
+RuntimeClass only when it carries those labels and no Pod uses it. Only a
+removal with `auto-mode` deletes NodePool and NodeClass `ate-isolated`.
+With `node-group` the installer never makes them, and objects of those
+names may belong to someone else, so a removal with `node-group` leaves
+them and prints the ones it found. On an Auto Mode cluster with `auto-mode`
+it does not read the RuntimeClass, which is Auto Mode's own there.
+
+A record that an older installer wrote holds no `NITRO_COMPUTE`, so removal
+follows the run's, as it did before. If that leaves NodePool and NodeClass
+`ate-isolated` behind from an Auto Mode deploy, remove `mode3-iso` again
+with `--plugin-action remove --plugins mode3-iso --nitro-compute
+auto-mode`: name the plugin, since the first removal took it out of the
+cluster's record.
 
 On a cluster you connect, `NITRO_COMPUTE=node-group` needs nodes labeled
 `ate.dev/pool=nitro` and `eks.amazonaws.com/nitro-sandbox=true`, of a Nitro
@@ -407,8 +438,9 @@ go -C installer run . --plugin-action deploy --plugins mode3-iso --nitro-compute
 
 `--deploy-demo`, `--verify` and `--remove-control-plane` take
 `--nitro-compute` too; each reads `NITRO_COMPUTE` from the environment and
-the config files when it is not given. The nitro group needs no AWS
-permission beyond the node groups' own. With managed node groups,
+the config files when it is not given. A check or a removal of `mode3-iso`
+still uses the recorded value when there is one. The nitro group needs no
+AWS permission beyond the node groups' own. With managed node groups,
 `create cluster` then also reads the nitro nodes from the Kubernetes API, as
 it reads self-managed nodes.
 
@@ -551,6 +583,31 @@ once with what the chosen plugins need, and the cluster records which ones it
 runs (ConfigMap `kube-system/substrate-eks-plugins`), so a later install
 keeps them.
 
+The record's `plugins` key lists the installed plugins, in the format every
+installer reads. Two more keys are written for `mode3-iso` only, so an
+install without the `nitro` class writes the same record as before:
+
+| Key | What it holds |
+|---|---|
+| `pending` | `mode3-iso` from just before its deploy makes anything until its deploy and check pass. Then it moves to `plugins`. A control plane deploy that carries it moves it there too. A deploy that fails leaves it here. The wizard's control plane step records `mode3-iso` in `plugins` first, so it is in both keys while its own deploy runs, and after that deploy fails. |
+| `nitro-compute` | The `NITRO_COMPUTE` that `mode3-iso` was deployed with, written with its `pending` entry. Its check and its removal use it, and its removal drops it. The control plane step writes none. |
+
+A removal of every plugin (the teardown, `--remove-control-plane`, or
+`--plugin-action remove` with no `--plugins`) removes the pending ones too,
+so a deploy that failed halfway is cleaned up.
+
+The `pending` write is conditional. A deploy of `mode3-iso` reads the
+record just before its first write, then writes its entry with `kubectl
+create` when there is no record, or with `kubectl replace` and the
+`resourceVersion` it read. If another run wrote the record in between, the
+API server refuses the write, and the deploy reads the record again and
+checks it again, up to three tries. So of two deploys of `mode3-iso` with
+opposite `NITRO_COMPUTE`, the second one to write finds the first one's
+entry and stops, unless another run's write of the record lands in between
+and drops that entry. Every other record write is a `kubectl apply`, or a
+`kubectl delete` when nothing is left, as before. Runs at the same time are
+still not supported: run one installer at a time on a cluster.
+
 | ID | Plugin | What it adds |
 |---|---|---|
 | `llm-gateway` | LLM gateway (default) | agentgateway on Amazon Bedrock with EKS Pod Identity. Actors ask for `claude`, `claude-haiku`, `claude-sonnet` or `claude-opus` and hold no AWS credentials. |
@@ -581,7 +638,7 @@ plugin's Kubernetes objects, then its AWS resources. Before it removes
 anything, it checks every plugin's AWS resources with `setup-aws plugin <id>
 --delete --plan`, and stops with nothing removed if AWS holds a resource of
 that name with another owner. With no `--plugins`, it removes every plugin
-the cluster records.
+the cluster records, installed or pending.
 
 ### Per-actor volumes on Amazon EFS and Amazon S3 Files
 
@@ -781,7 +838,8 @@ make -C native teardown CLUSTER_NAME=my-substrate AWS_REGION=us-west-2 AWS_PROFI
 ![Choose what to remove: Substrate and its AWS data with the cluster kept, or everything, confirmed by typing the cluster name](native/installer/docs/teardown.png)
 
 You type the cluster name to confirm. The teardown removes every plugin the
-cluster records first (its Kubernetes objects, then its AWS resources), then
+cluster records first, installed or pending (its Kubernetes objects, then
+its AWS resources), then
 Substrate with `ate-setup delete ate-system`, so its volumes and claims are
 released. Then `setup-aws teardown` deletes, in reverse order, everything
 the installer created that carries this deployment's owner tag: Pod Identity

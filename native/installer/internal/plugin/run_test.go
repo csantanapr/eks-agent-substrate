@@ -3,6 +3,7 @@ package plugin
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -19,16 +21,146 @@ import (
 // fakeCluster is Exec for Run's tests: it keeps the record ConfigMap and
 // logs every child and plugin hook in order.
 type fakeCluster struct {
-	record string // the data value; "" is no ConfigMap
-	log    []string
+	// record, pending and nitro are the data values of the record's
+	// plugins, pending and nitro-compute keys; all "" is no ConfigMap.
+	record, pending, nitro string
+	// extra, when set, is the value of a data key this installer does not
+	// know, as a newer installer would write it.
+	extra string
+	// rv counts the writes of the record (apply, create, replace, as
+	// another run's in meanwhile): its resourceVersion moves on with each,
+	// as the API server's does (resourceVersion).
+	rv  int
+	log []string
+	// applies is the stdin of every record apply, byte for byte;
+	// conditional that of every create and replace that went through.
+	applies, conditional []string
+	// writes is the kubectl verb of every record write tried, refused ones
+	// included: apply, create, replace or delete.
+	writes []string
+	// meanwhile, when set, runs before each create or replace of the record
+	// is judged, with the number of record writes tried so far, that one
+	// included (applies and deletes count too): another run's write between
+	// this run's read and its write, which bumps rv.
+	meanwhile func(try int)
 	// refuse makes `setup-aws plugin <id> --delete`, with or without
 	// --plan, fail as a refusal does.
 	refuse bool
+	// readErr, when set, fails every read of the record.
+	readErr error
+	// reads counts the reads of the record.
+	reads int
 }
 
-var recordValue = regexp.MustCompile(`(?m)^  plugins: "([^"]*)"$`)
+var (
+	recordLine  = regexp.MustCompile(`(?m)^  (plugins|pending|nitro-compute): "([^"]*)"$`)
+	versionLine = regexp.MustCompile(`(?m)^  resourceVersion: "([^"]*)"$`)
+)
 
-func (f *fakeCluster) exec(_ context.Context, _ io.Writer, c Cmd) error {
+// exists reports whether the record ConfigMap is there.
+func (f *fakeCluster) exists() bool {
+	return f.record != "" || f.pending != "" || f.nitro != "" || f.extra != ""
+}
+
+// resourceVersion is the record's metadata.resourceVersion: 1 for the one a
+// test starts with, one more for each write since.
+func (f *fakeCluster) resourceVersion() string { return strconv.Itoa(f.rv + 1) }
+
+// recordJSON is the record as `kubectl get configmap -o json` prints it, or
+// nothing when there is none: only the keys that hold something, besides
+// plugins, as WriteRecord writes them, and its resourceVersion.
+func (f *fakeCluster) recordJSON() string {
+	if !f.exists() {
+		return ""
+	}
+	data := map[string]string{RecordKey: f.record}
+	for k, v := range map[string]string{PendingKey: f.pending, NitroComputeKey: f.nitro, "future-key": f.extra} {
+		if v != "" {
+			data[k] = v
+		}
+	}
+	b, err := json.Marshal(map[string]any{"apiVersion": "v1", "kind": "ConfigMap",
+		"metadata": map[string]any{"name": RecordName, "namespace": RecordNamespace, "resourceVersion": f.resourceVersion()}, "data": data})
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
+}
+
+// state is the record as the log shows it: the plugins, then the other keys
+// that hold something.
+func (f *fakeCluster) state() string {
+	s := "record=" + f.record
+	if f.pending != "" {
+		s += " pending=" + f.pending
+	}
+	if f.nitro != "" {
+		s += " nitro-compute=" + f.nitro
+	}
+	return s
+}
+
+// set makes the record what manifest m holds, as a write of it does: the
+// keys this installer writes that m lacks go.
+func (f *fakeCluster) set(m []byte) error {
+	ms := recordLine.FindAllSubmatch(m, -1)
+	if !bytes.Contains(m, []byte("  name: substrate-eks-plugins\n")) || len(ms) == 0 || string(ms[0][1]) != RecordKey {
+		return fmt.Errorf("a write of something else:\n%s", m)
+	}
+	f.record, f.pending, f.nitro = "", "", ""
+	for _, m := range ms {
+		switch string(m[1]) {
+		case RecordKey:
+			f.record = string(m[2])
+		case PendingKey:
+			f.pending = string(m[2])
+		case NitroComputeKey:
+			f.nitro = string(m[2])
+		}
+	}
+	f.rv++
+	return nil
+}
+
+// conditionalWrite is a create or replace of the record, judged as the API
+// server does: a create of one that exists fails with AlreadyExists, a
+// replace with Conflict unless it carries the resourceVersion the record is
+// at. kubectl says each on stderr, which reaches w, and exits 1.
+func (f *fakeCluster) conditionalWrite(w io.Writer, verb string, m []byte) error {
+	f.writes = append(f.writes, verb)
+	if f.meanwhile != nil {
+		f.meanwhile(len(f.writes))
+	}
+	v := versionLine.FindSubmatch(m)
+	switch {
+	case verb == "create" && v != nil:
+		return fmt.Errorf("a create with a resourceVersion:\n%s", m)
+	case verb == "replace" && v == nil:
+		// kubectl would fill in the one on the cluster: no precondition.
+		return fmt.Errorf("a replace with no resourceVersion:\n%s", m)
+	case verb == "create" && f.exists():
+		io.WriteString(w, `Error from server (AlreadyExists): error when creating "STDIN": configmaps "substrate-eks-plugins" already exists`+"\n")
+		f.log = append(f.log, "create refused: AlreadyExists")
+		return errors.New("exit status 1")
+	case verb == "replace" && !f.exists():
+		io.WriteString(w, `Error from server (NotFound): error when replacing "STDIN": configmaps "substrate-eks-plugins" not found`+"\n")
+		f.log = append(f.log, "replace refused: NotFound")
+		return errors.New("exit status 1")
+	case verb == "replace" && string(v[1]) != f.resourceVersion():
+		io.WriteString(w, `Error from server (Conflict): error when replacing "STDIN": Operation cannot be fulfilled on configmaps "substrate-eks-plugins": `+
+			"the object has been modified; please apply your changes to the latest version and try again\n")
+		f.log = append(f.log, "replace refused: Conflict")
+		return errors.New("exit status 1")
+	}
+	if err := f.set(m); err != nil {
+		return err
+	}
+	f.conditional = append(f.conditional, string(m))
+	f.log = append(f.log, verb+" "+f.state())
+	return nil
+}
+
+func (f *fakeCluster) exec(_ context.Context, w io.Writer, c Cmd) error {
 	argv := strings.Join(c.Argv, " ")
 	for _, a := range c.Argv {
 		if a == "-c" || a == "bash" || a == "sh" {
@@ -36,17 +168,29 @@ func (f *fakeCluster) exec(_ context.Context, _ io.Writer, c Cmd) error {
 		}
 	}
 	switch {
-	case strings.HasPrefix(argv, "kubectl --kubeconfig /kc -n kube-system get configmap substrate-eks-plugins"):
-		io.WriteString(c.Stdout, f.record)
-	case argv == "kubectl --kubeconfig /kc apply -f -":
-		m := recordValue.FindSubmatch(c.Stdin)
-		if m == nil {
-			return fmt.Errorf("apply of something else:\n%s", c.Stdin)
+	case argv == "kubectl --kubeconfig /kc -n kube-system get configmap substrate-eks-plugins --ignore-not-found -o json":
+		f.reads++
+		if f.readErr != nil {
+			return f.readErr
 		}
-		f.record = string(m[1])
-		f.log = append(f.log, "record="+f.record)
+		io.WriteString(c.Stdout, f.recordJSON())
+	case argv == "kubectl --kubeconfig /kc apply -f -":
+		f.writes = append(f.writes, "apply")
+		if versionLine.Match(c.Stdin) {
+			return fmt.Errorf("an apply with a resourceVersion:\n%s", c.Stdin)
+		}
+		if err := f.set(c.Stdin); err != nil {
+			return err
+		}
+		f.applies = append(f.applies, string(c.Stdin))
+		f.log = append(f.log, f.state())
+	case argv == "kubectl --kubeconfig /kc create --save-config -f -":
+		return f.conditionalWrite(w, "create", c.Stdin)
+	case argv == "kubectl --kubeconfig /kc replace --save-config -f -":
+		return f.conditionalWrite(w, "replace", c.Stdin)
 	case argv == "kubectl --kubeconfig /kc -n kube-system delete configmap substrate-eks-plugins --ignore-not-found":
-		f.record = ""
+		f.writes = append(f.writes, "delete")
+		f.record, f.pending, f.nitro, f.extra = "", "", "", ""
 		f.log = append(f.log, "record deleted")
 	case strings.HasPrefix(argv, "go -C /setup-aws run . plugin "):
 		if !slices.Contains(c.Env, "CLUSTER_NAME=demo") || !slices.Contains(c.Env, "PLAN=false") || !slices.Contains(c.Env, "TAGS=auto-delete=no") {

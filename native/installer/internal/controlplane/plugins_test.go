@@ -73,6 +73,84 @@ func init() {
 	plugin.Register(plugin.Plugin{ID: "cp-test-auto", Order: 3, NeedsAutoMode: "needs EKS Auto Mode"})
 	plugin.Register(plugin.Plugin{ID: "cp-test-nitro", Order: 4, NeedsAutoMode: "needs EKS Auto Mode",
 		AutoModeOptional: func(o plugin.Options) bool { return o.NitroCompute == plugin.NitroNodeGroup }})
+	plugin.Register(plugin.Plugin{ID: "cp-test-follows", Order: 5, FollowsNitroCompute: true})
+	// The combination mode3-iso has: it needs Auto Mode unless
+	// NITRO_COMPUTE=node-group, and it follows NITRO_COMPUTE.
+	plugin.Register(plugin.Plugin{ID: "cp-test-iso", Order: 6, NeedsAutoMode: "needs EKS Auto Mode", FollowsNitroCompute: true,
+		AutoModeOptional: func(o plugin.Options) bool { return o.NitroCompute == plugin.NitroNodeGroup }})
+}
+
+// A chosen plugin whose own deploy would refuse the run's NITRO_COMPUTE
+// (another than the record holds for it, as on a wizard rerun with
+// another one) stops the control plane deploy before the tree is fetched
+// or ate-setup runs; with the recorded one, or with the plugin only
+// recorded and not chosen, it goes on. Without such a plugin the record
+// is read no more than before (review 1, finding 8).
+func TestDeployRefusesAnotherNitroComputeThanTheRecorded(t *testing.T) {
+	for _, c := range []struct {
+		chosen  []string
+		compute string
+		refused bool
+		reads   int
+	}{
+		{[]string{"cp-test-follows"}, "", true, 1},
+		{[]string{"cp-test-follows"}, plugin.NitroAutoMode, true, 1},
+		{[]string{"cp-test-follows"}, plugin.NitroNodeGroup, false, 1},
+		{[]string{"cp-test-gate"}, plugin.NitroAutoMode, false, 0},
+	} {
+		f := &deployFakes{record: []string{"cp-test-follows"}}
+		o := deployEnv(t, f)
+		reads := 0
+		prev := plugin.Exec
+		t.Cleanup(func() { plugin.Exec = prev })
+		plugin.Exec = func(_ context.Context, _ io.Writer, cmd plugin.Cmd) error {
+			if !slices.Contains(cmd.Argv, plugin.RecordName) || !slices.Contains(cmd.Argv, "get") {
+				return errors.New("unexpected child: " + strings.Join(cmd.Argv, " "))
+			}
+			reads++
+			io.WriteString(cmd.Stdout, `{"data":{"plugins":"cp-test-follows","nitro-compute":"node-group"}}`)
+			return nil
+		}
+		o.Plugins, o.Plugin.NitroCompute = c.chosen, c.compute
+		err := Deploy(context.Background(), io.Discard, o)
+		ran := slices.ContainsFunc(f.calls, func(s string) bool { return strings.HasPrefix(s, "fetch") || strings.HasPrefix(s, "ate-setup") })
+		if c.refused != (err != nil) || c.refused == ran || reads != c.reads {
+			t.Errorf("%+v: %v, fetched or ran ate-setup %v, %d reads", c, err, ran, reads)
+		}
+		if c.refused && !strings.Contains(err.Error(), "plugin cp-test-follows was deployed with NITRO_COMPUTE=node-group (recorded in kube-system/substrate-eks-plugins)") {
+			t.Errorf("%+v: %v", c, err)
+		}
+	}
+}
+
+// On a cluster without Auto Mode, a plugin like mode3-iso recorded with
+// node-group and asked for with the run's default (auto-mode) gets the
+// recorded-mode refusal and its ways out, not the generic Auto Mode one: the
+// record check comes first.
+func TestDeployOffAutoModeNamesTheRecordedNitroCompute(t *testing.T) {
+	f := &deployFakes{}
+	o := deployEnv(t, f)
+	describeCluster = func(context.Context, string, string, string) (awsx.Cluster, error) {
+		return awsx.Cluster{Name: "demo", Status: "ACTIVE", Endpoint: "https://example.invalid",
+			CA: base64.StdEncoding.EncodeToString([]byte("ca"))}, nil
+	}
+	prev := plugin.Exec
+	t.Cleanup(func() { plugin.Exec = prev })
+	plugin.Exec = func(_ context.Context, _ io.Writer, cmd plugin.Cmd) error {
+		if !slices.Contains(cmd.Argv, plugin.RecordName) || !slices.Contains(cmd.Argv, "get") {
+			return errors.New("unexpected child: " + strings.Join(cmd.Argv, " "))
+		}
+		io.WriteString(cmd.Stdout, `{"data":{"plugins":"cp-test-iso","nitro-compute":"node-group"}}`)
+		return nil
+	}
+	o.Plugins, o.Plugin.NitroCompute = []string{"cp-test-iso"}, ""
+	err := Deploy(context.Background(), io.Discard, o)
+	if err == nil || !strings.Contains(err.Error(), "plugin cp-test-iso was deployed with NITRO_COMPUTE=node-group") || strings.Contains(err.Error(), "has EKS Auto Mode off") {
+		t.Errorf("got %v", err)
+	}
+	if slices.ContainsFunc(f.calls, func(c string) bool { return strings.HasPrefix(c, "fetch") || strings.HasPrefix(c, "ate-setup") }) {
+		t.Errorf("went on: %q", f.calls)
+	}
 }
 
 // A plugin that may run without Auto Mode (mode3-iso with

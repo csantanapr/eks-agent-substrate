@@ -1,8 +1,11 @@
 package main
 
 import (
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin/mode3"
 )
 
 // --nitro-compute reaches the plugin: on a cluster without Auto Mode,
@@ -27,6 +30,34 @@ func TestNitroComputeFlag(t *testing.T) {
 		err, out := runMainIn(t, "", env, cluster("", "v1.0.0"), args...)
 		if err == nil || !strings.Contains(out, tc.want) || strings.Contains(out, tc.not) {
 			t.Errorf("%v %v: %v, want %q and not %q:\n%s", tc.args, tc.env, err, tc.want, tc.not, out)
+		}
+	}
+}
+
+// Through main(), both removal commands with no --nitro-compute (and
+// NITRO_COMPUTE unset, so the run's is auto-mode) remove mode3-iso with the
+// NITRO_COMPUTE its record holds, and say so; with --nitro-compute
+// node-group, the same as the record, they say nothing, and so they do on a
+// record an older installer wrote, with none. Each stops after that, at the
+// fork's tree this test does not fetch.
+func TestCLIRemovalFollowsTheRecordedNitroCompute(t *testing.T) {
+	recorded := `substrate-eks-plugins={"data":{"plugins":"mode3-iso","nitro-compute":"node-group"}}` + "\n"
+	older := `substrate-eks-plugins={"data":{"plugins":"mode3-iso"}}` + "\n"
+	const says = "NITRO_COMPUTE recorded at deploy: mode3-iso was deployed with NITRO_COMPUTE=node-group, as kube-system/substrate-eks-plugins records, so it is removed with node-group, not the run's auto-mode"
+	for _, cmd := range [][]string{{"--plugin-action", "remove"}, {"--remove-control-plane"}} {
+		for _, tc := range []struct {
+			record string
+			args   []string
+			want   bool
+		}{
+			{recorded, nil, true},
+			{recorded, []string{"--nitro-compute", "node-group"}, false},
+			{older, nil, false},
+		} {
+			err, out := runMainIn(t, "", []string{"NITRO_COMPUTE="}, tc.record+cluster("", mode3.Tag), append(slices.Clone(cmd), tc.args...)...)
+			if err == nil || strings.Contains(out, says) != tc.want || !strings.Contains(out, "Removing plugin mode3-iso") || !strings.Contains(out, "no mode 3 tree") {
+				t.Errorf("%v %v, record %q: %v, says it %v:\n%s", cmd, tc.args, tc.record, err, !tc.want, out)
+			}
 		}
 	}
 }
