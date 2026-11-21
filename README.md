@@ -608,6 +608,18 @@ and drops that entry. Every other record write is a `kubectl apply`, or a
 `kubectl delete` when nothing is left, as before. Runs at the same time are
 still not supported: run one installer at a time on a cluster.
 
+An older installer (v2.0.0, or one built before the two keys) reads only
+`plugins`. Its removal skips a plugin that is only pending. Its next write
+of the record either applies `plugins` alone, which drops `pending` and
+`nitro-compute`, or, when no installed plugin is left, deletes the whole
+record. So remove a cluster that this installer deployed to with this
+installer or a newer one. The other way round, while the record holds a key
+this installer does not know (a newer installer's), it refuses every step
+that writes the record: a plugin deploy or removal, the control plane
+deploy and `--remove-control-plane`. It refuses before it changes anything,
+because any write of the record would drop that key. Use the installer that
+wrote it.
+
 | ID | Plugin | What it adds |
 |---|---|---|
 | `llm-gateway` | LLM gateway (default) | agentgateway on Amazon Bedrock with EKS Pod Identity. Actors ask for `claude`, `claude-haiku`, `claude-sonnet` or `claude-opus` and hold no AWS credentials. |
