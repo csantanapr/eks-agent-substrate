@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/awsx"
+	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/probe"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/state"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/steps"
@@ -174,7 +175,8 @@ func (m *Model) pick(c awsx.Cluster) tea.Cmd {
 }
 
 // decide routes a verdict: a cluster with an install, whole or partial, is
-// held on the guard (AC5.2), and a clean one is chosen.
+// held on the guard (AC5.2), and a clean one is chosen. So is a record-only
+// one (issue #22), with its record, which Review checks the run against.
 func (m *Model) decide(c awsx.Cluster, res probe.Result) tea.Cmd {
 	switch {
 	case res.Partial():
@@ -183,7 +185,7 @@ func (m *Model) decide(c awsx.Cluster, res probe.Result) tea.Cmd {
 		m.cl.mode = "installed"
 	default:
 		m.cl.mode = "list"
-		m.s.SelectCluster(c, res.Pools)
+		m.s.SelectCluster(c, res.Pools, res.Record())
 		return m.commit()
 	}
 	return nil
@@ -407,7 +409,7 @@ func (m Model) badge(c awsx.Cluster) string {
 	if !ok {
 		return ""
 	}
-	if res.Installed {
+	if res.Installed || res.RecordOnly() {
 		return theme.Warning.Render(theme.GlyphWarn + " " + res.Badge())
 	}
 	return theme.Good.Render(theme.GlyphDone + " " + c.Badge())
@@ -514,6 +516,11 @@ func (m Model) clusterPanel(cut int) string {
 	default:
 		if cl.notice != "" {
 			lines = append(lines, theme.Bad.Render(cl.notice))
+		}
+		if res := cl.probed[sel.Name]; res.RecordOnly() {
+			lines = append(lines, para.Render(fmt.Sprintf("%s has no ate-system namespace, and its plugin record (%s/%s) still lists %s. "+
+				"Enter installs here; Review checks the plugins you choose against the record.",
+				sel.Name, plugin.RecordNamespace, plugin.RecordName, res.Recorded())), "")
 		}
 		lines = append(lines, theme.Subtle.Render(fmt.Sprintf("Substrate needs EKS 1.%d or newer (the PodCertificate APIs). * created by this installer.", awsx.MinMinor)))
 	}

@@ -40,7 +40,7 @@ func init() {
 			}},
 		{ID: "t-s3files", Title: "S3 Files volumes", Summary: "S3 Files volumes per actor.", Order: 30, Minutes: 7, HourlyUSD: 0.05, Requires: []string{"t-efs"}, SetupAWS: true},
 		{ID: "mode3-iso", Title: "AWS Nitro sandbox", Summary: "Worker Pods in Nitro sandboxes.", Order: 40, Minutes: 4, HourlyUSD: 0.12, Class: "nitro",
-			NeedsAutoMode: "needs EKS Auto Mode: its isolated-sandbox RuntimeClass and NodePool come from Auto Mode"},
+			NeedsAutoMode: "needs EKS Auto Mode: its isolated-sandbox RuntimeClass and NodePool come from Auto Mode", FollowsNitroCompute: true},
 		{ID: "t-ondemo", Title: "Counter volumes", Summary: "Counter templates with a volume.", Order: 50, Minutes: 2, NeedsDemo: true},
 		{ID: "t-rot", Title: "Login rotation", Summary: "Rotates the RDS logins.", Order: 80, Minutes: 8, Nodes: []string{"system"},
 			NeedsRDS: "rotates the RDS logins, so it needs the RDS database"},

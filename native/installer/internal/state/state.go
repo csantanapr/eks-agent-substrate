@@ -402,6 +402,12 @@ type Setup struct {
 	// ClusterPools are a connected cluster's node groups, the ate.dev/pool
 	// values of its nodes (the probe reads them); nil for a new cluster.
 	ClusterPools []string
+	// ClusterRecord is the plugin record the probe read on a connected
+	// cluster without ate-system (probe.Result.RecordOnly; issue #22): the
+	// plugins a manual delete of the control plane left recorded, and the
+	// NITRO_COMPUTE they were deployed with, which Review checks the run's
+	// against. Empty otherwise.
+	ClusterRecord plugin.Record
 }
 
 // Defaults the installer passes on, and the flag defaults of its
@@ -439,17 +445,19 @@ func NewSetupFrom(lookup func(string) (string, bool)) *Setup {
 }
 
 // SelectCluster records an existing cluster as the run's target, with the
-// node groups its nodes come from (pools: the probe's), and NewCluster a
-// cluster the run will create. Every Cluster* field is written by both, as
-// in substrate-gke: a field one of them forgot would carry an abandoned
-// selection's value into the other path.
-func (s *Setup) SelectCluster(c awsx.Cluster, pools []string) {
+// node groups its nodes come from (pools: the probe's) and the plugin record
+// the probe read without ate-system (rec), and NewCluster a cluster the run
+// will create. Every Cluster* field is written by both, as in substrate-gke:
+// a field one of them forgot would carry an abandoned selection's value
+// into the other path.
+func (s *Setup) SelectCluster(c awsx.Cluster, pools []string, rec plugin.Record) {
 	s.ClusterName = c.Name
 	s.ClusterVersion = c.Version
 	s.AutoMode = c.AutoMode
 	s.ClusterIsNew = false
 	s.ClusterOwned = c.CreatedByInstaller(s.Region)
 	s.ClusterPools = pools
+	s.ClusterRecord = rec
 }
 
 // NewCluster records a cluster the run will create, named name.
@@ -460,6 +468,7 @@ func (s *Setup) NewCluster(name string) {
 	s.ClusterIsNew = true
 	s.ClusterOwned = true
 	s.ClusterPools = nil
+	s.ClusterRecord = plugin.Record{}
 }
 
 // Names are setup-aws's derived resource names (cmd.deriveNames).
