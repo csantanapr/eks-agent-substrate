@@ -215,8 +215,17 @@ func nodegroupFailed(cluster string, ng *ekstypes.Nodegroup) error {
 			issues = append(issues, fmt.Sprintf("%s: %s", i.Code, aws.ToString(i.Message)))
 		}
 	}
-	return fmt.Errorf("node group %s is %s (%s); fix the cause, delete it (aws eks delete-nodegroup --cluster-name %s --nodegroup-name %s) and run again",
-		aws.ToString(ng.NodegroupName), ng.Status, strings.Join(issues, "; "), cluster, aws.ToString(ng.NodegroupName))
+	why := "EKS reports no health issue"
+	if len(issues) > 0 {
+		why = strings.Join(issues, "; ")
+	}
+	name := aws.ToString(ng.NodegroupName)
+	if ng.Status == ekstypes.NodegroupStatusDeleting {
+		return fmt.Errorf("node group %s of cluster %s is being deleted (%s); wait until EKS has deleted it, and run again", name, cluster, why)
+	}
+	// Destructive changes go through the installer's teardown (AGENTS.md),
+	// never a delete by hand, which skips its ownership checks.
+	return fmt.Errorf("node group %s of cluster %s is %s (%s); fix the cause, then %s", name, cluster, ng.Status, why, recreate)
 }
 
 // waitReady waits for the node groups, tags their Auto Scaling groups, and
