@@ -155,7 +155,9 @@ screen per step, and Complete. Nothing changes in AWS before Review.
   reason. Turning on the `nitro` class without Auto Mode, or Auto Mode off
   under it, or opening Settings with the class on and Auto Mode off, sets
   `NITRO_COMPUTE=node-group` and says so; turning it off, or Auto Mode on,
-  puts back the value it replaced. A value you set yourself stays. `m` picks
+  puts back the value it replaced. A value you set yourself stays. It puts
+  the value back only within one run: a value a run wrote to
+  `config.local.env` is yours on the next run. `m` picks
   the minimal profile, and clears a chosen plugin that would add a node
   group (mode3, or one on `system`), naming it. The right side shows the
   setting's help, taken from the comment above its key in `config.env`, and
