@@ -424,13 +424,15 @@ func (b builder) removeControlPlane(s *state.Setup) execx.Spec {
 }
 
 // simRecord is the plugin record of s's cluster in the dry run's story: the
-// one its probe answer lists (probe.SimLine), else the plugins the run
-// installs.
+// one its probe answer lists on an installed cluster (probe.SimLine), else
+// the plugins the run installs, added to what a record-only cluster's
+// record lists.
 func simRecord(s *state.Setup) []string {
-	if r, err := probe.ParseInstalled([]string{probe.SimLine(s.ClusterName)}); err == nil && r.PluginsRead {
+	r, err := probe.ParseInstalled([]string{probe.SimLine(s.ClusterName)})
+	if err == nil && r.Installed && r.PluginsRead {
 		return r.Plugins
 	}
-	return resolvedIDs(s.InstallPlugins())
+	return plugin.Record{Plugins: append(r.Removed(), resolvedIDs(s.InstallPlugins())...)}.All()
 }
 
 // probe re-executes the installer with --probe-installed for cluster.

@@ -392,6 +392,30 @@ func TestDryRunLinesWalkEveryRemovalRow(t *testing.T) {
 	}
 }
 
+// Issue #22: the dry run lists a record-only cluster, and its teardown
+// story removes what the record lists and what the run installs, once
+// each; an installed cluster's story is its record, as before.
+func TestDryRunRecordOnlyCluster(t *testing.T) {
+	n := 0
+	for _, c := range simClusters("us-west-2") {
+		if r, err := probe.ParseInstalled([]string{probe.SimLine(c.Name)}); err == nil && r.RecordOnly() {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("%d record-only dry-run clusters, want 1", n)
+	}
+	_, s := testBuilder()
+	s.ClusterName, s.Plugins, s.SandboxClasses = "nitro-leftover", []string{"llm-gateway"}, "gvisor"
+	if got := strings.Join(simRecord(s), ","); got != "efs,llm-gateway,mode3-iso" {
+		t.Errorf("record-only: %s", got)
+	}
+	s.ClusterName = "substrate-installed"
+	if got := strings.Join(simRecord(s), ","); got != "efs,llm-gateway" {
+		t.Errorf("installed: %s", got)
+	}
+}
+
 // The commands the Complete screen prints paste from cwd as the argv run.
 func TestDisplayIsThePasteableCommand(t *testing.T) {
 	b, s := testBuilder()

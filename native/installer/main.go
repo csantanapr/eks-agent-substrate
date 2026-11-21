@@ -338,6 +338,7 @@ func simClusters(region string) []awsx.Cluster {
 	legacy.Version, legacy.AutoMode = "1.36", false
 	return []awsx.Cluster{
 		legacy,
+		simCluster("nitro-leftover", region, true),
 		simCluster("shared-installed", region, false),
 		simCluster("sub-native", region, true),
 		simCluster("substrate-installed", region, true),
