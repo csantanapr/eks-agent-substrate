@@ -484,9 +484,12 @@ deleted only with this deployment's owner tag. An `EC2_LINUX` access entry
 that EKS made for the node role is used as it is, and only an entry with the
 owner tag is deleted. They are cluster resources: a full teardown deletes
 them, `--keep-cluster` keeps them, and `setup-aws inventory` lists them.
-Like a managed group, a self-managed group keeps its launch template version
-and AMI. To change them, tear the deployment down and create it again, or
-use another `CLUSTER_NAME`: deleting AWS resources by hand bypasses the
+Unlike a managed group, a self-managed group does not drain a node before
+Auto Scaling terminates it on its own (an Availability Zone rebalance or a
+failed health check): the node's Pods stop with it. Like a managed group, a
+self-managed group keeps its launch template version and AMI. To change
+them, tear the deployment down and create it again, or use another
+`CLUSTER_NAME`: deleting AWS resources by hand bypasses the
 installer's ownership checks.
 
 Self-managed groups need more permissions than managed ones. `create

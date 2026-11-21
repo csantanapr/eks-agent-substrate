@@ -173,6 +173,11 @@ func (r *clusterRun) checkGroupImage(ctx context.Context, g nodeGroupSpec, ng *e
 			LaunchTemplateId: lt.Id, Versions: []string{aws.ToString(lt.Version)}})
 		switch {
 		case hasCode(err, "InvalidLaunchTemplateId.NotFound"), hasCode(err, "InvalidLaunchTemplateId.VersionNotFound"):
+			// The group's version is gone, so its AMI cannot be read: say
+			// so, not that it runs EKS's own AMI.
+			slog.Warn("the node group's launch template version is gone, so which AMI it runs is unknown; it keeps its nodes",
+				"nodegroup", aws.ToString(ng.NodegroupName), "launchTemplate", aws.ToString(lt.Id), "version", aws.ToString(lt.Version))
+			return nil
 		case err != nil:
 			return fmt.Errorf("read the launch template of node group %s: %w", aws.ToString(ng.NodegroupName), err)
 		case len(out.LaunchTemplateVersions) == 1 && out.LaunchTemplateVersions[0].LaunchTemplateData != nil:

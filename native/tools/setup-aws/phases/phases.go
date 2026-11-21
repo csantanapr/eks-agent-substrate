@@ -72,7 +72,7 @@ var Teardown = []string{
 	"Deleting the RDS instance and its logins...",
 	"Emptying and deleting the S3 buckets...",
 	"Deleting the ECR repositories...",
-	"Deleting the managed node groups...",
+	"Deleting the node groups...",
 	"Deleting the EKS cluster...",
 	"Deleting the launch template, VPC and network...",
 	"Checking that nothing is left...",

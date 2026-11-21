@@ -41,9 +41,9 @@ func nitroNode(name, arch, alloc string, ready bool) string {
 
 func nodeList(items ...string) string { return `{"items":[` + strings.Join(items, ",") + `]}` }
 
-// The RuntimeClass Auto Mode makes: the spec the Nitro sandbox needs, with
-// Auto Mode's own label.
-const autoModeRC = `{"apiVersion":"node.k8s.io/v1","kind":"RuntimeClass","metadata":{"name":"isolated-sandbox","labels":{"app.kubernetes.io/managed-by":"eks"}},` +
+// The RuntimeClass Auto Mode makes: the spec the Nitro sandbox needs, and no
+// labels (its field manager, eks-auto-mode, is what marks it).
+const autoModeRC = `{"apiVersion":"node.k8s.io/v1","kind":"RuntimeClass","metadata":{"name":"isolated-sandbox"},` +
 	`"handler":"isolated-sandbox","overhead":{"podFixed":{"eks.amazonaws.com/nitro-sandbox":"1","memory":"256Mi"}},` +
 	`"scheduling":{"nodeSelector":{"eks.amazonaws.com/nitro-sandbox":"true"}}}`
 
@@ -215,7 +215,8 @@ func TestRuntimeClassDecisions(t *testing.T) {
 		f.out["get runtimeclass isolated-sandbox"] = []string{rc}
 		f.out["get nodes -l ate.dev/pool=nitro"] = []string{nodeList(nitroNode("n1", "amd64", "2", true))}
 		err := deploy(context.Background(), io.Discard, testOptionsNodeGroup(t))
-		if err == nil || !strings.Contains(err.Error(), want) || !strings.Contains(err.Error(), "left as it is") {
+		if err == nil || !strings.Contains(err.Error(), want) || !strings.Contains(err.Error(), "The installer leaves it as it is") ||
+			!strings.Contains(err.Error(), "Other Pods can use it: check them first") {
 			t.Errorf("want %q, got %v", want, err)
 		}
 		if len(f.applies) != 0 || len(f.creates) != 0 || f.has("kubectl get nodes") == nil {

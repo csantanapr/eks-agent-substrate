@@ -164,7 +164,7 @@ func TestClassAndPluginRefusals(t *testing.T) {
 		{false, false, []string{"system", "nitro"}, ng, ""},
 		{true, false, []string{"nitro"}, ng, ""},
 		{false, false, []string{"system"}, ng, "c has no nitro node group (no node labeled ate.dev/pool=nitro)"},
-		{true, false, []string{"isolated"}, ng, "c has no nitro node group"},
+		{true, false, []string{"isolated"}, ng, "c has no nitro node group (no node labeled ate.dev/pool=nitro); with NITRO_COMPUTE=auto-mode (--nitro-compute auto-mode) it runs on nodes Auto Mode launches instead"},
 		{false, true, nil, am, "needs EKS Auto Mode"},
 		{false, true, nil, "", "needs EKS Auto Mode"},
 		{false, false, []string{"nitro"}, am, "c has a nitro node group, which NITRO_COMPUTE=node-group uses"},
@@ -173,6 +173,10 @@ func TestClassAndPluginRefusals(t *testing.T) {
 		if why := ClassProblem(ClassNitro, c.auto, c.newCluster, "c", c.pools, c.compute); (c.want == "") != (why == "") || !strings.Contains(why, c.want) {
 			t.Errorf("%+v: %q", c, why)
 		}
+	}
+	// Without Auto Mode, auto-mode is no way out, so the message names none.
+	if why := ClassProblem(ClassNitro, false, false, "c", []string{"system"}, ng); strings.Contains(why, "auto-mode") {
+		t.Errorf("no Auto Mode, yet: %q", why)
 	}
 
 	get := func(id string) plugin.Plugin { p, _ := plugin.Get(id); return p }
