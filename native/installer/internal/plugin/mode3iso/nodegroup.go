@@ -174,7 +174,7 @@ func useRuntimeClass(w io.Writer, have []byte) error {
 		return err
 	}
 	if len(diff) > 0 {
-		return fmt.Errorf("RuntimeClass %s exists with %s; the Nitro sandbox needs handler %s, scheduling.nodeSelector %s and overhead.podFixed %s. The installer leaves it as it is. Other Pods can use it: check them first (kubectl get pods -A -o jsonpath='{.items[?(@.spec.runtimeClassName==%q)].metadata.name}'), then change it to that spec or delete it, and deploy again",
+		return fmt.Errorf("RuntimeClass %s exists with %s; the Nitro sandbox needs handler %s, scheduling.nodeSelector %s and overhead.podFixed %s. The installer leaves it as it is. Other Pods can use it: check them first (kubectl get pods -A -o jsonpath='{range .items[?(@.spec.runtimeClassName==%q)]}{.metadata.namespace}/{.metadata.name}{\"\\n\"}{end}'), then change it to that spec or delete it, and deploy again",
 			RuntimeClass, strings.Join(diff, "; "), RuntimeClass, fmtMap(wantNodeSelector), fmtMap(wantOverhead), RuntimeClass)
 	}
 	fmt.Fprintln(w, "RuntimeClass "+RuntimeClass+" -> handler "+RuntimeClass+", the Nitro sandbox's")
