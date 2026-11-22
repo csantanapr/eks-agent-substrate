@@ -152,7 +152,7 @@ var help = map[string]string{
 		"(NITRO_COMPUTE) it runs on the nitro node group instead, from a Nitro Sandbox AMI you build, and needs no Auto Mode. " +
 		"It installs the fork's release (one release per install), and is set up and checked in its own step after the control plane." + classesHelp,
 	"NITRO_COMPUTE": "Where the AWS Nitro sandbox runs. auto-mode: on nodes EKS Auto Mode launches (NodePool ate-isolated), which needs Auto Mode. " +
-		"node-group: on the nitro node group, of the node group type, or with the Karpenter overlay the nitro Karpenter NodePool, with Nitro Enclaves on, from a Nitro Sandbox AMI (Nitro AMI); no Auto Mode needed. " +
+		"node-group: on the nitro node group (with the Karpenter overlay, the nitro Karpenter NodePool), of the node group type, with Nitro Enclaves on, from a Nitro Sandbox AMI (Nitro AMI); no Auto Mode needed. " +
 		"With Auto Mode off, Settings sets node-group when you turn the class on, and puts the old value back when you turn the class off or Auto Mode on, within one run. " +
 		"A value you pick yourself stays, and so does one a run wrote to config.local.env.",
 	// The panel adds the build command for the version Settings has
