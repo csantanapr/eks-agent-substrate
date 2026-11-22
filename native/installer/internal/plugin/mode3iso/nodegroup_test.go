@@ -231,6 +231,18 @@ func TestRuntimeClassDecisions(t *testing.T) {
 	}
 }
 
+// #22 (review N3 of #17): the RuntimeClass refusal says how to list the
+// Pods that use the class, each as namespace/name on its own line, so one
+// in any namespace can be found. The printed command is exactly this one.
+func TestRuntimeClassRefusalListsPodsWithNamespaces(t *testing.T) {
+	const listing = `kubectl get pods -A -o jsonpath='{range .items[?(@.spec.runtimeClassName=="isolated-sandbox")]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}'`
+	other := strings.Replace(autoModeRC, `"handler":"isolated-sandbox"`, `"handler":"kata"`, 1)
+	err := useRuntimeClass(io.Discard, []byte(other))
+	if err == nil || !strings.Contains(err.Error(), "check them first ("+listing+"), then change it") {
+		t.Errorf("want the listing %s, got %v", listing, err)
+	}
+}
+
 // kubectl's answer when the RuntimeClass was made between the check and the
 // create, as it writes it to stderr; its error is only the exit status.
 const (

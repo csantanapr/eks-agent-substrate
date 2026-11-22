@@ -27,6 +27,13 @@ type fakeCluster struct {
 	// extra, when set, is the value of a data key this installer does not
 	// know, as a newer installer would write it.
 	extra string
+	// extraApplied is that key in the record's last-applied configuration
+	// (a newer installer wrote it with kubectl apply or --save-config). The
+	// fake writes the record as the API server does: a create or replace
+	// is the whole object, so a key its manifest lacks is gone; an apply
+	// drops a key last-applied has and its manifest lacks, and keeps one
+	// last-applied lacks (kubectl's three-way merge); a delete drops all.
+	extraApplied bool
 	// rv counts the writes of the record (apply, create, replace, as
 	// another run's in meanwhile): its resourceVersion moves on with each,
 	// as the API server's does (resourceVersion).
@@ -97,12 +104,20 @@ func (f *fakeCluster) state() string {
 	if f.nitro != "" {
 		s += " nitro-compute=" + f.nitro
 	}
+	if f.extra != "" {
+		s += " future-key=" + f.extra
+	}
 	return s
 }
 
+// unknownKey is how a manifest carries the data key extra models.
+var unknownKey = []byte("\n  future-key: ")
+
 // set makes the record what manifest m holds, as a write of it does: the
-// keys this installer writes that m lacks go.
-func (f *fakeCluster) set(m []byte) error {
+// keys this installer writes that m lacks go. extra goes too when whole is
+// set (a create or replace) or the last-applied configuration has it (an
+// apply), unless m carries it; m's keys are then the last-applied ones.
+func (f *fakeCluster) set(m []byte, whole bool) error {
 	ms := recordLine.FindAllSubmatch(m, -1)
 	if !bytes.Contains(m, []byte("  name: substrate-eks-plugins\n")) || len(ms) == 0 || string(ms[0][1]) != RecordKey {
 		return fmt.Errorf("a write of something else:\n%s", m)
@@ -118,6 +133,11 @@ func (f *fakeCluster) set(m []byte) error {
 			f.nitro = string(m[2])
 		}
 	}
+	carried := bytes.Contains(m, unknownKey)
+	if (whole || f.extraApplied) && !carried {
+		f.extra = ""
+	}
+	f.extraApplied = carried
 	f.rv++
 	return nil
 }
@@ -152,7 +172,7 @@ func (f *fakeCluster) conditionalWrite(w io.Writer, verb string, m []byte) error
 		f.log = append(f.log, "replace refused: Conflict")
 		return errors.New("exit status 1")
 	}
-	if err := f.set(m); err != nil {
+	if err := f.set(m, true); err != nil {
 		return err
 	}
 	f.conditional = append(f.conditional, string(m))
@@ -179,7 +199,7 @@ func (f *fakeCluster) exec(_ context.Context, w io.Writer, c Cmd) error {
 		if versionLine.Match(c.Stdin) {
 			return fmt.Errorf("an apply with a resourceVersion:\n%s", c.Stdin)
 		}
-		if err := f.set(c.Stdin); err != nil {
+		if err := f.set(c.Stdin, false); err != nil {
 			return err
 		}
 		f.applies = append(f.applies, string(c.Stdin))
@@ -190,7 +210,7 @@ func (f *fakeCluster) exec(_ context.Context, w io.Writer, c Cmd) error {
 		return f.conditionalWrite(w, "replace", c.Stdin)
 	case argv == "kubectl --kubeconfig /kc -n kube-system delete configmap substrate-eks-plugins --ignore-not-found":
 		f.writes = append(f.writes, "delete")
-		f.record, f.pending, f.nitro, f.extra = "", "", "", ""
+		f.record, f.pending, f.nitro, f.extra, f.extraApplied = "", "", "", "", false
 		f.log = append(f.log, "record deleted")
 	case strings.HasPrefix(argv, "go -C /setup-aws run . plugin "):
 		if !slices.Contains(c.Env, "CLUSTER_NAME=demo") || !slices.Contains(c.Env, "PLAN=false") || !slices.Contains(c.Env, "TAGS=auto-delete=no") {
@@ -602,6 +622,136 @@ func TestSetupAWSRunsTheBinaryOrGoRun(t *testing.T) {
 		wantEnv := []string{"CLUSTER_NAME=demo", "AWS_REGION=us-west-2", "AWS_PROFILE=p", "PLAN=false", "KEEP_CLUSTER=false", "TAGS=auto-delete=no"}
 		if !slices.Equal(got[0].Env, wantEnv) {
 			t.Errorf("%s: env %q, want %q", tc.path, got[0].Env, wantEnv)
+		}
+	}
+}
+
+// unknownRefusal is the start of Record.CheckKeys's refusal for future-key.
+const unknownRefusal = "kube-system/substrate-eks-plugins holds data keys this installer does not know (future-key)"
+
+// #22 (review R1 of #21), both ways: a record with a data key this
+// installer does not know (future-key, a newer installer's, in the record's
+// last-applied configuration) stops a deploy, the deploy of a plugin that
+// is recorded as pending first, and a removal, named or of every plugin,
+// before anything is written, cluster or AWS. The refusal names the key,
+// and the key stays. Every write would drop it: the fake writes the record
+// as the API server does (fakeCluster.extraApplied). Without the key each
+// runs and writes as before.
+func TestRunRefusesARecordWithUnknownKeysBeforeAnyWrite(t *testing.T) {
+	for _, c := range []struct {
+		name, action string
+		ids          []string
+		record       string
+		want         []string // the log without the key
+	}{
+		{"deploy", ActionDeploy, []string{"base"}, "solo",
+			[]string{"setup-aws base", "deploy base", "verify base", "record=base,solo"}},
+		{"deploy with a pending write", ActionDeploy, []string{"iso"}, "solo",
+			[]string{"replace record=solo pending=iso nitro-compute=node-group", "setup-aws iso", "deploy iso NITRO_COMPUTE=node-group",
+				"verify iso NITRO_COMPUTE=node-group", "record=iso,solo nitro-compute=node-group"}},
+		{"remove", ActionRemove, []string{"solo"}, "base,solo", []string{"remove solo", "record=base"}},
+		{"remove all", ActionRemove, nil, "base,solo",
+			[]string{"setup-aws base --delete --plan", "remove solo", "record=base", "remove base", "setup-aws base --delete", "record deleted"}},
+	} {
+		for _, unknown := range []bool{true, false} {
+			f := &fakeCluster{record: c.record}
+			if unknown {
+				f.extra, f.extraApplied = "from a newer installer", true
+			}
+			o := nitroFixture(t, f, nil, nil)
+			o.NitroCompute = NitroNodeGroup
+			err := Run(context.Background(), io.Discard, c.action, c.ids, o)
+			if !unknown {
+				if err != nil || !slices.Equal(f.log, c.want) {
+					t.Errorf("%s without the key: %v, log = %q\nwant  %q", c.name, err, f.log, c.want)
+				}
+				continue
+			}
+			if err == nil || !strings.Contains(err.Error(), unknownRefusal) || !strings.Contains(err.Error(), "use the installer that wrote them (a newer one)") {
+				t.Errorf("%s: want the refusal, got %v", c.name, err)
+			}
+			if len(f.log) != 0 || len(f.writes) != 0 {
+				t.Errorf("%s: ran after the refusal: log %q, record writes %q", c.name, f.log, f.writes)
+			}
+			if f.extra == "" {
+				t.Errorf("%s: the record lost future-key: %s", c.name, f.state())
+			}
+		}
+	}
+}
+
+// #22, both ways: each write of the record refuses one with a key this
+// installer does not know, so a fresh read that finds one (another run's)
+// stops the write too: the control plane's record (AddToRecord, an apply),
+// a write that leaves no plugin (WriteRecord, a delete) and the pending
+// write (markPending, a replace). Without the key each writes.
+func TestRecordWritesRefuseUnknownKeys(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		write func(Options) error
+		verb  string
+	}{
+		{"AddToRecord", func(o Options) error { return AddToRecord(context.Background(), io.Discard, o, "base") }, "apply"},
+		{"WriteRecord of no plugin", func(o Options) error {
+			rec, err := LoadRecord(context.Background(), io.Discard, o)
+			if err != nil {
+				return err
+			}
+			rec.Plugins = nil
+			return WriteRecord(context.Background(), io.Discard, o, rec)
+		}, "delete"},
+		{"markPending", func(o Options) error {
+			iso, _ := Get("iso")
+			return markPending(context.Background(), io.Discard, o, iso)
+		}, "replace"},
+	} {
+		for _, unknown := range []bool{true, false} {
+			f := &fakeCluster{record: "solo"}
+			if unknown {
+				f.extra, f.extraApplied = "from a newer installer", true
+			}
+			o := nitroFixture(t, f, nil, nil)
+			o.NitroCompute = NitroNodeGroup
+			err := c.write(o)
+			if !unknown {
+				if err != nil || !slices.Equal(f.writes, []string{c.verb}) {
+					t.Errorf("%s without the key: %v, record writes %q, want %s", c.name, err, f.writes, c.verb)
+				}
+				continue
+			}
+			if err == nil || !strings.Contains(err.Error(), unknownRefusal) {
+				t.Errorf("%s: want the refusal, got %v", c.name, err)
+			}
+			if len(f.writes) != 0 || f.extra == "" {
+				t.Errorf("%s: record writes %q after the refusal, record %s", c.name, f.writes, f.state())
+			}
+		}
+	}
+}
+
+// The fake drops future-key as the API server does, so the tests above
+// see the loss a write would cause: a replace drops it, and an apply drops
+// it while the last-applied configuration has it and keeps it otherwise.
+func TestFakeClusterDropsUnknownKeysAsTheAPIServerDoes(t *testing.T) {
+	m := Record{Plugins: []string{"solo"}}
+	for _, c := range []struct {
+		name    string
+		applied bool
+		write   func(f *fakeCluster) error
+		kept    bool
+	}{
+		{"replace, not in last-applied", false, func(f *fakeCluster) error {
+			return f.conditionalWrite(io.Discard, "replace", m.manifest(f.resourceVersion()))
+		}, false},
+		{"apply, in last-applied", true, func(f *fakeCluster) error { return f.set(m.Manifest(), false) }, false},
+		{"apply, not in last-applied", false, func(f *fakeCluster) error { return f.set(m.Manifest(), false) }, true},
+	} {
+		f := &fakeCluster{record: "base", extra: "x", extraApplied: c.applied}
+		if err := c.write(f); err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if kept := f.extra != ""; kept != c.kept || f.extraApplied {
+			t.Errorf("%s: future-key kept %v (want %v), in last-applied %v", c.name, kept, c.kept, f.extraApplied)
 		}
 	}
 }

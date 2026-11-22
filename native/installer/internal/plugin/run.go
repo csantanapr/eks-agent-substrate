@@ -164,8 +164,12 @@ func ReadRecord(ctx context.Context, w io.Writer, o Options) ([]string, error) {
 }
 
 // WriteRecord makes the record hold exactly r; with no plugin installed or
-// pending it deletes it.
+// pending it deletes it. A record with keys this installer does not know
+// (Record.CheckKeys) is refused, since either write would drop them.
 func WriteRecord(ctx context.Context, w io.Writer, o Options, r Record) error {
+	if err := r.CheckKeys(); err != nil {
+		return err
+	}
 	if r.Empty() {
 		return Kubectl(ctx, w, o, nil, nil, "-n", RecordNamespace, "delete", "configmap", RecordName, "--ignore-not-found")
 	}
@@ -251,6 +255,11 @@ func markPending(ctx context.Context, w io.Writer, o Options, p Plugin) error {
 	for try := 1; ; try++ {
 		rec, err := LoadRecord(ctx, w, o)
 		if err != nil {
+			return err
+		}
+		// The replace below sends the whole ConfigMap, so keys it does not
+		// write would be gone: a newer installer's record is left to it.
+		if err := rec.CheckKeys(); err != nil {
 			return err
 		}
 		// Checked again on this fresh read: another run may have recorded p
@@ -411,10 +420,12 @@ func (n Needs) carries(m Needs) bool {
 //     would not work: run --deploy-control-plane --plugins <id> first, or,
 //     for one that replaces the release, remove the control plane and install
 //     again. A plugin that follows NITRO_COMPUTE (Plugin.FollowsNitroCompute)
-//     is recorded as pending, with its NITRO_COMPUTE, just before its first
-//     write (Options.BeforeWrite), and is refused with another
-//     NITRO_COMPUTE than the one recorded for it, there too: the pending
-//     write succeeds only while the record is as it was read (markPending).
+//     is refused with another NITRO_COMPUTE than the one recorded for it,
+//     before the Auto Mode and node checks (which judge the run's value),
+//     and is recorded as pending, with its NITRO_COMPUTE, just before its
+//     first write (Options.BeforeWrite), where it is checked again: the
+//     pending write succeeds only while the record is as it was read
+//     (markPending).
 //   - verify: Verify for ids and what they require. A plugin that follows
 //     NITRO_COMPUTE is checked with the recorded one when there is one.
 //   - remove: ids (every recorded plugin, installed or pending, when ids is
@@ -425,6 +436,11 @@ func (n Needs) carries(m Needs) bool {
 //     recorded plugin that requires one being removed stops it, and so does
 //     an AWS refusal, which `setup-aws plugin <id> --delete --plan` finds for
 //     every plugin before anything is removed.
+//
+// A record with data keys this installer does not know (a newer
+// installer's, Record.CheckKeys) stops a deploy or a removal before its
+// first write: every write of the record would drop them. Verify writes
+// nothing, so it runs.
 func Run(ctx context.Context, w io.Writer, action string, ids []string, o Options) error {
 	if o.Cluster == "" || o.Region == "" {
 		return errors.New("plugin: cluster and region are required")
@@ -435,14 +451,25 @@ func Run(ctx context.Context, w io.Writer, action string, ids []string, o Option
 		if err != nil {
 			return err
 		}
-		// Verify checks a plugin that follows NITRO_COMPUTE with the value
-		// its deploy ran with, as removal does: the record is read first
-		// (a read only), so the Auto Mode check below judges that value,
-		// not the run's.
+		// For a plugin that follows NITRO_COMPUTE the record is read first
+		// (a read only). Verify checks it with the value its deploy ran with,
+		// as removal does, so the Auto Mode check below judges that value,
+		// not the run's. A deploy with another value than the recorded one
+		// is refused here, before the Auto Mode and node checks, which judge
+		// the run's value: the refusal names the recorded value and the ways
+		// out, as the control plane step's does (CheckNitroRecord).
 		var rec Record
-		if action == ActionVerify && anyFollowsNitroCompute(ps) {
+		followers := anyFollowsNitroCompute(ps)
+		if followers {
 			if rec, err = LoadRecord(ctx, w, o); err != nil {
 				return err
+			}
+		}
+		if action == ActionDeploy {
+			for _, p := range ps {
+				if err := checkRecordedNitroCompute(rec, p, o); err != nil {
+					return err
+				}
 			}
 		}
 		for _, p := range ps {
@@ -464,9 +491,10 @@ func Run(ctx context.Context, w io.Writer, action string, ids []string, o Option
 					p.ID, p.NeedsRDS, o.Cluster)
 			}
 		}
-		// Before the record is read and before any plugin's AWS half or
-		// hooks: a setting one of them cannot work with stops the run with
-		// nothing done (review of 86ba13f, finding 3).
+		// Before any plugin's AWS half or hooks, and before the record is
+		// read when no plugin follows NITRO_COMPUTE: a setting one of them
+		// cannot work with stops the run with nothing done (review of
+		// 86ba13f, finding 3).
 		if err := CheckSettings(ps, os.LookupEnv); err != nil {
 			return err
 		}
@@ -496,17 +524,22 @@ func Run(ctx context.Context, w io.Writer, action string, ids []string, o Option
 			}
 			return nil
 		}
-		rec, err = LoadRecord(ctx, w, o)
-		if err != nil {
+		// The record, read above for a plugin that follows NITRO_COMPUTE
+		// (and its value checked there), else now: one read either way.
+		if !followers {
+			if rec, err = LoadRecord(ctx, w, o); err != nil {
+				return err
+			}
+		}
+		// Before any write, cluster or AWS: the record writes below would
+		// drop keys a newer installer wrote.
+		if err := rec.CheckKeys(); err != nil {
 			return err
 		}
 		// Only the installed plugins carry needs: a pending one's deploy
 		// did not finish.
 		carried := recordedNeeds(rec.Plugins)
 		for _, p := range ps {
-			if err := checkRecordedNitroCompute(rec, p, o); err != nil {
-				return err
-			}
 			if !hasNeeds(p) || slices.Contains(rec.Plugins, p.ID) || carried.carries(p.Needs) {
 				continue
 			}
@@ -610,6 +643,11 @@ func withRecordedNitroCompute(w io.Writer, rec Record, p Plugin, o Options, what
 func remove(ctx context.Context, w io.Writer, ids []string, o Options) error {
 	rec, err := LoadRecord(ctx, w, o)
 	if err != nil {
+		return err
+	}
+	// Before anything is removed: each removal ends in a write of the
+	// record, which would drop keys a newer installer wrote.
+	if err := rec.CheckKeys(); err != nil {
 		return err
 	}
 	// The pending plugins too: a deploy that failed may have made some of
