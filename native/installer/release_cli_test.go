@@ -43,8 +43,13 @@ func answerKubectl(answers string) {
 // cluster is the kubectl answers of a cluster whose record lists record and
 // whose control plane runs installed ("" none).
 func cluster(record, installed string) string {
-	// The nodes of the three node groups (plugin.PoolsArgs).
-	a := []string{"substrate-eks-plugins=" + record, "get nodes -l ate.dev/pool=system gvisor microvm"}
+	// The nodes of the three node groups (plugin.PoolsArgs), and the
+	// record as kubectl prints it (plugin.RecordArgs): nothing when it lists
+	// no plugin.
+	a := []string{"substrate-eks-plugins=", "get nodes -l ate.dev/pool=system gvisor microvm"}
+	if record != "" {
+		a[0] += `{"data":{"plugins":"` + record + `"}}`
+	}
 	if installed != "" {
 		a = append(a, "get namespace ate-system=ate-system", "get daemonset atelet=daemonset.apps/atelet",
 			"get deployment ate-api-server=ghcr.io/x/ate-api-server:"+installed)

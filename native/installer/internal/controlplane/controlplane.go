@@ -313,10 +313,20 @@ func Deploy(ctx context.Context, w io.Writer, o Options) error {
 	if err != nil {
 		return err
 	}
-	// Before anything is fetched or applied: a control plane carrying a
-	// plugin that cannot run here (the AWS Nitro sandbox class's, off Auto
-	// Mode) would install its release for nothing. Only a deploy refuses:
-	// Delete shares resolvePlugins, and a removal is always the way out.
+	// Before anything is fetched or applied: a chosen plugin whose own
+	// deploy would refuse this run's NITRO_COMPUTE (another than the record
+	// holds for it, as on a wizard rerun with another one) is refused with
+	// the ways out. It comes first, so on a cluster without Auto Mode a
+	// node-group record run with auto-mode gets this, not the Auto Mode
+	// refusal below. The record is read only for such a plugin; one that is
+	// only recorded is not deployed, so not checked.
+	if err := checkNitroRecord(ctx, w, po, o.Plugins); err != nil {
+		return err
+	}
+	// So does a control plane carrying a plugin that cannot run here (the
+	// AWS Nitro sandbox class's, off Auto Mode), which would install its
+	// release for nothing. Only a deploy refuses: Delete shares
+	// resolvePlugins, and a removal is always the way out.
 	for _, id := range ids {
 		p, _ := plugin.Get(id)
 		if why := p.AutoModeProblem(po); why != "" {
@@ -382,14 +392,15 @@ func karpenterRefusal(ctx context.Context, w io.Writer, po plugin.Options, clust
 var (
 	// readPools is the cluster's pool inventory, through the installer's
 	// kubeconfig (po.Kubeconfig).
-	readPools       = plugin.NodePools
-	writeKubeconfig = awsx.WriteKubeconfig
-	fetchTree       = FetchTree
-	applyOverlay    = eksoverlay.Apply
-	overlayDigest   = eksoverlay.Digest
-	readRecord      = plugin.ReadRecord
-	recordPlugins   = plugin.AddToRecord
-	removePlugins   = plugin.Run
+	readPools        = plugin.NodePools
+	writeKubeconfig  = awsx.WriteKubeconfig
+	fetchTree        = FetchTree
+	applyOverlay     = eksoverlay.Apply
+	overlayDigest    = eksoverlay.Digest
+	loadRecord       = plugin.LoadRecord
+	checkNitroRecord = plugin.CheckNitroRecord
+	recordPlugins    = plugin.AddToRecord
+	removePlugins    = plugin.Run
 )
 
 // pluginOptions is what plugin code gets for this install, on o's release.
@@ -404,13 +415,19 @@ func (o Options) pluginOptions(kc string, autoMode bool) plugin.Options {
 // resolvePlugins sets o.Needs from the recorded plugins plus o.Plugins, and
 // the release, o's and po's, to the install's one release (a plugin's Source
 // replaces the --tag one). It returns every plugin ID the install now
-// carries, in install order.
+// carries, in install order. A record with keys this installer does not
+// know is refused (plugin.Record.CheckKeys), before Deploy or Delete writes
+// anything: Deploy records the plugins it carries and Delete removes them,
+// and either write of the record would drop those keys.
 func resolvePlugins(ctx context.Context, w io.Writer, o *Options, po *plugin.Options) ([]string, error) {
-	rec, err := readRecord(ctx, w, *po)
+	rec, err := loadRecord(ctx, w, *po)
 	if err != nil {
 		return nil, err
 	}
-	ps, err := plugin.Resolve(append(rec, o.Plugins...))
+	if err := rec.CheckKeys(); err != nil {
+		return nil, err
+	}
+	ps, err := plugin.Resolve(append(rec.Plugins, o.Plugins...))
 	if err != nil {
 		return nil, err
 	}

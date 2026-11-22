@@ -103,11 +103,11 @@ func TestSetupKarpenter(t *testing.T) {
 	if !s.Karpenter() {
 		t.Error("new cluster with KARPENTER=on")
 	}
-	s.SelectCluster(awsxCluster("c"), []string{"gvisor", "system"}, []string{"gvisor"}, false)
+	s.SelectCluster(awsxCluster("c"), []string{"gvisor", "system"}, []string{"gvisor"}, false, plugin.Record{})
 	if s.Karpenter() || !slices.Equal(s.ClusterNodePools, []string{"gvisor"}) {
 		t.Errorf("connected without Karpenter: %+v", s)
 	}
-	s.SelectCluster(awsxCluster("c"), []string{"gvisor", "system"}, []string{"gvisor"}, true)
+	s.SelectCluster(awsxCluster("c"), []string{"gvisor", "system"}, []string{"gvisor"}, true, plugin.Record{})
 	if !s.Karpenter() {
 		t.Error("connected with Karpenter")
 	}
@@ -132,17 +132,17 @@ func TestPluginProblemNoKarpenter(t *testing.T) {
 			t.Errorf("new, on, %s: %q", id, why)
 		}
 	}
-	s.SelectCluster(awsxCluster("c"), []string{"microvm", "system"}, []string{"microvm"}, true)
+	s.SelectCluster(awsxCluster("c"), []string{"microvm", "system"}, []string{"microvm"}, true, plugin.Record{})
 	for _, id := range []string{"s-kata2", "s-on-kata2"} {
 		if why := s.PluginProblem(get(id), nil); why != "needs a label kata-deploy sets; the microvm node group of c is a Karpenter NodePool" {
 			t.Errorf("connected, microvm a NodePool, %s: %q", id, why)
 		}
 	}
-	s.SelectCluster(awsxCluster("c"), []string{"gvisor", "microvm", "system"}, []string{"gvisor"}, true)
+	s.SelectCluster(awsxCluster("c"), []string{"gvisor", "microvm", "system"}, []string{"gvisor"}, true, plugin.Record{})
 	if why := s.PluginProblem(get("s-kata2"), nil); why != "" {
 		t.Errorf("connected, gvisor a NodePool: %q", why)
 	}
-	s.SelectCluster(awsxCluster("c"), []string{"microvm", "system"}, nil, false)
+	s.SelectCluster(awsxCluster("c"), []string{"microvm", "system"}, nil, false, plugin.Record{})
 	if why := s.PluginProblem(get("s-kata2"), nil); why != "" {
 		t.Errorf("connected without Karpenter: %q", why)
 	}
@@ -154,7 +154,7 @@ func TestPluginProblemNoKarpenter(t *testing.T) {
 func TestConnectedNodePoolOnlyPool(t *testing.T) {
 	get := func(id string) plugin.Plugin { p, _ := plugin.Get(id); return p }
 	s := &Setup{SandboxClasses: "gvisor"}
-	s.SelectCluster(awsxCluster("c"), []string{"gvisor", "microvm", "system"}, []string{"gvisor", "microvm"}, true)
+	s.SelectCluster(awsxCluster("c"), []string{"gvisor", "microvm", "system"}, []string{"gvisor", "microvm"}, true, plugin.Record{})
 	if why := ClassProblem(ClassGVisor, false, false, "c", s.ClusterPools, ""); why != "" {
 		t.Errorf("gvisor class: %q", why)
 	}
@@ -164,11 +164,11 @@ func TestConnectedNodePoolOnlyPool(t *testing.T) {
 	if groups, pools := s.ConnectedGroups(); !slices.Equal(groups, []string{"system"}) || !slices.Equal(pools, []string{"gvisor", "microvm"}) {
 		t.Errorf("groups %q, NodePools %q", groups, pools)
 	}
-	s.SelectCluster(awsxCluster("c"), []string{"gvisor", "microvm", "system"}, nil, false)
+	s.SelectCluster(awsxCluster("c"), []string{"gvisor", "microvm", "system"}, nil, false, plugin.Record{})
 	if groups, pools := s.ConnectedGroups(); !slices.Equal(groups, s.NodeGroups()) || pools != nil {
 		t.Errorf("no NodePools: groups %q, NodePools %q", groups, pools)
 	}
-	s.SelectCluster(awsxCluster("c"), []string{"system"}, nil, false)
+	s.SelectCluster(awsxCluster("c"), []string{"system"}, nil, false, plugin.Record{})
 	if why := ClassProblem(ClassGVisor, false, false, "c", s.ClusterPools, ""); why == "" {
 		t.Error("gvisor class with neither nodes nor a NodePool")
 	}

@@ -453,6 +453,30 @@ func TestCreateClusterNitroGroupKeepsItsAMI(t *testing.T) {
 	}
 }
 
+// When an existing custom-AMI group's launch template version is gone, its
+// AMI cannot be read: the warning says so, and does not say the group runs
+// EKS's own AMI.
+func TestCreateClusterGroupLaunchTemplateGone(t *testing.T) {
+	f := nitroFake()
+	if err := clusterTestRun(t, f, false, withNitro).run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	id := aws.ToString(f.ngIn["nitro"].LaunchTemplate.Id)
+	if f.lts[id] == nil {
+		t.Fatalf("no launch template %s", id)
+	}
+	delete(f.lts, id)
+	f.writes = nil
+	logs := captureLog(t)
+	if err := clusterTestRun(t, f, false, withNitro).run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.writes) != 0 || !strings.Contains(logs.String(), "launch template version is gone, so which AMI it runs is unknown") ||
+		strings.Contains(logs.String(), "another AMI than") || !strings.Contains(logs.String(), "launchTemplate="+id) {
+		t.Errorf("writes %v\n%s", f.writes, logs)
+	}
+}
+
 // Teardown and inventory find the nitro group by its derived names: the
 // managed node group, its launch template, and a template of that name
 // without the owner tag, which stops the teardown before any delete.

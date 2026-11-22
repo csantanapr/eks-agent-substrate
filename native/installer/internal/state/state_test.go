@@ -111,12 +111,12 @@ func TestValidSandboxClasses(t *testing.T) {
 func TestSelectAndNewClusterOverwriteEachOther(t *testing.T) {
 	s := &Setup{Region: "us-west-2", NewClusterConfig: ClusterConfig{KubernetesVersion: "1.37", AutoMode: "on"}}
 	s.NewCluster("made")
-	s.SelectCluster(awsx.Cluster{Name: "brought", Version: "1.38"}, []string{"gvisor"}, nil, false)
-	if s.ClusterIsNew || s.ClusterOwned || s.AutoMode || s.ClusterVersion != "1.38" || len(s.ClusterPools) != 1 {
+	s.SelectCluster(awsx.Cluster{Name: "brought", Version: "1.38"}, []string{"gvisor"}, []string{"gvisor"}, true, plugin.Record{Pending: []string{"mode3-iso"}, NitroCompute: plugin.NitroNodeGroup})
+	if s.ClusterIsNew || s.ClusterOwned || s.AutoMode || s.ClusterVersion != "1.38" || len(s.ClusterPools) != 1 || len(s.ClusterNodePools) != 1 || !s.ClusterKarpenter || s.ClusterRecord.NitroCompute != plugin.NitroNodeGroup {
 		t.Errorf("after SelectCluster: %+v", s)
 	}
 	s.NewCluster("made")
-	if !s.ClusterIsNew || !s.ClusterOwned || !s.AutoMode || s.ClusterName != "made" || s.ClusterPools != nil {
+	if !s.ClusterIsNew || !s.ClusterOwned || !s.AutoMode || s.ClusterName != "made" || s.ClusterPools != nil || s.ClusterNodePools != nil || s.ClusterKarpenter || !s.ClusterRecord.Equal(plugin.Record{}) {
 		t.Errorf("after NewCluster: %+v", s)
 	}
 }

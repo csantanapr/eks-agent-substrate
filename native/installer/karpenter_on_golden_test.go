@@ -48,6 +48,8 @@ func karpenterOnSpecs(t *testing.T) map[string]map[string]defaultSpec {
 // The steps of a run with KARPENTER=on and no KARPENTER_NODE_OVERLAY run
 // what they ran before KARPENTER_NODE_OVERLAY:
 // testdata/karpenter-on-specs.json was recorded on this branch before it.
+// The merge of main (e36ba8f) changed it only where main's own defaults
+// changed: the teardown row "Deleting the node groups..." (#17).
 // The one change is KARPENTER_NODE_OVERLAY= in create cluster's
 // environment, a cluster knob like the others: empty, so setup-aws reads
 // it as off, and not shown.

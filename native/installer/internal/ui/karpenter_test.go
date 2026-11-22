@@ -123,12 +123,14 @@ func TestSettingsKarpenterFindings(t *testing.T) {
 		t.Fatalf("n went on to %s", m.m.Current().Title())
 	}
 
-	// The nitro class alone, on the nitro node group.
+	// The nitro class alone, on the nitro node group: with Auto Mode off,
+	// turning it on sets NITRO_COMPUTE=node-group (switchNitro).
 	s := newSetup("fresh")
 	m = karpenterOn(t, s)
 	m = press(cursorTo(t, m, state.ClassNitro), "enter")
-	m = press(cursorTo(t, m, "NITRO_COMPUTE"), "enter")
-	m = press(cursorTo(t, m, state.ClassNitro), "enter")
+	if m.set.values["NITRO_COMPUTE"] != plugin.NitroNodeGroup {
+		t.Fatalf("NITRO_COMPUTE=%q", m.set.values["NITRO_COMPUTE"])
+	}
 	m = press(cursorTo(t, m, state.ClassGVisor), "enter")
 	m = press(cursorTo(t, m, state.ClassMicroVM), "enter")
 	if m.set.values[classKey] != "nitro" || m.set.errs["KARPENTER"] != "makes a NodePool for gVisor: turn that class on" {

@@ -445,8 +445,9 @@ func stripANSI(s string) string { return ansiSeq.ReplaceAllString(s, "") }
 
 // The guard's remove offer and its confirmation say what the removal
 // removes first, as --remove-control-plane does: the plugins the record
-// lists, by name; every installed plugin when the probe could not read the
-// record; and no plugin when it lists none.
+// lists, by name, the installed ones as before and the pending ones apart;
+// every installed plugin when the probe could not read the record; and no
+// plugin when it lists none.
 func TestGuardRemovalNamesTheRecordedPlugins(t *testing.T) {
 	const installed = "SUBSTRATE_EKS_INSTALLED true atelet image=ghcr.io/x/ate-api-server:v1.0.0"
 	for _, tc := range []struct {
@@ -457,6 +458,14 @@ func TestGuardRemovalNamesTheRecordedPlugins(t *testing.T) {
 		{"two recorded", installed + " plugins=efs,mode3", []string{"removes the installed plugins efs and mode3,", "Removes the installed plugins efs and mode3 ("},
 			[]string{"every installed plugin"}},
 		{"one recorded", installed + " plugins=efs", []string{"removes the installed plugin efs,", "Removes the installed plugin efs ("}, nil},
+		// A pending plugin is named apart, never as installed; one in both
+		// keys (the control plane step recorded it) is installed.
+		{"one recorded, one pending", installed + " plugins=efs pending=mode3-iso", []string{"removes the installed plugin efs and the pending plugin mode3-iso,",
+			"Removes the installed plugin efs and the pending plugin mode3-iso ("}, []string{"installed plugins"}},
+		{"one pending", installed + " plugins= pending=mode3-iso", []string{"removes the pending plugin mode3-iso,", "Removes the pending plugin mode3-iso ("},
+			[]string{"installed plugin"}},
+		{"two pending, one also installed", installed + " plugins=efs,mode3-iso pending=a,mode3-iso", []string{"removes the installed plugins efs and mode3-iso and the pending plugin a,",
+			"Removes the installed plugins efs and mode3-iso and the pending plugin a ("}, []string{"pending plugin mode3-iso", "pending plugins"}},
 		{"record unreadable", installed, []string{"removes every installed plugin,", "Removes every installed plugin ("}, nil},
 		{"none recorded", installed + " plugins=", []string{"t runs ate-setup delete ate-system", "Runs ate-setup delete ate-system"},
 			[]string{"plugin", "other AWS resources"}},
@@ -496,6 +505,8 @@ func TestRemovalChecklistShowsThePluginsFirst(t *testing.T) {
 		want  []string
 	}{
 		{installed + " plugins=t-efs,t-s3files", append([]string{"Remove S3 Files volumes", "Remove EFS volumes"}, tail...)},
+		// A pending plugin is removed too, in removal order.
+		{installed + " plugins=t-efs pending=t-s3files", append([]string{"Remove S3 Files volumes", "Remove EFS volumes"}, tail...)},
 		{installed + " plugins=", tail},
 		{installed, append([]string{"Remove the recorded plugins"}, tail...)},
 	} {

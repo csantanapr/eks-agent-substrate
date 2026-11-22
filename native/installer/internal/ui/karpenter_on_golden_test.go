@@ -75,6 +75,8 @@ func karpenterOnScreens(t *testing.T) map[string]defaultScreen {
 // The screens of a run with KARPENTER=on and no KARPENTER_NODE_OVERLAY are
 // what they were before KARPENTER_NODE_OVERLAY:
 // testdata/karpenter-on-screens.json was recorded on this branch before it.
+// The merge of main (e36ba8f) changed it only where main's own defaults
+// changed: the nitro class is offered without Auto Mode (#20).
 // Settings adds only the Karpenter NodeOverlay row, off, after Karpenter.
 func TestKarpenterOnScreensUnchanged(t *testing.T) {
 	got := karpenterOnScreens(t)

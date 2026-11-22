@@ -119,7 +119,9 @@ func TestDeleteRunsOnTheInstallsRelease(t *testing.T) {
 			removedOn = po.Release
 			return nil
 		}
-		readRecord = func(context.Context, io.Writer, plugin.Options) ([]string, error) { return tc.record, nil }
+		loadRecord = func(context.Context, io.Writer, plugin.Options) (plugin.Record, error) {
+			return plugin.Record{Plugins: tc.record}, nil
+		}
 		readInstalled = func(context.Context, string) (probe.Result, error) {
 			return probe.Result{Installed: tc.installed != "", Atelet: tc.installed != "", Version: tc.installed}, nil
 		}

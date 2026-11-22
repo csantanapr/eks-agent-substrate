@@ -480,6 +480,12 @@ type Setup struct {
 	// NewClusterConfig's.
 	ClusterNodePools []string
 	ClusterKarpenter bool
+	// ClusterRecord is the plugin record the probe read on a connected
+	// cluster without ate-system (probe.Result.RecordOnly; issue #22): the
+	// plugins a manual delete of the control plane left recorded, and the
+	// NITRO_COMPUTE they were deployed with, which Review checks the run's
+	// against. Empty otherwise.
+	ClusterRecord plugin.Record
 }
 
 // Karpenter reports a run whose cluster has Karpenter: KARPENTER=on for a
@@ -527,11 +533,12 @@ func NewSetupFrom(lookup func(string) (string, bool)) *Setup {
 
 // SelectCluster records an existing cluster as the run's target, with the
 // node groups its nodes and NodePools come from (pools, the probe's), the
-// pools of them that are Karpenter NodePools and whether it has Karpenter,
-// and NewCluster a cluster the run will create. Every Cluster* field is
-// written by both, as in substrate-gke: a field one of them forgot would
-// carry an abandoned selection's value into the other path.
-func (s *Setup) SelectCluster(c awsx.Cluster, pools, nodePools []string, karpenter bool) {
+// pools of them that are Karpenter NodePools, whether it has Karpenter and
+// the plugin record the probe read without ate-system (rec); NewCluster
+// records a cluster the run will create. Every Cluster* field is written
+// by both, as in substrate-gke: a field one of them forgot would carry an
+// abandoned selection's value into the other path.
+func (s *Setup) SelectCluster(c awsx.Cluster, pools, nodePools []string, karpenter bool, rec plugin.Record) {
 	s.ClusterName = c.Name
 	s.ClusterVersion = c.Version
 	s.AutoMode = c.AutoMode
@@ -540,6 +547,7 @@ func (s *Setup) SelectCluster(c awsx.Cluster, pools, nodePools []string, karpent
 	s.ClusterPools = pools
 	s.ClusterNodePools = nodePools
 	s.ClusterKarpenter = karpenter
+	s.ClusterRecord = rec
 }
 
 // NewCluster records a cluster the run will create, named name.
@@ -552,6 +560,7 @@ func (s *Setup) NewCluster(name string) {
 	s.ClusterPools = nil
 	s.ClusterNodePools = nil
 	s.ClusterKarpenter = false
+	s.ClusterRecord = plugin.Record{}
 }
 
 // Names are setup-aws's derived resource names (cmd.deriveNames).

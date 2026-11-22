@@ -41,9 +41,9 @@ func nitroNode(name, arch, alloc string, ready bool) string {
 
 func nodeList(items ...string) string { return `{"items":[` + strings.Join(items, ",") + `]}` }
 
-// The RuntimeClass Auto Mode makes: the spec the Nitro sandbox needs, with
-// Auto Mode's own label.
-const autoModeRC = `{"apiVersion":"node.k8s.io/v1","kind":"RuntimeClass","metadata":{"name":"isolated-sandbox","labels":{"app.kubernetes.io/managed-by":"eks"}},` +
+// The RuntimeClass Auto Mode makes: the spec the Nitro sandbox needs, and no
+// labels (its field manager, eks-auto-mode, is what marks it).
+const autoModeRC = `{"apiVersion":"node.k8s.io/v1","kind":"RuntimeClass","metadata":{"name":"isolated-sandbox"},` +
 	`"handler":"isolated-sandbox","overhead":{"podFixed":{"eks.amazonaws.com/nitro-sandbox":"1","memory":"256Mi"}},` +
 	`"scheduling":{"nodeSelector":{"eks.amazonaws.com/nitro-sandbox":"true"}}}`
 
@@ -215,7 +215,8 @@ func TestRuntimeClassDecisions(t *testing.T) {
 		f.out["get runtimeclass isolated-sandbox"] = []string{rc}
 		f.out["get nodes -l ate.dev/pool=nitro"] = []string{nodeList(nitroNode("n1", "amd64", "2", true))}
 		err := deploy(context.Background(), io.Discard, testOptionsNodeGroup(t))
-		if err == nil || !strings.Contains(err.Error(), want) || !strings.Contains(err.Error(), "left as it is") {
+		if err == nil || !strings.Contains(err.Error(), want) || !strings.Contains(err.Error(), "The installer leaves it as it is") ||
+			!strings.Contains(err.Error(), "Other Pods can use it: check them first") {
 			t.Errorf("want %q, got %v", want, err)
 		}
 		if len(f.applies) != 0 || len(f.creates) != 0 || f.has("kubectl get nodes") == nil {
@@ -227,6 +228,18 @@ func TestRuntimeClassDecisions(t *testing.T) {
 	f.fail = map[string]error{"get runtimeclass": errors.New("forbidden")}
 	if m, err := checkRuntimeClass(context.Background(), io.Discard, testOptionsNodeGroup(t)); err == nil || !strings.Contains(err.Error(), "forbidden") || m != nil || len(f.applies) != 0 || len(f.creates) != 0 {
 		t.Errorf("a denied read: %v, applies %q, creates %q", err, f.applies, f.creates)
+	}
+}
+
+// #22 (review N3 of #17): the RuntimeClass refusal says how to list the
+// Pods that use the class, each as namespace/name on its own line, so one
+// in any namespace can be found. The printed command is exactly this one.
+func TestRuntimeClassRefusalListsPodsWithNamespaces(t *testing.T) {
+	const listing = `kubectl get pods -A -o jsonpath='{range .items[?(@.spec.runtimeClassName=="isolated-sandbox")]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}'`
+	other := strings.Replace(autoModeRC, `"handler":"isolated-sandbox"`, `"handler":"kata"`, 1)
+	err := useRuntimeClass(io.Discard, []byte(other))
+	if err == nil || !strings.Contains(err.Error(), "check them first ("+listing+"), then change it") {
+		t.Errorf("want the listing %s, got %v", listing, err)
 	}
 }
 
@@ -496,7 +509,9 @@ func TestRunNeedsAutoModeOnlyOnAutoMode(t *testing.T) {
 		if c.runs != (err == nil) {
 			t.Errorf("%+v: %v", c, err)
 		}
-		if !c.runs && (!strings.Contains(err.Error(), "c1 has EKS Auto Mode off") || len(f.log) != 0) {
+		// A refused verify reads the record (the value its deploy ran with)
+		// and runs nothing else.
+		if !c.runs && (!strings.Contains(err.Error(), "c1 has EKS Auto Mode off") || len(f.log) != 1 || !strings.HasPrefix(f.log[0], "kubectl -n kube-system get configmap substrate-eks-plugins")) {
 			t.Errorf("%+v: %v, ran %q", c, err, f.log)
 		}
 	}
@@ -589,10 +604,11 @@ func TestRemoveNodeGroup(t *testing.T) {
 	}
 }
 
-// Remove does not trust NITRO_COMPUTE, which is not recorded: a node-group
-// install removed under auto-mode (on a cluster without Auto Mode) loses its
-// RuntimeClass, and an auto-mode install removed under node-group (on an
-// Auto Mode cluster) loses its ConfigMap. Under node-group, NodePool and
+// Remove itself works under either NITRO_COMPUTE it is given (plugin.Run
+// gives it the recorded one, TestRunRemovesWithTheRecordedNitroCompute): a
+// node-group install removed under auto-mode (on a cluster without Auto
+// Mode) loses its RuntimeClass, and an auto-mode install removed under
+// node-group (on an Auto Mode cluster) loses its ConfigMap. Under node-group, NodePool and
 // NodeClass ate-isolated are never deleted, whoever made them: those there
 // are named, with the auto-mode remove that deletes them, and a cluster that
 // runs its own Karpenter (the NodePool kind, no NodeClass kind) or has
@@ -878,5 +894,212 @@ func TestDeployNodeGroupOnAKarpenterPool(t *testing.T) {
 	err = deploy(context.Background(), &bytes.Buffer{}, o)
 	if err == nil || !strings.Contains(err.Error(), `requires the kubernetes.io/arch values ["amd64" "arm64"]`) || len(f.creates)+len(f.applies) != 0 {
 		t.Errorf("a NodePool of two architectures: %v", err)
+	}
+}
+
+// recordRV is the resourceVersion recordAnswer gives the record.
+const recordRV = "41"
+
+// pendingWrite is the pending write of r: a replace of the record read at
+// recordRV, so its manifest carries that resourceVersion.
+func pendingWrite(r plugin.Record) string {
+	return strings.Replace(string(r.Manifest()), "  namespace: kube-system\n", "  namespace: kube-system\n  resourceVersion: \""+recordRV+"\"\n", 1)
+}
+
+// recordAnswer is the plugin record r as kubectl prints it
+// (plugin.RecordArgs): the plugins key, the others when they hold
+// something, and its resourceVersion (recordRV).
+func recordAnswer(r plugin.Record) string {
+	data := map[string]string{plugin.RecordKey: plugin.FormatRecord(r.Plugins)}
+	if len(r.Pending) > 0 {
+		data[plugin.PendingKey] = plugin.FormatRecord(r.Pending)
+	}
+	if r.NitroCompute != "" {
+		data[plugin.NitroComputeKey] = r.NitroCompute
+	}
+	b, err := json.Marshal(map[string]any{"kind": "ConfigMap", "metadata": map[string]any{"resourceVersion": recordRV}, "data": data})
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
+}
+
+// recordRead is the fake's key for the record read.
+const recordRead = "-n kube-system get configmap substrate-eks-plugins"
+
+// The removal of every plugin, as the wizard and --remove-control-plane run
+// it, removes mode3-iso with the NITRO_COMPUTE the record holds, both ways,
+// on an Auto Mode cluster where each would leave the other's objects: a
+// node-group install with NITRO_COMPUTE unset or auto-mode gets the
+// node-group removal, and an auto-mode install under node-group gets the
+// NodePool and NodeClass deleted. Each says so. A record from an older
+// installer, with none, removes with the run's, as before, and says
+// nothing. The record goes with the plugin.
+func TestRunRemovesWithTheRecordedNitroCompute(t *testing.T) {
+	const bothCRDs = "customresourcedefinition.apiextensions.k8s.io/nodepools.karpenter.sh\ncustomresourcedefinition.apiextensions.k8s.io/nodeclasses.eks.amazonaws.com\n"
+	for _, c := range []struct {
+		name, recorded, run string
+		nodeGroup, says     bool
+	}{
+		{"node-group install, NITRO_COMPUTE unset", plugin.NitroNodeGroup, "", true, true},
+		{"node-group install, removed under auto-mode", plugin.NitroNodeGroup, plugin.NitroAutoMode, true, true},
+		{"auto-mode install, removed under node-group", plugin.NitroAutoMode, plugin.NitroNodeGroup, false, true},
+		{"node-group install, removed under node-group", plugin.NitroNodeGroup, plugin.NitroNodeGroup, true, false},
+		{"older record, removed under node-group", "", plugin.NitroNodeGroup, true, false},
+		{"older record, NITRO_COMPUTE unset", "", "", false, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newFake(t)
+			f.out[recordRead] = []string{recordAnswer(plugin.Record{Plugins: []string{ID}, NitroCompute: c.recorded})}
+			f.out["get crd nodepools.karpenter.sh"] = []string{bothCRDs}
+			f.out["get nodepool,nodeclass ate-isolated"] = []string{"nodepool.karpenter.sh/ate-isolated\n"}
+			f.out["get nodes -l karpenter.sh/nodepool=ate-isolated"] = []string{""}
+			o := testOptions(t, true)
+			o.NitroCompute = c.run
+			var out bytes.Buffer
+			if err := plugin.Run(context.Background(), &out, plugin.ActionRemove, nil, o); err != nil {
+				t.Fatalf("%v\n%s", err, out.String())
+			}
+			left := f.has("kubectl get nodepool,nodeclass ate-isolated") == nil
+			deleted := f.has("kubectl delete nodepool ate-isolated", "kubectl delete nodeclass ate-isolated") == nil
+			if left != c.nodeGroup || deleted == c.nodeGroup {
+				t.Errorf("node-group removal %v, NodePool deleted %v:\n%s", left, deleted, strings.Join(f.log, "\n"))
+			}
+			line := plugin.RecordedNitroComputeLine + ID + " was deployed with NITRO_COMPUTE=" + c.recorded
+			if says := strings.Contains(out.String(), line); says != c.says {
+				t.Errorf("says %v:\n%s", says, out.String())
+			}
+			if err := f.has("kubectl delete namespace ate-demo-counter-iso", "kubectl -n kube-system delete configmap substrate-eks-plugins --ignore-not-found"); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+}
+
+// The case the record's pending entry is for: a node-group deploy on an
+// Auto Mode cluster that fails after it made the RuntimeClass. The plugin
+// was recorded as pending, with node-group, just before the RuntimeClass
+// was made, and nothing after: it is not installed. The removal of every plugin with
+// NITRO_COMPUTE unset then removes it with node-group, so the RuntimeClass
+// it made goes too, where auto-mode's removal would leave it (Auto Mode's
+// own there).
+func TestNodeGroupDeployThatFailsStaysPendingAndIsRemoved(t *testing.T) {
+	f := newFake(t)
+	// The control plane step recorded mode3-iso for the nitro class, with
+	// no NITRO_COMPUTE, as it does.
+	f.out[recordRead] = []string{recordAnswer(plugin.Record{Plugins: []string{ID}})}
+	f.out["get nodes -l ate.dev/pool=nitro"] = []string{nodeList(nitroNode("n1", "arm64", "2", true))}
+	denied := errors.New("the API server answered 403 Forbidden")
+	f.fail = map[string]error{"-n ate-system get ds atelet": denied}
+	o := testOptions(t, true)
+	o.NitroCompute = plugin.NitroNodeGroup
+	if err := plugin.Run(context.Background(), io.Discard, plugin.ActionDeploy, []string{ID}, o); !errors.Is(err, denied) {
+		t.Fatalf("want the failure, got %v", err)
+	}
+	// The pending entry is a replace of the record that was read (the
+	// control plane step's), conditional on its resourceVersion.
+	pending := pendingWrite(plugin.Record{Plugins: []string{ID}, Pending: []string{ID}, NitroCompute: plugin.NitroNodeGroup})
+	if len(f.replaces) != 1 || f.replaces[0] != pending || len(f.applies) != 0 {
+		t.Errorf("record writes:\n%s\nwant only\n%s", strings.Join(append(f.replaces, f.applies...), "---\n"), pending)
+	}
+	// The pending entry just before the first write: after the reads of
+	// the RuntimeClass and the nodes, before the RuntimeClass is made.
+	if err := f.has("kubectl -n kube-system get configmap", "kubectl get runtimeclass isolated-sandbox", "kubectl get nodes -l ate.dev/pool=nitro",
+		"kubectl -n kube-system get configmap", "kubectl replace --save-config -f -", "kubectl create -f -", "kubectl -n ate-system get ds atelet"); err != nil {
+		t.Error(err)
+	}
+
+	f = newFake(t)
+	f.out[recordRead] = []string{recordAnswer(plugin.Record{Plugins: []string{ID}, Pending: []string{ID}, NitroCompute: plugin.NitroNodeGroup})}
+	f.out["get crd nodepools.karpenter.sh"] = []string{"crd/nodepools.karpenter.sh\ncrd/nodeclasses.eks.amazonaws.com\n"}
+	f.out["get runtimeclass isolated-sandbox"] = []string{ownedRC}
+	f.out["get pods --all-namespaces"] = []string{""}
+	o.NitroCompute = ""
+	var out bytes.Buffer
+	if err := plugin.Run(context.Background(), &out, plugin.ActionRemove, nil, o); err != nil {
+		t.Fatalf("%v\n%s", err, out.String())
+	}
+	if err := f.has("kubectl delete namespace ate-demo-counter-iso", "kubectl get crd nodepools.karpenter.sh nodeclasses.eks.amazonaws.com",
+		"kubectl delete runtimeclass isolated-sandbox --ignore-not-found", "kubectl -n kube-system delete configmap substrate-eks-plugins --ignore-not-found"); err != nil {
+		t.Error(err)
+	}
+	if f.has("kubectl delete nodepool") == nil || !strings.Contains(out.String(), "so it is removed with node-group, not the run's auto-mode") {
+		t.Errorf("output:\n%s", out.String())
+	}
+}
+
+// The wizard's order on an Auto Mode cluster: the control plane step
+// recorded mode3-iso, and its node-group deploy is refused for too little
+// Nitro sandbox capacity after its reads. That refusal writes nothing, the
+// record included, so the obvious fix, a deploy with auto-mode, goes on
+// and records auto-mode, with its pending entry just before its first
+// write (review 1, finding 1).
+func TestNodeGroupRefusalLeavesTheRecordSoAutoModeDeploys(t *testing.T) {
+	f := newFake(t)
+	recorded := recordAnswer(plugin.Record{Plugins: []string{ID}})
+	f.out[recordRead] = []string{recorded, recorded, recorded,
+		recordAnswer(plugin.Record{Plugins: []string{ID}, Pending: []string{ID}, NitroCompute: plugin.NitroAutoMode})}
+	f.out["get runtimeclass isolated-sandbox"] = []string{"", "sandbox"}
+	f.out["get nodes -l ate.dev/pool=nitro"] = []string{nodeList(nitroNode("n1", "amd64", "1", true))}
+	o := testOptions(t, true)
+	o.NitroCompute = plugin.NitroNodeGroup
+	err := plugin.Run(context.Background(), io.Discard, plugin.ActionDeploy, []string{ID}, o)
+	if err == nil || !strings.Contains(err.Error(), "1 allocatable eks.amazonaws.com/nitro-sandbox in all") || len(f.applies) != 0 || len(f.creates) != 0 {
+		t.Fatalf("the node-group refusal: %v, %d applies, %d creates", err, len(f.applies), len(f.creates))
+	}
+
+	f.out["get nodepool general-purpose"] = []string{testGeneralPurpose}
+	f.out["get nodeclass default"] = []string{testNodeClass}
+	f.out["-n ate-system get ds atelet"] = []string{testAtelet}
+	f.out["-n ate-demo-counter-iso get pods -l ate.dev/worker-transport=network"] = []string{`{"items":[{"metadata":{"name":"pod-1"},"spec":{"runtimeClassName":"isolated-sandbox","nodeName":"n1"}}]}`}
+	f.out["get nodes -o json"] = []string{`{"items":[{"metadata":{"name":"n1","labels":{"ate.dev/pool":"isolated","karpenter.sh/nodepool":"ate-isolated"}}}]}`}
+	f.out["-n ate-demo-counter-iso logs pod-1"] = []string{"x Handle RPC method=TerminateWorkload actor=uid-demo-iso-delete\n"}
+	o.NitroCompute = plugin.NitroAutoMode
+	var out bytes.Buffer
+	if err := plugin.Run(context.Background(), &out, plugin.ActionDeploy, []string{ID}, o); err != nil {
+		t.Fatalf("the auto-mode deploy after the refusal: %v\n%s", err, out.String())
+	}
+	// The pending entry is a replace conditional on the record's
+	// resourceVersion; the move once the deploy passes is an apply.
+	pending := pendingWrite(plugin.Record{Plugins: []string{ID}, Pending: []string{ID}, NitroCompute: plugin.NitroAutoMode})
+	done := string(plugin.Record{Plugins: []string{ID}, NitroCompute: plugin.NitroAutoMode}.Manifest())
+	if len(f.replaces) != 1 || f.replaces[0] != pending || len(f.applies) < 2 || !strings.Contains(f.applies[0], `"kind":"NodeClass"`) ||
+		f.applies[len(f.applies)-1] != done || len(f.creates) != 0 {
+		t.Errorf("replaces:\n%s\napplies:\n%s", strings.Join(f.replaces, "\n---\n"), strings.Join(f.applies, "\n---\n"))
+	}
+	if err := f.has("kubectl -n kube-system get configmap", "kubectl get runtimeclass isolated-sandbox --ignore-not-found", "kubectl get nodes -l ate.dev/pool=nitro",
+		"kubectl -n kube-system get configmap", "kubectl get runtimeclass isolated-sandbox -o jsonpath", "kubectl get nodepool general-purpose",
+		"kubectl get nodeclass default", "kubectl -n kube-system get configmap", "kubectl replace --save-config -f -", "kubectl apply -f -", "golden",
+		"kubectl -n kube-system get configmap", "kubectl apply -f -"); err != nil {
+		t.Error(err)
+	}
+}
+
+// --verify, the Demo step and --plugin-action verify check mode3-iso with
+// the NITRO_COMPUTE the record holds: a node-group install checked with
+// the run's auto-mode looks for its workers on the nitro nodes, not on the
+// Auto Mode pool's, and says so (review 1, finding 4).
+// It holds on a cluster without Auto Mode too, the usual node-group case: the
+// Auto Mode check judges the recorded node-group, not the run's auto-mode.
+func TestRunVerifiesWithTheRecordedNitroCompute(t *testing.T) {
+	for _, autoMode := range []bool{true, false} {
+		f := newFake(t)
+		f.out[recordRead] = []string{recordAnswer(plugin.Record{Plugins: []string{ID}, NitroCompute: plugin.NitroNodeGroup})}
+		f.out["-n ate-demo-counter-iso get pods -l ate.dev/worker-transport=network"] = []string{`{"items":[{"metadata":{"name":"pod-1"},"spec":{"runtimeClassName":"isolated-sandbox","nodeName":"n1"}}]}`}
+		f.out["get nodes -o json"] = []string{`{"items":[{"metadata":{"name":"n1","labels":{"ate.dev/pool":"nitro"}}}]}`}
+		f.out["-n ate-demo-counter-iso logs pod-1"] = []string{"x Handle RPC method=TerminateWorkload actor=uid-demo-iso-delete\n"}
+		o := testOptions(t, autoMode)
+		o.NitroCompute = plugin.NitroAutoMode
+		var out bytes.Buffer
+		if err := plugin.Run(context.Background(), &out, plugin.ActionVerify, []string{ID}, o); err != nil {
+			t.Fatalf("Auto Mode %v: %v\n%s", autoMode, err, out.String())
+		}
+		if !strings.Contains(out.String(), "node n1 (ate.dev/pool=nitro)") ||
+			!strings.Contains(out.String(), plugin.RecordedNitroComputeLine+ID+" was deployed with NITRO_COMPUTE=node-group, as kube-system/substrate-eks-plugins records, so it is checked with node-group, not the run's auto-mode") {
+			t.Errorf("Auto Mode %v, output:\n%s", autoMode, out.String())
+		}
+		if len(f.applies) != 0 {
+			t.Errorf("Auto Mode %v: verify wrote %q", autoMode, f.applies)
+		}
 	}
 }

@@ -216,6 +216,11 @@ func (r *clusterRun) checkGroupImage(ctx context.Context, g nodeGroupSpec, ng *e
 			LaunchTemplateId: lt.Id, Versions: []string{aws.ToString(lt.Version)}})
 		switch {
 		case hasCode(err, "InvalidLaunchTemplateId.NotFound"), hasCode(err, "InvalidLaunchTemplateId.VersionNotFound"):
+			// The group's version is gone, so its AMI cannot be read: say
+			// so, not that it runs EKS's own AMI.
+			slog.Warn("the node group's launch template version is gone, so which AMI it runs is unknown; it keeps its nodes",
+				"nodegroup", aws.ToString(ng.NodegroupName), "launchTemplate", aws.ToString(lt.Id), "version", aws.ToString(lt.Version))
+			return nil
 		case err != nil:
 			return fmt.Errorf("read the launch template of node group %s: %w", aws.ToString(ng.NodegroupName), err)
 		case len(out.LaunchTemplateVersions) == 1 && out.LaunchTemplateVersions[0].LaunchTemplateData != nil:
@@ -253,8 +258,17 @@ func nodegroupFailed(cluster string, ng *ekstypes.Nodegroup) error {
 			issues = append(issues, fmt.Sprintf("%s: %s", i.Code, aws.ToString(i.Message)))
 		}
 	}
-	return fmt.Errorf("node group %s is %s (%s); fix the cause, delete it (aws eks delete-nodegroup --cluster-name %s --nodegroup-name %s) and run again",
-		aws.ToString(ng.NodegroupName), ng.Status, strings.Join(issues, "; "), cluster, aws.ToString(ng.NodegroupName))
+	why := "EKS reports no health issue"
+	if len(issues) > 0 {
+		why = strings.Join(issues, "; ")
+	}
+	name := aws.ToString(ng.NodegroupName)
+	if ng.Status == ekstypes.NodegroupStatusDeleting {
+		return fmt.Errorf("node group %s of cluster %s is being deleted (%s); wait until EKS has deleted it, and run again", name, cluster, why)
+	}
+	// Destructive changes go through the installer's teardown (AGENTS.md),
+	// never a delete by hand, which skips its ownership checks.
+	return fmt.Errorf("node group %s of cluster %s is %s (%s); fix the cause, then %s", name, cluster, ng.Status, why, recreate)
 }
 
 // waitReady waits for the node groups, tags their Auto Scaling groups, and

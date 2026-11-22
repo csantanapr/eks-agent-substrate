@@ -271,7 +271,12 @@ func ClassProblem(c string, autoMode, newCluster bool, cluster string, pools []s
 	case !group && !autoMode:
 		return "needs EKS Auto Mode: its isolated sandboxes run on nodes Auto Mode launches (NITRO_COMPUTE=node-group runs them on a nitro node group instead)"
 	case group && !newCluster && !slices.Contains(pools, c):
-		return fmt.Sprintf("%s has no %s node group (no node labeled %s=%s)", cluster, c, plugin.PoolLabel, c)
+		why := fmt.Sprintf("%s has no %s node group (no node labeled %s=%s)", cluster, c, plugin.PoolLabel, c)
+		if c == ClassNitro && autoMode {
+			// The cluster has Auto Mode, so auto-mode is the other way out.
+			why += "; with NITRO_COMPUTE=auto-mode (--nitro-compute auto-mode) it runs on nodes Auto Mode launches instead"
+		}
+		return why
 	}
 	return ""
 }

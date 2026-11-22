@@ -20,13 +20,15 @@ func overlayOn(t *testing.T, s *state.Setup) Model {
 }
 
 // nitroOnGroup turns on the nitro class on the nitro node group
-// (NITRO_COMPUTE=node-group), with a Nitro Sandbox AMI: without Auto Mode
-// the class is refused until NITRO_COMPUTE says node-group.
+// (NITRO_COMPUTE=node-group), with a Nitro Sandbox AMI: Karpenter needs Auto
+// Mode off, so turning the class on sets NITRO_COMPUTE=node-group (Settings'
+// switch, switchNitro) and says so.
 func nitroOnGroup(t *testing.T, m Model) Model {
 	t.Helper()
 	m = press(cursorTo(t, m, state.ClassNitro), "enter")
-	m = press(cursorTo(t, m, "NITRO_COMPUTE"), "enter")
-	m = press(cursorTo(t, m, state.ClassNitro), "enter")
+	if !m.set.nitro.on || !strings.Contains(m.View(), nitroSwitchLine) {
+		t.Fatalf("no switch to node-group: %+v", m.set.nitro)
+	}
 	m = setText(cursorTo(t, m, "NITRO_AMI_ID"), "ami-0a17000000000000e")
 	if !m.set.classOn(state.ClassNitro) || m.set.values["NITRO_COMPUTE"] != plugin.NitroNodeGroup {
 		t.Fatalf("classes %q, NITRO_COMPUTE=%q", m.set.values[classKey], m.set.values["NITRO_COMPUTE"])

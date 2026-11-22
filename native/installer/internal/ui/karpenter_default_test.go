@@ -101,8 +101,8 @@ func jsonFloat(f float64) string {
 }
 
 // The screens of a run without KARPENTER are what they were before it:
-// testdata/default-screens.json was recorded on the branch before KARPENTER
-// (nitro-node-groups, fa5605a). Without Auto Mode, Settings adds only the
+// testdata/default-screens.json was recorded on main before KARPENTER
+// (e36ba8f, v2.1.0). Without Auto Mode, Settings adds only the
 // Karpenter row, after Node group type.
 func TestDefaultScreensUnchanged(t *testing.T) {
 	got := defaultScreens(t)

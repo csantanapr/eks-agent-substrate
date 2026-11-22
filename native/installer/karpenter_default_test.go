@@ -9,6 +9,7 @@ import (
 
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/controlplane"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/execx"
+	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/state"
 )
 
@@ -46,7 +47,7 @@ func defaultSpecs(t *testing.T) map[string]map[string]defaultSpec {
 			s.NewCluster("demo")
 		}),
 		"connected": setup(func(s *state.Setup) {
-			s.SelectCluster(simCluster("demo", "us-west-2", true), []string{"gvisor", "microvm", "system"}, nil, false)
+			s.SelectCluster(simCluster("demo", "us-west-2", true), []string{"gvisor", "microvm", "system"}, nil, false, plugin.Record{})
 		}),
 	}
 	out := map[string]map[string]defaultSpec{}
@@ -65,8 +66,8 @@ func asDefaultSpec(sp execx.Spec) defaultSpec {
 }
 
 // The steps of a run without KARPENTER run what they ran before it:
-// testdata/default-specs.json was recorded on the branch before KARPENTER
-// (nitro-node-groups, fa5605a). The one change is KARPENTER= and
+// testdata/default-specs.json was recorded on main before KARPENTER
+// (e36ba8f, v2.1.0). The one change is KARPENTER= and
 // KARPENTER_NODE_OVERLAY= in create cluster's environment, cluster knobs
 // like the others: empty, so setup-aws reads them as off, and not shown.
 func TestDefaultSpecsUnchanged(t *testing.T) {

@@ -51,8 +51,8 @@ func defaultTeardownCalls(t *testing.T) map[string][]string {
 
 // A teardown of a deployment made without KARPENTER makes the calls it made
 // before KARPENTER, with the same inputs, in the same order:
-// testdata/teardown-default-calls.json was recorded on the branch before it
-// (nitro-node-groups, fa5605a), with the same fixtures and recorder.
+// testdata/teardown-default-calls.json was recorded on main before it
+// (e36ba8f, v2.1.0), with the same fixtures and recorder.
 func TestTeardownWithoutKarpenterIsUnchanged(t *testing.T) {
 	got := defaultTeardownCalls(t)
 	raw, err := os.ReadFile("testdata/teardown-default-calls.json")

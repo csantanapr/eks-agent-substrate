@@ -93,7 +93,7 @@ func TestPluginProblemNodeOverlay(t *testing.T) {
 	if why := s.PluginProblem(get("s-kata2"), nil); why != "" {
 		t.Errorf("new, KARPENTER=on alone: %q", why)
 	}
-	s.SelectCluster(awsxCluster("c"), []string{"gvisor", "microvm", "nitro", "system"}, []string{"gvisor", "microvm", "nitro"}, true)
+	s.SelectCluster(awsxCluster("c"), []string{"gvisor", "microvm", "nitro", "system"}, []string{"gvisor", "microvm", "nitro"}, true, plugin.Record{})
 	if why := ClassProblem(ClassNitro, false, false, "c", s.ClusterPools, plugin.NitroNodeGroup); why != "" {
 		t.Errorf("nitro on a NodePool: %q", why)
 	}

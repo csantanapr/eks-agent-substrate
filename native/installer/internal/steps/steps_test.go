@@ -221,8 +221,8 @@ func removalLines(t *testing.T, rec string) []string {
 	prev := plugin.Exec
 	t.Cleanup(func() { plugin.Exec = prev })
 	plugin.Exec = func(_ context.Context, _ io.Writer, c plugin.Cmd) error {
-		if c.Stdout != nil && slices.Contains(c.Argv, plugin.RecordName) && slices.Contains(c.Argv, "get") {
-			io.WriteString(c.Stdout, rec)
+		if c.Stdout != nil && slices.Contains(c.Argv, plugin.RecordName) && slices.Contains(c.Argv, "get") && rec != "" {
+			io.WriteString(c.Stdout, `{"data":{"plugins":"`+rec+`"}}`)
 		}
 		return nil
 	}

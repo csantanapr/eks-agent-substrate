@@ -141,7 +141,9 @@ make verify AWS_PROFILE=my-profile AWS_REGION=us-west-2 CLUSTER_NAME=my-cluster
 
 The screens, in order: Welcome, Check your setup (the tools and your AWS
 identity), Choose AWS account, Connect your cluster (the clusters in the
-Region, with an `installed vX`, `partial install` or `ready` badge, or a new
+Region, with an `installed vX`, `partial install` or `ready` badge, or
+`partial install: plugins <ids>` for a cluster without `ate-system` whose
+plugin record still lists plugins, or a new
 one), Choose the database, Settings, Choose plugins, Review the plan, then one
 screen per step, and Complete. Nothing changes in AWS before Review.
 
@@ -154,10 +156,19 @@ screen per step, and Complete. Nothing changes in AWS before Review.
   the release (`SUBSTRATE_TAG`; with the `nitro` class, the fork's, which
   the screen says) and its image repository (`SUBSTRATE_IMAGE_REPO`), and
   the database. A class the cluster cannot have is shown `[–]` with the
-  reason. `m` picks the minimal profile, and clears a chosen plugin that would
-  add a node group (mode3, or one on `system`), naming it. The right side shows the setting's
-  help, taken from the comment above its key in `config.env`, and its
-  default. `n` checks every value and moves on once they are valid.
+  reason. Turning on the `nitro` class without Auto Mode, or Auto Mode off
+  under it, or opening Settings with the class on and Auto Mode off, sets
+  `NITRO_COMPUTE=node-group` and says so; turning it off, or Auto Mode on,
+  puts back the value it replaced. A value you set yourself stays. It puts
+  the value back only within one run: a value a run wrote to
+  `config.local.env` is yours on the next run. With
+  `KARPENTER_NODE_OVERLAY=on`, `node-group` is the `nitro` Karpenter
+  NodePool rather than a node group. `m` picks
+  the minimal profile, and clears a chosen plugin that would add a node
+  group (mode3, or one on `system`), naming it. The right side shows the
+  setting's help, taken from the comment above its key in `config.env`, and
+  its default.
+  `n` checks every value and moves on once they are valid.
   ![Settings](installer/docs/settings.png)
 - **Choose plugins** lists every plugin but `mode3-iso` (the `nitro` class)
   with its time and hourly cost. `space` picks one, and the plugins it needs
@@ -207,7 +218,7 @@ the notes printed on exit.
 | `--image-repo` | `SUBSTRATE_IMAGE_REPO` (`ghcr.io/agent-substrate/substrate`) | Where the release's images come from. |
 | `--sandbox-classes` | `SANDBOX_CLASSES` (`gvisor,microvm`) | The sandbox classes, in any combination of `gvisor`, `microvm` and `nitro` (the AWS Nitro sandbox: Auto Mode, or the `nitro` node group with `--nitro-compute node-group`). They decide a new cluster's node groups. |
 | `--database` | `rds` | `rds` (Amazon RDS for PostgreSQL) or `bundled` (in-cluster PostgreSQL). |
-| `--nitro-compute` | `NITRO_COMPUTE` (`auto-mode`) | Where the `nitro` class runs: `auto-mode` (nodes EKS Auto Mode launches) or `node-group` (the `nitro` node group, from the Nitro Sandbox AMI `NITRO_AMI_ID`). The wizard passes it to the steps that deploy, check or remove `mode3-iso` when it is not the default. |
+| `--nitro-compute` | `NITRO_COMPUTE` (`auto-mode`) | Where the `nitro` class runs: `auto-mode` (nodes EKS Auto Mode launches) or `node-group` (the `nitro` node group, from the Nitro Sandbox AMI `NITRO_AMI_ID`). The wizard passes it to the steps that deploy, check or remove `mode3-iso` when it is not the default. A check or a removal of `mode3-iso` uses the value the cluster recorded at its deploy, when there is one. |
 | `--demo` | off | End the install with the counter demo, and check it. |
 | `--plugins` | none (the wizard preselects `llm-gateway` where the cluster gets the `system` group anyway) | Comma-separated plugin IDs to preselect. |
 | `--dry-run` | off | Walk every screen with simulated commands; nothing touches AWS. |
@@ -309,7 +320,23 @@ too. What a plugin needs from the control plane (a preview gate, a credential
 provider, ingress clients, another Substrate build) is merged into the one
 `ate-setup deploy ate-system` the install runs. The cluster records which
 plugins it runs in ConfigMap `kube-system/substrate-eks-plugins`, so a later
-control plane deploy keeps their needs.
+control plane deploy keeps their needs. Its `plugins` key lists the
+installed plugins. A plugin that follows `NITRO_COMPUTE`
+(`Plugin.FollowsNitroCompute`, only `mode3-iso`) also gets two keys:
+`pending` and `nitro-compute`. Its deploy writes both just before its first
+write: before its AWS half, or when `Deploy` calls `Options.BeforeWrite`
+after its read-only checks, so a refusal there writes nothing. That write
+alone is conditional (`kubectl create`, or `kubectl replace` with the
+`resourceVersion` read): when another run wrote the record in between, it
+reads and checks the record again, up to three tries. `pending`
+moves to `plugins` once its deploy and check pass, and also when a control
+plane deploy that carries it records it. A plugin that the control plane
+deploy recorded first (the wizard's order) is in both keys while its own
+deploy runs. `nitro-compute` is the value it was deployed with, which its
+check and its removal use; the control plane deploy writes none. A deploy
+of any other plugin adds only to `plugins` and keeps the other keys as
+they are, so without `mode3-iso` the record is the one written before. A
+record without the two keys (an older installer's) reads as before.
 
 | ID | Needs | What it adds |
 |---|---|---|
@@ -350,9 +377,10 @@ with control plane needs is refused until the control plane carries them:
 deploy the control plane with it first (`--deploy-control-plane --plugins
 <ids>`, as the wizard does). `remove` goes in reverse order: the Kubernetes
 objects, then `setup-aws plugin <id> --delete`, then the record; with no
-`--plugins` it removes every recorded plugin, and it stops when a recorded
-plugin still requires one being removed. Before it removes anything it runs
-`setup-aws plugin <id> --delete --plan` for every plugin with AWS resources,
+`--plugins` it removes every recorded plugin, installed or pending, and it
+stops when a recorded plugin still requires one being removed. Before it
+removes anything it runs `setup-aws plugin <id> --delete --plan` for every
+plugin with AWS resources,
 and a refusal there (a resource of the plugin's name with another owner)
 stops it with nothing removed.
 
@@ -413,27 +441,27 @@ make teardown CLUSTER_NAME=my-cluster AWS_REGION=us-west-2 AWS_PROFILE=my-profil
 ![Choose what to remove](installer/docs/teardown.png)
 
 You pick what to remove and type the cluster name to confirm. Teardown first
-removes every plugin the cluster records (`kube-system/substrate-eks-plugins`),
-in reverse order: its Kubernetes objects, then its AWS resources (`setup-aws
-plugin <id> --delete`), since their objects run on Substrate and a volume
-they hold would keep the VPC's subnets. Then it removes Substrate from the
-cluster with `ate-setup delete ate-system`, so its volumes and claims are
-released, and deletes in reverse order everything the installer created: Pod Identity associations and roles, the RDS
-instance and its logins, the S3 buckets, the ECR repositories, Karpenter's
-NodePools, nodes, NodeOverlays and AWS resources (`KARPENTER=on`), the node
-groups,
-the cluster, and the launch template, VPC and network. It deletes only
-resources that carry this deployment's owner tag. Every network interface in
-a VPC this installer created is tagged and treated as the deployment's own:
-`create cluster`, `bootstrap`, `create rds` and the `efs`, `s3files` and
-`db-rotation` plugins give each interface there without an owner tag the
-owner tag and `TAGS` (AWS services make most of them, and no create call can
-tag those), leaving one with another deployment's owner tag as it is. So
-teardown deletes an available interface in that VPC, including one you or
-another tool made there; one an AWS service manages is never deleted, and
-teardown waits for it to go with what it belongs to. A second run finds
-nothing to delete. `KEEP_CLUSTER=true` removes Substrate and its AWS data but leaves
-the cluster.
+removes every plugin the cluster records
+(`kube-system/substrate-eks-plugins`), installed or pending, in reverse
+order: its Kubernetes objects, then its AWS resources (`setup-aws plugin
+<id> --delete`), since their objects run on Substrate and a volume they hold
+would keep the VPC's subnets. Then it removes Substrate from the cluster
+with `ate-setup delete ate-system`, so its volumes and claims are released,
+and deletes in reverse order everything the installer created: Pod Identity
+associations and roles, the RDS instance and its logins, the S3 buckets, the
+ECR repositories, Karpenter's NodePools, nodes, NodeOverlays and AWS
+resources (`KARPENTER=on`), the node groups, the cluster, and the launch
+template, VPC and network. It deletes only resources that carry this deployment's owner
+tag. Every network interface in a VPC this installer created is tagged and
+treated as the deployment's own: `create cluster`, `bootstrap`, `create rds`
+and the `efs`, `s3files` and `db-rotation` plugins give each interface there
+without an owner tag the owner tag and `TAGS` (AWS services make most of
+them, and no create call can tag those), leaving one with another
+deployment's owner tag as it is. So teardown deletes an available interface
+in that VPC, including one you or another tool made there; one an AWS
+service manages is never deleted, and teardown waits for it to go with what
+it belongs to. A second run finds nothing to delete. `KEEP_CLUSTER=true`
+removes Substrate and its AWS data but leaves the cluster.
 
 The wizard's Complete screen offers teardown (`t`) and prints the exact
 commands, which also run on their own:
@@ -465,7 +493,7 @@ CloudFormation stacks, so teardown leaves it: run `setup-aws teardown
 | `internal/gcp` | `internal/awsx` | read-only AWS view (identity, clusters) through the SDK, and the installer's own kubeconfig |
 | `internal/gkeoverlay` + `deploy/gke` | `internal/eksoverlay` + `deploy/eks` | adds the EKS kustomize Component to the fetched Substrate tree |
 | `internal/snapshot` (deploy step) | `internal/controlplane` | fetches the pinned tree, runs `ate-setup deploy ate-system`, and removes Substrate on teardown |
-| `internal/snapshot` (probe steps) | `internal/probe` | probes each cluster for `ate-system` and badges it in the picker (`installed vX`, `partial install`, `ready`) |
+| `internal/snapshot` (probe steps) | `internal/probe` | probes each cluster for `ate-system` and badges it in the picker (`installed vX`, `partial install`, `ready`, or `partial install: plugins <ids>` when only the plugin record is left) |
 | `internal/snapshot` (`DeployDemo`, `make run-demo`) | `internal/demo` | the counter demo on gVisor and microVM, and `make verify` |
 | optional steps (Filestore CSI, autoscaling) | `internal/plugin` + `setup-aws plugin <id>` | the plugins: Kubernetes half, check and AWS half each |
 | (none) | `internal/snap` + `docs/render.mjs` | `s` saves the screen; the renderer turns it into a PNG |

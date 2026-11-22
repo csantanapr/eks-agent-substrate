@@ -3,12 +3,14 @@ package ui
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/awsx"
+	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/probe"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/state"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/steps"
@@ -173,7 +175,8 @@ func (m *Model) pick(c awsx.Cluster) tea.Cmd {
 }
 
 // decide routes a verdict: a cluster with an install, whole or partial, is
-// held on the guard (AC5.2), and a clean one is chosen.
+// held on the guard (AC5.2), and a clean one is chosen. So is a record-only
+// one (issue #22), with its record, which Review checks the run against.
 func (m *Model) decide(c awsx.Cluster, res probe.Result) tea.Cmd {
 	switch {
 	case res.Partial():
@@ -182,7 +185,7 @@ func (m *Model) decide(c awsx.Cluster, res probe.Result) tea.Cmd {
 		m.cl.mode = "installed"
 	default:
 		m.cl.mode = "list"
-		m.s.SelectCluster(c, res.Pools, res.NodePools, res.Karpenter)
+		m.s.SelectCluster(c, res.Pools, res.NodePools, res.Karpenter, res.Record())
 		return m.commit()
 	}
 	return nil
@@ -338,7 +341,7 @@ func (m *Model) startRemoval(c awsx.Cluster) tea.Cmd {
 	found := *m.s
 	found.ClusterName = c.Name
 	res := m.cl.probed[c.Name]
-	t := newTask(m.d.RemoveControlPlane(&found), steps.RemoveControlPlane(res.Plugins, res.PluginsRead))
+	t := newTask(m.d.RemoveControlPlane(&found), steps.RemoveControlPlane(res.Removed(), res.PluginsRead))
 	m.cl.removal, m.cl.mode = t, "removing"
 	return m.run(t)
 }
@@ -406,7 +409,7 @@ func (m Model) badge(c awsx.Cluster) string {
 	if !ok {
 		return ""
 	}
-	if res.Installed {
+	if res.Installed || res.RecordOnly() {
 		return theme.Warning.Render(theme.GlyphWarn + " " + res.Badge())
 	}
 	return theme.Good.Render(theme.GlyphDone + " " + c.Badge())
@@ -514,26 +517,41 @@ func (m Model) clusterPanel(cut int) string {
 		if cl.notice != "" {
 			lines = append(lines, theme.Bad.Render(cl.notice))
 		}
+		if res := cl.probed[sel.Name]; res.RecordOnly() {
+			lines = append(lines, para.Render(fmt.Sprintf("%s has no ate-system namespace, and its plugin record (%s/%s) still lists %s. "+
+				"Enter installs here; Review checks the plugins you choose against the record.",
+				sel.Name, plugin.RecordNamespace, plugin.RecordName, res.Recorded())), "")
+		}
 		lines = append(lines, theme.Subtle.Render(fmt.Sprintf("Substrate needs EKS 1.%d or newer (the PodCertificate APIs). * created by this installer.", awsx.MinMinor)))
 	}
 	return "\n" + strings.Join(lines, "\n") + "\n"
 }
 
 // pluginsRemoved names what --remove-control-plane removes before ate-system,
-// as the probe read the plugin record: the recorded plugins, "every
-// installed plugin" when the record could not be read, and "" when it lists
-// none.
+// as the probe read the plugin record: the installed plugins, then the
+// pending ones (a deploy that did not finish) apart, "every installed
+// plugin" when the record could not be read, and "" when it lists none.
 func pluginsRemoved(r probe.Result) string {
-	switch n := len(r.Plugins); {
-	case !r.PluginsRead:
+	if !r.PluginsRead {
 		return "every installed plugin"
-	case n == 0:
-		return ""
-	case n == 1:
-		return "the installed plugin " + r.Plugins[0]
-	default:
-		return "the installed plugins " + strings.Join(r.Plugins[:n-1], ", ") + " and " + r.Plugins[n-1]
 	}
+	var parts []string
+	for _, l := range []struct {
+		kind string
+		ids  []string
+	}{
+		{"installed", r.Plugins},
+		{"pending", slices.DeleteFunc(slices.Clone(r.Pending), func(id string) bool { return slices.Contains(r.Plugins, id) })},
+	} {
+		switch n := len(l.ids); n {
+		case 0:
+		case 1:
+			parts = append(parts, "the "+l.kind+" plugin "+l.ids[0])
+		default:
+			parts = append(parts, "the "+l.kind+" plugins "+strings.Join(l.ids[:n-1], ", ")+" and "+l.ids[n-1])
+		}
+	}
+	return strings.Join(parts, " and ")
 }
 
 // removalText is what t does on a guarded cluster, after "t ".
