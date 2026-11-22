@@ -141,7 +141,9 @@ make verify AWS_PROFILE=my-profile AWS_REGION=us-west-2 CLUSTER_NAME=my-cluster
 
 The screens, in order: Welcome, Check your setup (the tools and your AWS
 identity), Choose AWS account, Connect your cluster (the clusters in the
-Region, with an `installed vX`, `partial install` or `ready` badge, or a new
+Region, with an `installed vX`, `partial install` or `ready` badge, or
+`partial install: plugins <ids>` for a cluster without `ate-system` whose
+plugin record still lists plugins, or a new
 one), Choose the database, Settings, Choose plugins, Review the plan, then one
 screen per step, and Complete. Nothing changes in AWS before Review.
 
@@ -472,7 +474,7 @@ CloudFormation stacks, so teardown leaves it: run `setup-aws teardown
 | `internal/gcp` | `internal/awsx` | read-only AWS view (identity, clusters) through the SDK, and the installer's own kubeconfig |
 | `internal/gkeoverlay` + `deploy/gke` | `internal/eksoverlay` + `deploy/eks` | adds the EKS kustomize Component to the fetched Substrate tree |
 | `internal/snapshot` (deploy step) | `internal/controlplane` | fetches the pinned tree, runs `ate-setup deploy ate-system`, and removes Substrate on teardown |
-| `internal/snapshot` (probe steps) | `internal/probe` | probes each cluster for `ate-system` and badges it in the picker (`installed vX`, `partial install`, `ready`) |
+| `internal/snapshot` (probe steps) | `internal/probe` | probes each cluster for `ate-system` and badges it in the picker (`installed vX`, `partial install`, `ready`, or `partial install: plugins <ids>` when only the plugin record is left) |
 | `internal/snapshot` (`DeployDemo`, `make run-demo`) | `internal/demo` | the counter demo on gVisor and microVM, and `make verify` |
 | optional steps (Filestore CSI, autoscaling) | `internal/plugin` + `setup-aws plugin <id>` | the plugins: Kubernetes half, check and AWS half each |
 | (none) | `internal/snap` + `docs/render.mjs` | `s` saves the screen; the renderer turns it into a PNG |

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin"
 )
 
 // fakeKubectl answers by the resource kind in the argv; a kind mapped to an
@@ -93,7 +95,6 @@ func TestFailedReadsAreErrors(t *testing.T) {
 // Both ways: the plugin record is read, on a full or a partial install, and
 // its plugins reported (none when the record is missing); a failed read
 // leaves them unknown, never "none", and the cluster still reads installed.
-// An absent cluster's record is not read.
 func TestInstalledPluginsAreReadFromTheRecord(t *testing.T) {
 	full := map[string]string{"namespace": "ate-system", "daemonset": "daemonset.apps/atelet",
 		"deployment": "ghcr.io/x/ate-api-server:v1.0.0", "configmap": recordJSON("mode3,efs")}
@@ -113,8 +114,74 @@ func TestInstalledPluginsAreReadFromTheRecord(t *testing.T) {
 	if r.PluginsRead || len(r.Plugins) != 0 || !r.Installed || r.Version != "v1.0.0" {
 		t.Errorf("an unreadable record read as %+v, want unknown plugins on an installed cluster", r)
 	}
-	if line, _ := Check(context.Background(), fakeKubectl(map[string]string{"configmap": recordJSON("efs")}, nil)); strings.Contains(line, "plugins") {
-		t.Errorf("absent cluster: %q", line)
+}
+
+func init() {
+	plugin.Register(plugin.Plugin{ID: "probe-test-iso", Order: 1, FollowsNitroCompute: true})
+}
+
+// countingKubectl is k, counting its calls in n.
+func countingKubectl(k Kubectl, n *int) Kubectl {
+	return func(ctx context.Context, args ...string) (string, error) {
+		*n++
+		return k(ctx, args...)
+	}
+}
+
+// Issue #22, both ways: without ate-system, a record that lists plugins,
+// installed or pending, is read and reported with its NITRO_COMPUTE, and the
+// cluster reads record-only, badged with what the record lists; it is not
+// installed and not partial, so the install goes on there. No record, or
+// one that lists no plugin, gives the line written before, byte for byte,
+// and "ready". The probe makes one kubectl call more than before: three.
+func TestARecordWithoutTheControlPlaneIsReported(t *testing.T) {
+	absent := func(rec string) map[string]string {
+		return map[string]string{"nodes": "system nitro", "configmap": rec}
+	}
+	n := 0
+	line, err := Check(context.Background(), countingKubectl(fakeKubectl(absent(
+		`{"data":{"plugins":"efs","pending":"probe-test-iso","nitro-compute":"node-group","future-key":"x"}}`), nil), &n))
+	if want := Marker + "false pools=nitro,system plugins=efs pending=probe-test-iso nitro-compute=node-group unknown=future-key"; err != nil || line != want || n != 3 {
+		t.Fatalf("record-only: %q (%v, %d calls), want %q", line, err, n, want)
+	}
+	r, err := ParseInstalled([]string{line})
+	if err != nil || r.Installed || r.Partial() || !r.RecordOnly() || !r.PluginsRead || r.NitroCompute != plugin.NitroNodeGroup ||
+		strings.Join(r.Unknown, ",") != "future-key" || r.Record().CheckKeys() == nil ||
+		strings.Join(r.Removed(), ",") != "efs,probe-test-iso" || !r.Record().Equal(plugin.Record{Plugins: []string{"efs"}, Pending: []string{"probe-test-iso"}, NitroCompute: plugin.NitroNodeGroup}) {
+		t.Errorf("record-only read as %+v (%v)", r, err)
+	}
+	if got, want := r.Badge(), "partial install: plugins efs, probe-test-iso"; got != want {
+		t.Errorf("badge %q, want %q", got, want)
+	}
+	if got, want := r.Recorded(), "efs, probe-test-iso (pending, node-group)"; got != want {
+		t.Errorf("recorded %q, want %q", got, want)
+	}
+	// Installed only, and the NITRO_COMPUTE only on the plugin that follows it.
+	r = checkThenParse(t, fakeKubectl(absent(`{"data":{"plugins":"efs,probe-test-iso","nitro-compute":"auto-mode"}}`), nil))
+	if got, want := r.Recorded(), "efs, probe-test-iso (auto-mode)"; !r.RecordOnly() || got != want {
+		t.Errorf("installed only: %+v, recorded %q, want %q", r, got, want)
+	}
+	for name, rec := range map[string]string{"no record": "", "no plugin": `{"data":{"plugins":"","nitro-compute":"auto-mode"}}`} {
+		n = 0
+		line, err := Check(context.Background(), countingKubectl(fakeKubectl(absent(rec), nil), &n))
+		if err != nil || line != Marker+"false pools=nitro,system" || n != 3 {
+			t.Errorf("%s: %q (%v, %d calls)", name, line, err, n)
+		}
+		if r := checkThenParse(t, fakeKubectl(absent(rec), nil)); r.RecordOnly() || r.Badge() != "ready" {
+			t.Errorf("%s read as %+v (%s)", name, r, r.Badge())
+		}
+	}
+}
+
+// Without ate-system the record read is not best effort: a denied read, or
+// one that cannot be parsed, stops the probe as a failed namespace read
+// does, since only the record tells such a cluster from a clean one.
+func TestAFailedRecordReadWithoutTheControlPlaneIsAnError(t *testing.T) {
+	if line, err := Check(context.Background(), fakeKubectl(map[string]string{}, map[string]error{"configmap": errors.New("Forbidden")})); err == nil {
+		t.Errorf("denied record read: %q", line)
+	}
+	if line, err := Check(context.Background(), fakeKubectl(map[string]string{"configmap": "efs"}, nil)); err == nil {
+		t.Errorf("unparsable record: %q", line)
 	}
 }
 
@@ -192,7 +259,8 @@ func TestImageTagVersion(t *testing.T) {
 
 // The dry run's fixtures cover each badge.
 func TestSimLinesCoverEveryState(t *testing.T) {
-	for name, want := range map[string]string{"x-installed": "installed v1.0.0", "x-partial": "partial install", "x": "ready"} {
+	for name, want := range map[string]string{"x-installed": "installed v1.0.0", "x-partial": "partial install",
+		"x-leftover": "partial install: plugins efs, mode3-iso", "x": "ready"} {
 		r, err := ParseInstalled([]string{SimLine(name)})
 		if err != nil || r.Badge() != want {
 			t.Errorf("%s: %+v %v, want %s", name, r, err, want)

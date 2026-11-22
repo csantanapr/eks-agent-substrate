@@ -134,6 +134,13 @@ or create a new one:
 
 ![Connect your cluster: the EKS clusters in the Region with their version and install badges, and Create a new cluster](native/installer/docs/cluster.png)
 
+A cluster without the `ate-system` namespace whose plugin record (ConfigMap
+`kube-system/substrate-eks-plugins`) still lists plugins, for example after
+a manual `ate-setup delete`, reads `partial install: plugins <ids>`. The
+wizard installs there as on a clean cluster. Its Review screen refuses a
+chosen plugin whose recorded `NITRO_COMPUTE` is not the run's, before
+anything runs.
+
 **Settings** edits what `config.env` controls for this run: the new
 cluster's Kubernetes version, Auto Mode and API access ranges, the sandbox
 classes (gVisor, microVM and the AWS Nitro sandbox), the node groups those
@@ -384,7 +391,9 @@ remove` remove a `node-group` deployment the `node-group` way with no
 
 A deploy of `mode3-iso` with another `NITRO_COMPUTE` than the recorded one
 is refused, since the objects of the first would stay behind. So is a
-control plane step that carries `mode3-iso`, before it runs `ate-setup`.
+control plane step that carries `mode3-iso`, before it runs `ate-setup`. On
+a cluster without `ate-system` whose record still lists `mode3-iso`, the
+wizard's Review screen refuses it before anything runs.
 Deploy it with the recorded value, or move it to the new one:
 
 1. Remove it with `--plugin-action remove --plugins mode3-iso`. This uses

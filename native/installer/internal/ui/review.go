@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"cmp"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -147,10 +148,54 @@ func (m Model) settingsErr() error {
 	return plugin.CheckSettings(resolved(m.s.InstallPlugins()), m.d.Config.Lookup)
 }
 
+// nitroRecordErr is the control plane step's record check
+// (plugin.CheckNitroRecord) made on Review, from the record the probe read
+// on a record-only cluster (Setup.ClusterRecord, issue #22): a chosen plugin
+// that follows NITRO_COMPUTE and was deployed with another one than the
+// run's, or with one this installer does not know, is refused with the same
+// ways out. That step runs after Provision and RDS, so the install is
+// stopped here instead. A plugin the record holds no NITRO_COMPUTE for is
+// not refused. shortcut: the text mirrors the plugin package's, which it
+// cannot call without kubectl; reuse it if that package exports a check of
+// a Record.
+func (m Model) nitroRecordErr() error {
+	s := m.s
+	run := cmp.Or(s.NewClusterConfig.NitroCompute, plugin.NitroAutoMode)
+	where := plugin.RecordNamespace + "/" + plugin.RecordName
+	for _, p := range resolved(s.InstallPlugins()) {
+		rec := s.ClusterRecord.NitroComputeOf(p)
+		if rec == "" || rec == run {
+			continue
+		}
+		if plugin.CheckNitroCompute(rec) != nil {
+			return fmt.Errorf("plugin %s: %s records %s=%q, which is not %s: this installer cannot deploy, check or remove it",
+				p.ID, where, plugin.NitroComputeKey, rec, strings.Join(plugin.NitroComputes, " or "))
+		}
+		return fmt.Errorf("plugin %s was deployed with NITRO_COMPUTE=%s (recorded in %s), not %s: run the wizard with --nitro-compute %s, "+
+			"or remove it first with substrate-eks --plugin-action remove --plugins %s --cluster %s --region %s (which removes it with NITRO_COMPUTE=%s), "+
+			"then run the wizard again",
+			p.ID, rec, where, run, rec, p.ID, s.ClusterName, s.Region, rec)
+	}
+	return nil
+}
+
+// startErr is why y cannot start the install, or nil.
+func (m Model) startErr() error {
+	if err := m.settingsErr(); err != nil {
+		return err
+	}
+	// The control plane step refuses it too (controlplane.resolvePlugins),
+	// but only after Provision and RDS.
+	if err := m.s.ClusterRecord.CheckKeys(); err != nil {
+		return err
+	}
+	return m.nitroRecordErr()
+}
+
 func (m *Model) reviewKey(msg tea.KeyMsg) tea.Cmd {
 	switch msg.String() {
 	case "y":
-		if err := m.settingsErr(); err != nil {
+		if err := m.startErr(); err != nil {
 			m.notice = "nothing started: " + err.Error()
 			return nil
 		}
@@ -272,7 +317,7 @@ func (m Model) reviewView(h int) string {
 	}
 	headline, cost := costLine(plan, s.Region)
 	start := "Press " + theme.Key.Render("y") + " to start."
-	if err := m.settingsErr(); err != nil {
+	if err := m.startErr(); err != nil {
 		start = theme.Warning.Render("Nothing can start: " + err.Error())
 	}
 	view := func(body []string) string {
