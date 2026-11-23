@@ -225,7 +225,7 @@ func (m *Model) stopTask(t *task) tea.Cmd {
 func (m *Model) longStep(st state.Step) (func(*state.Setup) execx.Spec, []steps.ChecklistItem, bool) {
 	switch st {
 	case state.CreateCluster:
-		return m.d.CreateCluster, steps.Cluster(m.s.NewClusterConfig.NodeGroupType), true
+		return m.d.CreateCluster, steps.Cluster(m.s.NewClusterConfig.NodeGroupType, m.s.NewClusterConfig.KarpenterOn()), true
 	case state.Provision:
 		return m.d.Bootstrap, steps.Bootstrap(), true
 	case state.RDS:
@@ -697,6 +697,17 @@ func (m Model) body(h, cut int) string {
 		if len(groups) > 0 {
 			what = "VPC, IAM roles, EKS cluster " + m.s.ClusterName + " and its " + andList(groups) + " node group"
 			if len(groups) > 1 {
+				what += "s"
+			}
+		}
+		// With KARPENTER=on the gvisor group is a NodePool.
+		if ngs, pools := m.s.NewClusterConfig.SplitPools(groups); len(pools) > 0 {
+			what = "VPC, IAM roles, EKS cluster " + m.s.ClusterName + ", its " + andList(ngs) + " node group"
+			if len(ngs) > 1 {
+				what += "s"
+			}
+			what += " and Karpenter's " + andList(pools) + " NodePool"
+			if len(pools) > 1 {
 				what += "s"
 			}
 		}

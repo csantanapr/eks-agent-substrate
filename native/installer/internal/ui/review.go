@@ -10,6 +10,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/csantanapr/eks-agent-substrate/native/tools/setup-aws/nodegroups"
+
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/plugin"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/state"
 	"github.com/csantanapr/eks-agent-substrate/native/installer/internal/theme"
@@ -52,8 +54,24 @@ var nodeDiskGB = map[string]float64{"SYSTEM": 100, "GVISOR": 200, "MICROVM": 200
 // clusterHourly is what a new cluster costs an hour: the control plane, the
 // NAT gateway, and the nodes of groups (the node groups it gets) with their
 // gp3 volumes. unknown names an instance type that is not in the price list.
+// With KARPENTER=on the gvisor group is a NodePool, which costs nothing
+// with no node: it is left out here, and poolsHourly prices it at its node
+// limit.
 func clusterHourly(c state.ClusterConfig, groups []string) (usd float64, unknown string) {
-	usd = eksHourly + natHourly
+	groups, _ = c.SplitPools(groups)
+	return nodesHourly(c, groups, eksHourly+natHourly)
+}
+
+// poolsHourly is what the Karpenter NodePools of groups cost an hour at
+// their node limits (*_NODES), with KARPENTER=on, and 0 without.
+func poolsHourly(c state.ClusterConfig, groups []string) (usd float64, unknown string) {
+	_, pools := c.SplitPools(groups)
+	return nodesHourly(c, pools, 0)
+}
+
+// nodesHourly is usd plus what the nodes of groups and their gp3 volumes
+// cost an hour, or the instance type with no price.
+func nodesHourly(c state.ClusterConfig, groups []string, usd float64) (float64, string) {
 	for _, g := range groups {
 		nodes, typ := c.Group(g)
 		n, _ := strconv.Atoi(nodes)
@@ -73,6 +91,10 @@ type planStep struct {
 	summary bool // display names the step rather than a command to paste
 	minutes int
 	hourly  float64
+	// upTo is what the step's Karpenter NodePools (pools of them) add an
+	// hour at their node limits: the step costs from hourly to hourly+upTo.
+	upTo  float64
+	pools int
 	// unknown names an instance type with no price, for the cost note.
 	unknown string
 }
@@ -95,6 +117,11 @@ func (m Model) plan() []planStep {
 		switch st {
 		case state.CreateCluster:
 			p.hourly, p.unknown = clusterHourly(m.s.NewClusterConfig, m.s.NodeGroups())
+			if p.unknown == "" {
+				p.upTo, p.unknown = poolsHourly(m.s.NewClusterConfig, m.s.NodeGroups())
+				_, pools := m.s.NewClusterConfig.SplitPools(m.s.NodeGroups())
+				p.pools = len(pools)
+			}
 		case state.RDS:
 			p.hourly = rdsHourly + rdsStorageGB*gp3PerGBMonth/hoursPerMonth
 		case state.InstallPlugins, state.NitroSandbox:
@@ -122,21 +149,33 @@ func (m Model) plan() []planStep {
 // headline that says whether the run creates anything billed by the hour.
 func costLine(plan []planStep, region string) (headline, cost string) {
 	headline = "This creates billable AWS resources."
-	total := 0.0
+	total, upTo, n := 0.0, 0.0, 0
 	for _, p := range plan {
 		if p.unknown != "" {
 			return headline, "Cost: see the AWS Pricing Calculator for " + p.unknown + " (not in this installer's price list)."
 		}
 		total += p.hourly
+		upTo += p.upTo
+		n += p.pools
 	}
 	if total == 0 {
 		return "This creates AWS resources, none of them billed by the hour.", "Cost: S3 and ECR storage only, on top of the cluster you already run."
 	}
 	s := fmt.Sprintf("Cost: about $%.2f an hour ($%.0f a day) until teardown, on-demand", total, total*24)
-	if region != priceRegion {
-		return headline, s + ", at " + priceRegion + " prices; see the AWS Pricing Calculator for " + region + "."
+	// The Karpenter NodePools cost from $0, with no node, to their limits.
+	pools := ""
+	if upTo > 0 {
+		s = fmt.Sprintf("Cost: about $%.2f to $%.2f an hour ($%.0f to $%.0f a day) until teardown, on-demand",
+			total, total+upTo, total*24, (total+upTo)*24)
+		pools = fmt.Sprintf(" The Karpenter NodePool costs $0 with no node, and up to $%.2f an hour at its node limit.", upTo)
+		if n > 1 {
+			pools = fmt.Sprintf(" The Karpenter NodePools cost $0 with no node, and up to $%.2f an hour at their node limits.", upTo)
+		}
 	}
-	return headline, s + ", " + priceRegion + "."
+	if region != priceRegion {
+		return headline, s + ", at " + priceRegion + " prices; see the AWS Pricing Calculator for " + region + "." + pools
+	}
+	return headline, s + ", " + priceRegion + "." + pools
 }
 
 // settingsErr is the first setting a chosen plugin refuses (its Check), read
@@ -273,14 +312,38 @@ func (m Model) reviewView(h int) string {
 	} else if len(s.NodeGroups()) == 0 {
 		groups = "No node groups: everything runs on EKS Auto Mode nodes"
 	}
+	// Karpenter's NodePools get a line of their own, shown only with
+	// Karpenter.
+	karpenter := ""
+	if ngs, pools := s.NewClusterConfig.SplitPools(s.NodeGroups()); s.ClusterIsNew && len(pools) > 0 {
+		groups = "Node groups: " + s.NewClusterConfig.GroupsLine(ngs)
+		karpenter = "Karpenter " + nodegroups.KarpenterVersion + " " + s.NewClusterConfig.PoolsLine(pools)
+		// KARPENTER_NODE_OVERLAY's NodeOverlays, an alpha API, said first:
+		// the line is cut at the screen's width.
+		if s.NewClusterConfig.NodeOverlayOn() {
+			karpenter = "Karpenter " + nodegroups.KarpenterVersion + " with NodeOverlay (alpha) " + s.NewClusterConfig.PoolsLine(pools)
+		}
+	}
+	if ngs, pools := s.ConnectedGroups(); !s.ClusterIsNew && s.Karpenter() {
+		karpenter = "Karpenter on the cluster, with no NodePool of this installer"
+		if len(pools) > 0 {
+			groups = "Node groups on the cluster: " + strings.Join(ngs, ", ")
+			karpenter = "Karpenter NodePools on the cluster: " + strings.Join(pools, ", ")
+		}
+	}
 	head := []string{
 		theme.Title.Render("Review the plan") + "  " + theme.Subtle.Render("nothing has run yet"),
 		theme.Subtle.Render(truncate(fmt.Sprintf("Cluster %s (%s) · EKS %s · %s · %s", s.ClusterName, what, s.ClusterVersion, auto, s.Region), w)),
 		theme.Subtle.Render(truncate(groups, w)),
+	}
+	if karpenter != "" {
+		head = append(head, theme.Subtle.Render(truncate(karpenter, w)))
+	}
+	head = append(head,
 		theme.Subtle.Render(truncate(fmt.Sprintf("Substrate %s · classes %s · database %s · plugins: %s · demo: %s",
 			plugin.ChosenRelease(s.InstallPlugins(), s.SubstrateTag, s.ImageRepo).Tag, s.SandboxClasses, s.Database, plugins, demo), w)),
-		theme.Title.Render(pad("   Step", w-24)) + theme.Title.Render(fmt.Sprintf("%8s  %12s", "Time", "Cost an hour")),
-	}
+		theme.Title.Render(pad("   Step", w-24))+theme.Title.Render(fmt.Sprintf("%8s  %12s", "Time", "Cost an hour")),
+	)
 
 	total := 0
 	rows := func(wrap bool) []string {
@@ -291,6 +354,9 @@ func (m Model) reviewView(h int) string {
 			cost := "–"
 			if p.hourly > 0 {
 				cost = fmt.Sprintf("$%.2f", p.hourly)
+			}
+			if p.upTo > 0 {
+				cost = fmt.Sprintf("$%.2f–%.2f", p.hourly, p.hourly+p.upTo)
 			}
 			out = append(out, pad(fmt.Sprintf("%2d %s", i+1, p.step.Title()), w-24)+fmt.Sprintf("%8s  %12s", fmt.Sprintf("~%d min", p.minutes), cost))
 			cmd := p.display

@@ -360,12 +360,13 @@ func simChecks() []doctor.Check {
 }
 
 // runDemo is --deploy-demo and --verify on o's cluster: the counter demo on
-// the classes it has (gvisor, microvm), each refused when the cluster has no
-// node of its node group, and with --verify each class a plugin installs
-// (the AWS Nitro sandbox) through that plugin's check, its counter pool,
-// which the class's own step deployed.
+// the classes it has (gvisor, microvm), each refused when the cluster has
+// neither a node of its node group nor a Karpenter NodePool for it, and
+// with --verify each class a plugin installs (the AWS Nitro sandbox)
+// through that plugin's check, its counter pool, which the class's own step
+// deployed.
 func runDemo(ctx context.Context, o plugin.Options, do demo.Options, classes string, deploy, verify bool) error {
-	do.Tag, do.ImageRepo, do.Tree = o.Tag, o.ImageRepo, o.Tree
+	do = demoOptions(o, do)
 	for _, c := range state.DemoClasses(classes) {
 		if !slices.Contains(o.Pools, c) {
 			return fmt.Errorf("the counter demo on %s runs on the %s node group, and %s has no node labeled %s=%s", c, c, o.Cluster, plugin.PoolLabel, c)
@@ -394,6 +395,13 @@ func runDemo(ctx context.Context, o plugin.Options, do demo.Options, classes str
 		}
 	}
 	return nil
+}
+
+// demoOptions is do on o's release, with the CPU architectures of o's pools
+// that have a Karpenter NodePool and no node yet.
+func demoOptions(o plugin.Options, do demo.Options) demo.Options {
+	do.Tag, do.ImageRepo, do.Tree, do.PoolArchs = o.Tag, o.ImageRepo, o.Tree, o.PoolArchs
+	return do
 }
 
 // runPlugins is --plugin-action: the plugins, on the install's release
@@ -459,11 +467,14 @@ func clusterRelease(ctx context.Context, o plugin.Options, chosen []string, depl
 	if err := awsx.WriteKubeconfig(o.Kubeconfig, cl, o.Region, o.Profile); err != nil {
 		return o, err
 	}
-	// The node groups the cluster's nodes come from: plugin.Run refuses a
-	// plugin pinned to one it lacks.
-	if o.Pools, err = plugin.NodePools(ctx, os.Stdout, o); err != nil {
+	// The node groups the cluster's nodes and Karpenter NodePools come
+	// from: plugin.Run refuses a plugin pinned to one it lacks, and one that
+	// cannot run on Karpenter's nodes on a node group that is a NodePool.
+	inv, err := plugin.NodePools(ctx, os.Stdout, o)
+	if err != nil {
 		return o, err
 	}
+	o = o.WithInventory(inv)
 	if o.Release, err = plugin.ReadRelease(ctx, os.Stdout, o, chosen); err != nil {
 		return o, err
 	}

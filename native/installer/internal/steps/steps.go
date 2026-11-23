@@ -60,9 +60,10 @@ func FromPhases(list []string) []ChecklistItem {
 func Bootstrap() []ChecklistItem { return FromPhases(phases.Bootstrap) }
 
 // Cluster tracks `setup-aws create cluster` for a node group type
-// (NODE_GROUP_TYPE): the node group rows differ.
-func Cluster(nodeGroupType string) []ChecklistItem {
-	return FromPhases(phases.ClusterFor(nodeGroupType))
+// (NODE_GROUP_TYPE), whose node group rows differ, and KARPENTER=on
+// (karpenter), which adds Karpenter's two rows at the end.
+func Cluster(nodeGroupType string, karpenter bool) []ChecklistItem {
+	return FromPhases(phases.ClusterFor(nodeGroupType, karpenter))
 }
 
 // RDS tracks `setup-aws create rds`.

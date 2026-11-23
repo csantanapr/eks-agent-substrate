@@ -47,10 +47,17 @@ type Result struct {
 	// Unknown are the record's data keys this installer does not know, on a
 	// record-only cluster (plugin.Record.Unknown), which Review refuses.
 	Unknown []string
-	// Pools are the ate.dev/pool values of the cluster's nodes (plugin
-	// PoolsArgs): the node groups a connected cluster has, which decide the
-	// sandbox classes and plugins the wizard offers on it.
+	// Pools are the ate.dev/pool values of the cluster's nodes and of the
+	// Karpenter NodePools this installer made (plugin.ReadInventory): the
+	// node groups a connected cluster has, which decide the sandbox classes
+	// and plugins the wizard offers on it.
 	Pools []string
+	// NodePools are the pools of Pools that are Karpenter NodePools: the
+	// wizard does not offer a plugin with NoKarpenter on one of them.
+	NodePools []string
+	// Karpenter reports the Karpenter AWS provider on the cluster (the CRD
+	// ec2nodeclasses.karpenter.k8s.aws), which Review names.
+	Karpenter bool
 }
 
 // Removed are the plugins --remove-control-plane removes first: the
@@ -118,21 +125,32 @@ type Kubectl func(ctx context.Context, args ...string) (string, error)
 // reporting "absent": a cluster the probe cannot read has not been shown to
 // be free of Substrate. So does a failed record read on a cluster without
 // ate-system. The image read is best effort, as in substrate-gke, and so is
-// the record read on a cluster with ate-system. It runs three kubectl
-// commands on a cluster without ate-system (namespace, nodes, record), four
-// with ate-system and no atelet, and five with both.
+// the record read on a cluster with ate-system. It runs the namespace read,
+// then ReadInventory's two or three (nodes, Karpenter's CRDs, and the
+// installer's NodePools when nodepools.karpenter.sh exists), then the record
+// on a cluster without ate-system: four or five kubectl commands. With
+// ate-system and no atelet it runs the DaemonSet and record reads instead of
+// the record alone (five or six), and with both also the image (six or
+// seven).
 func Check(ctx context.Context, kubectl Kubectl) (string, error) {
 	ns, err := kubectl(ctx, "get", "namespace", "ate-system", "--ignore-not-found", "-o", "jsonpath={.metadata.name}")
 	if err != nil {
 		return "", err
 	}
-	// The node groups, which the wizard checks the sandbox classes against;
-	// like the namespace, a failed read stops the probe.
-	nodes, err := kubectl(ctx, plugin.PoolsArgs...)
+	// The node groups and Karpenter NodePools, which the wizard checks the
+	// sandbox classes against; like the namespace, a failed read stops the
+	// probe. The NodePools and Karpenter are named only when there are any.
+	inv, err := plugin.ReadInventory(ctx, plugin.Reader(kubectl))
 	if err != nil {
 		return "", err
 	}
-	pools := " pools=" + strings.Join(plugin.ParsePools(nodes), ",")
+	pools := " pools=" + strings.Join(inv.Pools(), ",")
+	if np := inv.NodePoolNames(); len(np) > 0 {
+		pools += " nodepools=" + strings.Join(np, ",")
+	}
+	if inv.Karpenter {
+		pools += " karpenter"
+	}
 	if strings.TrimSpace(ns) == "" {
 		// Without ate-system the record is still read (issue #22): one left
 		// behind by a manual ate-setup delete makes a record-only cluster,
@@ -216,6 +234,10 @@ func ParseInstalled(lines []string) (Result, error) {
 			switch k, v, _ := strings.Cut(f, "="); k {
 			case "pools":
 				r.Pools = plugin.ParsePools(strings.ReplaceAll(v, ",", " "))
+			case "nodepools":
+				r.NodePools = plugin.ParsePools(strings.ReplaceAll(v, ",", " "))
+			case "karpenter":
+				r.Karpenter = true
 			case "atelet":
 				r.Atelet = true
 			case "image":

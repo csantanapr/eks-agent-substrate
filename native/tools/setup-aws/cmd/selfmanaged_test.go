@@ -181,8 +181,8 @@ func TestCreateClusterManagedAddingAGroupReadsTheAutoScalingGroupsOnce(t *testin
 }
 
 func TestPhasesClusterForEachType(t *testing.T) {
-	sm := phases.ClusterFor(nodegroups.SelfManaged)
-	if !slices.Equal(phases.ClusterFor(nodegroups.Managed), phases.Cluster) || !slices.Equal(phases.ClusterFor(""), phases.Cluster) {
+	sm := phases.ClusterFor(nodegroups.SelfManaged, false)
+	if !slices.Equal(phases.ClusterFor(nodegroups.Managed, false), phases.Cluster) || !slices.Equal(phases.ClusterFor("", false), phases.Cluster) {
 		t.Error("managed (or unset) is not phases.Cluster")
 	}
 	if len(sm) != len(phases.Cluster) || !slices.Equal(sm[:7], phases.Cluster[:7]) ||
@@ -291,7 +291,7 @@ func TestCreateClusterSelfManaged(t *testing.T) {
 			t.Errorf("add-on %s is %s", aws.ToString(a.AddonName), a.Status)
 		}
 	}
-	sm := phases.ClusterFor(nodegroups.SelfManaged)
+	sm := phases.ClusterFor(nodegroups.SelfManaged, false)
 	for i := range sm {
 		if !strings.Contains(logs.String(), phases.Line(sm, i)) {
 			t.Errorf("no line %q", phases.Line(sm, i))

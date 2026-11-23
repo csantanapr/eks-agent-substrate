@@ -90,6 +90,11 @@ func TestFailedReadsAreErrors(t *testing.T) {
 			t.Errorf("%s read failed but Check returned %q", kind, line)
 		}
 	}
+	// The nodes' read fails with kubectl's own error, as before Karpenter.
+	k := fakeKubectl(nil, map[string]error{"nodes": errors.New("kubectl get nodes: Unauthorized")})
+	if _, err := Check(context.Background(), k); err == nil || err.Error() != "kubectl get nodes: Unauthorized" {
+		t.Errorf("nodes read: %v", err)
+	}
 }
 
 // Both ways: the plugin record is read, on a full or a partial install, and
@@ -133,7 +138,10 @@ func countingKubectl(k Kubectl, n *int) Kubectl {
 // cluster reads record-only, badged with what the record lists; it is not
 // installed and not partial, so the install goes on there. No record, or
 // one that lists no plugin, gives the line written before, byte for byte,
-// and "ready". The probe makes one kubectl call more than before: three.
+// and "ready". The probe makes one kubectl call more than before: four
+// (namespace, nodes, Karpenter's CRDs, record), and five with the NodePool
+// CRD, whose NodePools it also reads. A record-only cluster with Karpenter
+// NodePools gets both sets of fields on its line.
 func TestARecordWithoutTheControlPlaneIsReported(t *testing.T) {
 	absent := func(rec string) map[string]string {
 		return map[string]string{"nodes": "system nitro", "configmap": rec}
@@ -141,7 +149,7 @@ func TestARecordWithoutTheControlPlaneIsReported(t *testing.T) {
 	n := 0
 	line, err := Check(context.Background(), countingKubectl(fakeKubectl(absent(
 		`{"data":{"plugins":"efs","pending":"probe-test-iso","nitro-compute":"node-group","future-key":"x"}}`), nil), &n))
-	if want := Marker + "false pools=nitro,system plugins=efs pending=probe-test-iso nitro-compute=node-group unknown=future-key"; err != nil || line != want || n != 3 {
+	if want := Marker + "false pools=nitro,system plugins=efs pending=probe-test-iso nitro-compute=node-group unknown=future-key"; err != nil || line != want || n != 4 {
 		t.Fatalf("record-only: %q (%v, %d calls), want %q", line, err, n, want)
 	}
 	r, err := ParseInstalled([]string{line})
@@ -164,12 +172,24 @@ func TestARecordWithoutTheControlPlaneIsReported(t *testing.T) {
 	for name, rec := range map[string]string{"no record": "", "no plugin": `{"data":{"plugins":"","nitro-compute":"auto-mode"}}`} {
 		n = 0
 		line, err := Check(context.Background(), countingKubectl(fakeKubectl(absent(rec), nil), &n))
-		if err != nil || line != Marker+"false pools=nitro,system" || n != 3 {
+		if err != nil || line != Marker+"false pools=nitro,system" || n != 4 {
 			t.Errorf("%s: %q (%v, %d calls)", name, line, err, n)
 		}
 		if r := checkThenParse(t, fakeKubectl(absent(rec), nil)); r.RecordOnly() || r.Badge() != "ready" {
 			t.Errorf("%s read as %+v (%s)", name, r, r.Badge())
 		}
+	}
+	karp := absent(`{"data":{"plugins":"","pending":"probe-test-iso","nitro-compute":"node-group"}}`)
+	karp["crd"] = "customresourcedefinition.apiextensions.k8s.io/nodepools.karpenter.sh\ncustomresourcedefinition.apiextensions.k8s.io/ec2nodeclasses.karpenter.k8s.aws\n"
+	karp["nodepools.karpenter.sh"] = `{"items":[{"spec":{"template":{"metadata":{"labels":{"ate.dev/pool":"gvisor"}}}}}]}`
+	n = 0
+	line, err = Check(context.Background(), countingKubectl(fakeKubectl(karp, nil), &n))
+	if want := Marker + "false pools=gvisor,nitro,system nodepools=gvisor karpenter plugins= pending=probe-test-iso nitro-compute=node-group"; err != nil || line != want || n != 5 {
+		t.Fatalf("record-only with Karpenter: %q (%v, %d calls), want %q", line, err, n, want)
+	}
+	if r := checkThenParse(t, fakeKubectl(karp, nil)); !r.RecordOnly() || !r.Karpenter || strings.Join(r.NodePools, ",") != "gvisor" ||
+		strings.Join(r.Pools, ",") != "gvisor,nitro,system" || r.NitroCompute != plugin.NitroNodeGroup || strings.Join(r.Removed(), ",") != "probe-test-iso" {
+		t.Errorf("record-only with Karpenter read as %+v", r)
 	}
 }
 
@@ -264,6 +284,50 @@ func TestSimLinesCoverEveryState(t *testing.T) {
 		r, err := ParseInstalled([]string{SimLine(name)})
 		if err != nil || r.Badge() != want {
 			t.Errorf("%s: %+v %v, want %s", name, r, err, want)
+		}
+	}
+}
+
+// Both ways: a cluster without Karpenter's CRDs reports what it did before,
+// to the byte. With them, the pools of the NodePools this installer made
+// join the nodes' (a pool can have no node yet), and the line names them and
+// Karpenter. EKS Auto Mode's CRD alone, with NodePools that label no pool,
+// reports neither.
+func TestPoolsIncludeKarpenterNodePools(t *testing.T) {
+	base := map[string]string{"nodes": "system microvm", "namespace": "ate-system", "daemonset": "daemonset.apps/atelet"}
+	line, err := Check(context.Background(), fakeKubectl(base, nil))
+	if err != nil || line != Marker+"true pools=microvm,system atelet plugins=" {
+		t.Errorf("no CRD: %q %v", line, err)
+	}
+	auto := map[string]string{"nodes": "system", "crd": "customresourcedefinition.apiextensions.k8s.io/nodepools.karpenter.sh",
+		"nodepools.karpenter.sh": `{"items":[{"spec":{"template":{"metadata":{"labels":{"team":"a"}}}}}]}`}
+	if line, err := Check(context.Background(), fakeKubectl(auto, nil)); err != nil || line != Marker+"false pools=system" {
+		t.Errorf("Auto Mode's CRD: %q %v", line, err)
+	}
+	karp := map[string]string{"nodes": "system microvm",
+		"crd":                    "customresourcedefinition.apiextensions.k8s.io/nodepools.karpenter.sh\ncustomresourcedefinition.apiextensions.k8s.io/ec2nodeclasses.karpenter.k8s.aws\n",
+		"nodepools.karpenter.sh": `{"items":[{"spec":{"template":{"metadata":{"labels":{"ate.dev/pool":"gvisor"}}}}},{"spec":{"template":{"metadata":{"labels":{"ate.dev/pool":"microvm"}}}}}]}`}
+	line, err = Check(context.Background(), fakeKubectl(karp, nil))
+	if err != nil || line != Marker+"false pools=gvisor,microvm,system nodepools=gvisor,microvm karpenter" {
+		t.Fatalf("Karpenter: %q %v", line, err)
+	}
+	r := checkThenParse(t, fakeKubectl(karp, nil))
+	if strings.Join(r.Pools, ",") != "gvisor,microvm,system" || strings.Join(r.NodePools, ",") != "gvisor,microvm" || !r.Karpenter || r.Installed {
+		t.Errorf("parsed %+v", r)
+	}
+	if r := checkThenParse(t, fakeKubectl(base, nil)); r.Karpenter || r.NodePools != nil {
+		t.Errorf("no CRD parsed %+v", r)
+	}
+}
+
+// A failed read of the CRDs or of the NodePools stops the probe, as a failed
+// node read does: a cluster whose pools cannot be read is not shown to lack
+// them.
+func TestFailedKarpenterReadsAreErrors(t *testing.T) {
+	answers := map[string]string{"crd": "customresourcedefinition.apiextensions.k8s.io/nodepools.karpenter.sh"}
+	for _, kind := range []string{"crd", "nodepools.karpenter.sh"} {
+		if line, err := Check(context.Background(), fakeKubectl(answers, map[string]error{kind: errors.New("Forbidden")})); err == nil {
+			t.Errorf("%s read failed but Check returned %q", kind, line)
 		}
 	}
 }

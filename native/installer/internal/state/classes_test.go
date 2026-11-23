@@ -117,12 +117,12 @@ func TestNewNodeGroupsEveryRow(t *testing.T) {
 	if g := s.NodeGroups(); !slices.Equal(g, []string{"gvisor"}) {
 		t.Errorf("new, bundled, gvisor: %v", g)
 	}
-	s.SelectCluster(awsxCluster("c"), []string{"microvm", "isolated", "system"}, plugin.Record{})
+	s.SelectCluster(awsxCluster("c"), []string{"microvm", "isolated", "system"}, nil, false, plugin.Record{})
 	if g := s.NodeGroups(); !slices.Equal(g, []string{"system", "microvm"}) {
 		t.Errorf("connected: %v", g)
 	}
 	// A connected cluster's nitro group comes from its nodes' labels.
-	s.SelectCluster(awsxCluster("c"), []string{"nitro", "system"}, plugin.Record{})
+	s.SelectCluster(awsxCluster("c"), []string{"nitro", "system"}, nil, false, plugin.Record{})
 	if g := s.NodeGroups(); !slices.Equal(g, []string{"system", "nitro"}) {
 		t.Errorf("connected with nitro nodes: %v", g)
 	}
@@ -215,7 +215,7 @@ func TestClassAndPluginRefusals(t *testing.T) {
 	if why := s.PluginProblem(get("s-nitro"), nil); !strings.Contains(why, "Auto Mode off") {
 		t.Errorf("Nitro's plugin off Auto Mode: %q", why)
 	}
-	s.SelectCluster(awsxCluster("c"), []string{"system"}, plugin.Record{})
+	s.SelectCluster(awsxCluster("c"), []string{"system"}, nil, false, plugin.Record{})
 	if why := s.PluginProblem(get("s-claw"), nil); why != "runs on the gvisor node group, which c does not have" {
 		t.Errorf("connected without gvisor: %q", why)
 	}
@@ -225,7 +225,7 @@ func TestClassAndPluginRefusals(t *testing.T) {
 		r := &Setup{NewClusterConfig: ClusterConfig{AutoMode: "on"}, SandboxClasses: "gvisor", Database: DatabaseBundled}
 		r.NewCluster("c")
 		if connected {
-			r.SelectCluster(awsxCluster("c"), []string{"system", "gvisor"}, plugin.Record{})
+			r.SelectCluster(awsxCluster("c"), []string{"system", "gvisor"}, nil, false, plugin.Record{})
 		}
 		if why := r.PluginProblem(get("s-rot"), nil); why != "rotates the RDS logins; the run uses the bundled PostgreSQL (Settings: Database)" {
 			t.Errorf("connected=%v, bundled: %q", connected, why)
@@ -237,7 +237,7 @@ func TestClassAndPluginRefusals(t *testing.T) {
 	}
 	// A connected cluster's nodes decide: without a system node, a plugin
 	// on the system group is refused, since nothing is created there.
-	s.SelectCluster(awsxCluster("c"), []string{"gvisor"}, plugin.Record{})
+	s.SelectCluster(awsxCluster("c"), []string{"gvisor"}, nil, false, plugin.Record{})
 	if why := s.PluginProblem(get("s-gw"), nil); why != "runs on the system node group, which c does not have" {
 		t.Errorf("connected without system: %q", why)
 	}

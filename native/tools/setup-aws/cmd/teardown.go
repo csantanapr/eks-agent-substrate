@@ -33,10 +33,11 @@ var teardownCmd = &cobra.Command{
 	Long: `Deletes, in reverse dependency order, what bootstrap, create rds and create
 cluster made: the Pod Identity associations and roles, the RDS instance, its
 subnet and security groups and the database logins, both S3 buckets with every
-object version, the ECR repositories, then (unless --keep-cluster) the node
-groups (self-managed ones: their Auto Scaling groups, the node role's access
-entry and instance profile), the cluster and its IAM roles, the launch
-template and the VPC.
+object version, the ECR repositories, then (unless --keep-cluster) Karpenter's
+NodePools, nodes, NodeOverlays, EC2NodeClasses, interruption queue and rules,
+and its role (KARPENTER=on), the node groups (self-managed ones: their Auto Scaling groups,
+the node role's access entry and instance profile), the cluster and its IAM
+roles, the launch template and the VPC.
 
 Only resources with this deployment's owner tag are deleted. A resource with
 one of its names but another owner, or one that belongs to a CloudFormation
@@ -102,7 +103,9 @@ func (e *tdEnv) teardownPhases() []tdPhase {
 		{steps: []tdStep{e.stepDBInstance, e.stepDBNetwork, e.stepSecrets}},
 		{steps: []tdStep{e.stepBuckets}},
 		{steps: []tdStep{e.stepRepositories}},
-		{cluster: true, steps: []tdStep{e.stepNodegroups, e.stepAutoScalingGroups, e.stepNodeAccessEntry}},
+		// Karpenter's nodes and resources go first (karpenter_teardown.go):
+		// its controller runs on the system node group.
+		{cluster: true, steps: append(e.karpenterSteps(), e.stepNodegroups, e.stepAutoScalingGroups, e.stepNodeAccessEntry)},
 		{cluster: true, steps: []tdStep{e.stepCluster, e.stepClusterRoles, e.stepInstanceProfile}},
 		// An available network interface holds its subnet and security
 		// groups, so it goes before both; the VPC goes last.

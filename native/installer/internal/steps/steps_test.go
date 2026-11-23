@@ -21,6 +21,7 @@ import (
 func TestEveryPhaseListLightsEachRowInOrder(t *testing.T) {
 	for name, list := range map[string][]string{
 		"bootstrap": phases.Bootstrap, "cluster": phases.Cluster, "cluster self-managed": phases.ClusterSelfManaged,
+		"cluster Karpenter": phases.ClusterFor("managed", true), "cluster self-managed Karpenter": phases.ClusterFor("self-managed", true),
 		"rds": phases.RDS, "teardown": phases.Teardown,
 	} {
 		items, active := FromPhases(list), -1
@@ -37,13 +38,28 @@ func TestEveryPhaseListLightsEachRowInOrder(t *testing.T) {
 // The create cluster checklist names the run's node group type in its node
 // group rows, and the others are the same.
 func TestClusterChecklistFollowsTheNodeGroupType(t *testing.T) {
-	m, sm := labels(Cluster("managed")), labels(Cluster("self-managed"))
-	if !slices.Equal(m, labels(Cluster(""))) || !slices.Equal(m[:7], sm[:7]) || len(m) != len(sm) {
+	m, sm := labels(Cluster("managed", false)), labels(Cluster("self-managed", false))
+	if !slices.Equal(m, labels(Cluster("", false))) || !slices.Equal(m[:7], sm[:7]) || len(m) != len(sm) {
 		t.Fatalf("managed %q, self-managed %q", m, sm)
 	}
 	if m[7] != "Creating the managed node groups" || sm[7] != "Creating the self-managed node groups" ||
 		sm[8] != "Waiting for the self-managed nodes to be Ready" {
 		t.Errorf("rows 8 and 9: managed %q, self-managed %q", m[7:], sm[7:])
+	}
+}
+
+// With KARPENTER=on the create cluster checklist is the node group type's
+// with Karpenter's two rows after it; without, it is the type's alone, as
+// before (phases.Cluster and phases.ClusterSelfManaged).
+func TestClusterChecklistFollowsKarpenter(t *testing.T) {
+	for typ, list := range map[string][]string{"": phases.Cluster, "managed": phases.Cluster, "self-managed": phases.ClusterSelfManaged} {
+		off, on := labels(Cluster(typ, false)), labels(Cluster(typ, true))
+		if !slices.Equal(off, labels(FromPhases(list))) || len(off) != 9 {
+			t.Errorf("%q without Karpenter: %q", typ, off)
+		}
+		if len(on) != 11 || !slices.Equal(on[:9], off) || on[9] != "Creating Karpenter's IAM role and interruption queue" || on[10] != "Installing Karpenter and its NodePools" {
+			t.Errorf("%q with Karpenter: %q", typ, on)
+		}
 	}
 }
 

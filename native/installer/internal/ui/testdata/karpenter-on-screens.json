@@ -1,0 +1,219 @@
+{
+ "new, Karpenter": {
+  "Settings": "Settings  built-in defaults (no config.env found)     About this setting      \n                                                      on: Karpenter 1.15.2    \nNew cluster                                           makes the gvisor nodes  \n  Kubernetes version 1.37                             in a NodePool, from no  \n  EKS Auto Mode      off                              node up to GVISOR_NODES,\n  API access CIDRs   auto                             only when a Pod needs   \n  Node AMI           EKS optimized AL2023             one, and removes a node \n  Node group type    managed                          when it is empty.       \n  Karpenter          on                               Karpenter runs on the   \n                                                      system node group. Needs\nSandbox classes                                       EKS Auto Mode off and   \n  m: minimal, Auto Mode with the Nitro sandbox only   the gVisor class. The   \n  [✓] gVisor              gvisor node group           microvm and nitro       \n  [✓] microVM (Kata)      microvm node group          classes stay on their   \n  [ ] AWS Nitro sandbox   nitro node group            node groups. Fixed when \n  Nitro sandbox on   auto-mode                        the cluster is created. \n                                                                              \nNode groups                                           Now: KARPENTER=on       \n  group     instance type      nodes                                          \n  nodes of a NodePool: its limit                                              \n  system   m8i.xlarge         2                                               \n  gvisor   m8i.2xlarge        2    NodePool                                   \n  microvm  m8i.2xlarge        2    nested virt                                \n                                                                              \nEvery AWS resource                                                            \n  Tags               project=agent-substrate auto-…                           \n                                                                              \nAgent Substrate                                                               \n  Release            v1.0.0                                                   \n  Image repository   ghcr.io/agent-substrate/subst…                           \n  Database           Amazon RDS for PostgreSQL                                ",
+  "Fields": [
+   "KUBERNETES_VERSION",
+   "AUTO_MODE",
+   "EKS_PUBLIC_ACCESS_CIDRS",
+   "NODE_AMI_ID",
+   "NODE_GROUP_TYPE",
+   "KARPENTER",
+   "gvisor",
+   "microvm",
+   "nitro",
+   "NITRO_COMPUTE",
+   "SYSTEM_INSTANCE_TYPE",
+   "SYSTEM_NODES",
+   "GVISOR_INSTANCE_TYPE",
+   "GVISOR_NODES",
+   "MICROVM_INSTANCE_TYPE",
+   "MICROVM_NODES",
+   "TAGS",
+   "SUBSTRATE_TAG",
+   "SUBSTRATE_IMAGE_REPO",
+   "database"
+  ],
+  "Review": "Review the plan  nothing has run yet                                          \nCluster fresh (new: this run creates it) · EKS 1.37 · Auto Mode off · us-west…\nNode groups: system 2×m8i.xlarge · microvm 2×m8i.2xlarge                      \nKarpenter 1.15.2 NodePool gvisor up to 2×m8i.2xlarge                          \nSubstrate v1.0.0 · classes gvisor,microvm · database rds · plugins: none · de…\n   Step                                                   Time  Cost an hour  \n 1 Create the cluster                                  ~20 min    $1.49–2.38  \n   $ create cluster                                                           \n 2 Provision AWS resources                              ~1 min             –  \n   $ bootstrap                                                                \n 3 Create the database                                  ~8 min         $0.07  \n   $ create rds                                                               \n 4 Turn on Substrate                                    ~2 min             –  \n   $ deploy --snap-bucket new-snap-111122223333-us-west-2                     \n                                                                              \nAbout 31 minutes in all. Each step is idempotent: a failed one is rerun with  \nenter.                                                                        \nThis creates billable AWS resources.                                          \nCost: about $1.55 to $2.44 an hour ($37 to $59 a day) until teardown, on-     \ndemand, us-west-2. The Karpenter NodePool costs $0 with no node, and up to    \n$0.89 an hour at its node limit.                                              \nSettings are not saved: no eks-talk checkout (config.env) was found.          \nPress y to start.                                                             ",
+  "Plan": [
+   {
+    "Step": "Create the cluster",
+    "Display": "create cluster",
+    "Summary": false,
+    "Minutes": 20,
+    "Hourly": "1.4858334246575344",
+    "Unknown": ""
+   },
+   {
+    "Step": "Provision AWS resources",
+    "Display": "bootstrap",
+    "Summary": false,
+    "Minutes": 1,
+    "Hourly": "0",
+    "Unknown": ""
+   },
+   {
+    "Step": "Create the database",
+    "Display": "create rds",
+    "Summary": false,
+    "Minutes": 8,
+    "Hourly": "0.0671917808219178",
+    "Unknown": ""
+   },
+   {
+    "Step": "Turn on Substrate",
+    "Display": "deploy --snap-bucket new-snap-111122223333-us-west-2",
+    "Summary": false,
+    "Minutes": 2,
+    "Hourly": "0",
+    "Unknown": ""
+   }
+  ],
+  "Checklist": [
+   "Checking the account, Region and quotas",
+   "Creating the VPC and subnets",
+   "Creating the cluster and node IAM roles",
+   "Creating the EKS cluster",
+   "Granting cluster access",
+   "Installing EKS add-ons",
+   "Creating the node groups' launch templates",
+   "Creating the managed node groups",
+   "Waiting for the node groups to be ACTIVE",
+   "Creating Karpenter's IAM role and interruption queue",
+   "Installing Karpenter and its NodePools"
+  ]
+ },
+ "new, Karpenter, gvisor only": {
+  "Settings": "Settings  built-in defaults (no config.env found)     About this setting      \n                                                      microVM runs actors in  \nNew cluster                                           Kata microVMs on the    \n  Kubernetes version 1.37                             microvm node group,     \n  EKS Auto Mode      off                              whose instance type     \n  API access CIDRs   auto                             needs nested            \n  Node AMI           EKS optimized AL2023             virtualization. The     \n  Node group type    managed                          classes decide a new    \n  Karpenter          on                               cluster's node groups:  \n                                                      gVisor and microVM make \nSandbox classes                                       theirs. The system group\n  m: minimal, Auto Mode with the Nitro sandbox only   comes without Auto Mode,\n  [✓] gVisor              gvisor node group           with either of them and \n  [ ] microVM (Kata)      microvm node group          RDS (the control plane  \n  [ ] AWS Nitro sandbox   nitro node group            is pinned there), and   \n  Nitro sandbox on   auto-mode                        with a plugin that runs \n                                                      on it. With neither     \nNode groups                                           class, an Auto Mode     \n  group     instance type      nodes                  cluster gets a node     \n  nodes of a NodePool: its limit                      group only from a       \n  system   m8i.xlarge         2                       plugin: mode 3 adds the \n  gvisor   m8i.2xlarge        2    NodePool           microvm group (and with \n                                                      RDS the system group),  \nEvery AWS resource                                    and a plugin that runs  \n  Tags               project=agent-substrate auto-…   on the system group (the\n                                                      LLM gateway, or login   \nAgent Substrate                                       rotation with RDS) adds \n  Release            v1.0.0                           that one. Without such a\n  Image repository   ghcr.io/agent-substrate/subst…   plugin it gets none: the\n  Database           Amazon RDS for PostgreSQL        control plane, the      \n                                                      bundled PostgreSQL and  \n                                                      every controller run on \n                                                      Auto Mode nodes. Press m\n                                                      for that minimal        \n                                                      profile.                \n                                                                              \n                                                      Now:                    \n                                                      SANDBOX_CLASSES=gvisor  ",
+  "Fields": [
+   "KUBERNETES_VERSION",
+   "AUTO_MODE",
+   "EKS_PUBLIC_ACCESS_CIDRS",
+   "NODE_AMI_ID",
+   "NODE_GROUP_TYPE",
+   "KARPENTER",
+   "gvisor",
+   "microvm",
+   "nitro",
+   "NITRO_COMPUTE",
+   "SYSTEM_INSTANCE_TYPE",
+   "SYSTEM_NODES",
+   "GVISOR_INSTANCE_TYPE",
+   "GVISOR_NODES",
+   "TAGS",
+   "SUBSTRATE_TAG",
+   "SUBSTRATE_IMAGE_REPO",
+   "database"
+  ],
+  "Review": "Review the plan  nothing has run yet                                          \nCluster fresh (new: this run creates it) · EKS 1.37 · Auto Mode off · us-west…\nNode groups: system 2×m8i.xlarge                                              \nKarpenter 1.15.2 NodePool gvisor up to 2×m8i.2xlarge                          \nSubstrate v1.0.0 · classes gvisor · database rds · plugins: none · demo: no   \n   Step                                                   Time  Cost an hour  \n 1 Create the cluster                                  ~20 min    $0.60–1.49  \n   $ create cluster                                                           \n 2 Provision AWS resources                              ~1 min             –  \n   $ bootstrap                                                                \n 3 Create the database                                  ~8 min         $0.07  \n   $ create rds                                                               \n 4 Turn on Substrate                                    ~2 min             –  \n   $ deploy --snap-bucket new-snap-111122223333-us-west-2                     \n                                                                              \nAbout 31 minutes in all. Each step is idempotent: a failed one is rerun with  \nenter.                                                                        \nThis creates billable AWS resources.                                          \nCost: about $0.66 to $1.55 an hour ($16 to $37 a day) until teardown, on-     \ndemand, us-west-2. The Karpenter NodePool costs $0 with no node, and up to    \n$0.89 an hour at its node limit.                                              \nSettings are not saved: no eks-talk checkout (config.env) was found.          \nPress y to start.                                                             ",
+  "Plan": [
+   {
+    "Step": "Create the cluster",
+    "Display": "create cluster",
+    "Summary": false,
+    "Minutes": 20,
+    "Hourly": "0.5952778082191781",
+    "Unknown": ""
+   },
+   {
+    "Step": "Provision AWS resources",
+    "Display": "bootstrap",
+    "Summary": false,
+    "Minutes": 1,
+    "Hourly": "0",
+    "Unknown": ""
+   },
+   {
+    "Step": "Create the database",
+    "Display": "create rds",
+    "Summary": false,
+    "Minutes": 8,
+    "Hourly": "0.0671917808219178",
+    "Unknown": ""
+   },
+   {
+    "Step": "Turn on Substrate",
+    "Display": "deploy --snap-bucket new-snap-111122223333-us-west-2",
+    "Summary": false,
+    "Minutes": 2,
+    "Hourly": "0",
+    "Unknown": ""
+   }
+  ],
+  "Checklist": [
+   "Checking the account, Region and quotas",
+   "Creating the VPC and subnets",
+   "Creating the cluster and node IAM roles",
+   "Creating the EKS cluster",
+   "Granting cluster access",
+   "Installing EKS add-ons",
+   "Creating the node groups' launch templates",
+   "Creating the managed node groups",
+   "Waiting for the node groups to be ACTIVE",
+   "Creating Karpenter's IAM role and interruption queue",
+   "Installing Karpenter and its NodePools"
+  ]
+ },
+ "new, Karpenter, self-managed, bundled, demo": {
+  "Settings": "Settings  built-in defaults (no config.env found)     About this setting      \n                                                      Where the control plane \nNew cluster                                           keeps its state: Amazon \n  Kubernetes version 1.37                             RDS for PostgreSQL (adds\n  EKS Auto Mode      off                              the Create the database \n  API access CIDRs   auto                             step), or the bundled   \n  Node AMI           EKS optimized AL2023             PostgreSQL in the       \n  Node group type    self-managed                     cluster. On a new Auto  \n  Karpenter          on                               Mode cluster with a     \n                                                      gVisor or microVM group,\nSandbox classes                                       RDS pins the control    \n  m: minimal, Auto Mode with the Nitro sandbox only   plane to the system node\n  [✓] gVisor              gvisor node group           group, which is made for\n  [✓] microVM (Kata)      microvm node group          it; with the bundled    \n  [ ] AWS Nitro sandbox   nitro node group            PostgreSQL the control  \n  Nitro sandbox on   auto-mode                        plane runs on Auto Mode \n                                                      nodes, and the system   \nNode groups                                           group is made only for a\n  group     instance type      nodes                  plugin that runs on it. \n  nodes of a NodePool: its limit                                              \n  system   m8i.xlarge         2                                               \n  gvisor   m8i.2xlarge        2    NodePool                                   \n  microvm  m8i.2xlarge        2    nested virt                                \n                                                                              \nEvery AWS resource                                                            \n  Tags               project=agent-substrate auto-…                           \n                                                                              \nAgent Substrate                                                               \n  Release            v1.0.0                                                   \n  Image repository   ghcr.io/agent-substrate/subst…                           \n  Database           Bundled PostgreSQL                                       ",
+  "Fields": [
+   "KUBERNETES_VERSION",
+   "AUTO_MODE",
+   "EKS_PUBLIC_ACCESS_CIDRS",
+   "NODE_AMI_ID",
+   "NODE_GROUP_TYPE",
+   "KARPENTER",
+   "gvisor",
+   "microvm",
+   "nitro",
+   "NITRO_COMPUTE",
+   "SYSTEM_INSTANCE_TYPE",
+   "SYSTEM_NODES",
+   "GVISOR_INSTANCE_TYPE",
+   "GVISOR_NODES",
+   "MICROVM_INSTANCE_TYPE",
+   "MICROVM_NODES",
+   "TAGS",
+   "SUBSTRATE_TAG",
+   "SUBSTRATE_IMAGE_REPO",
+   "database"
+  ],
+  "Review": "Review the plan  nothing has run yet                                          \nCluster fresh (new: this run creates it) · EKS 1.37 · Auto Mode off · us-west…\nNode groups: system 2×m8i.xlarge · microvm 2×m8i.2xlarge                      \nKarpenter 1.15.2 NodePool gvisor up to 2×m8i.2xlarge                          \nSubstrate v1.0.0 · classes gvisor,microvm · database bundled · plugins: none …\n   Step                                                   Time  Cost an hour  \n 1 Create the cluster                                  ~20 min    $1.49–2.38  \n   $ create cluster                                                           \n 2 Provision AWS resources                              ~1 min             –  \n   $ bootstrap                                                                \n 3 Turn on Substrate                                    ~2 min             –  \n   $ deploy --snap-bucket new-snap-111122223333-us-west-2                     \n 4 Deploy the demo                                     ~11 min             –  \n   $ demo                                                                     \n                                                                              \nAbout 34 minutes in all. Each step is idempotent: a failed one is rerun with  \nenter.                                                                        \nThis creates billable AWS resources.                                          \nCost: about $1.49 to $2.38 an hour ($36 to $57 a day) until teardown, on-     \ndemand, us-west-2. The Karpenter NodePool costs $0 with no node, and up to    \n$0.89 an hour at its node limit.                                              \nSettings are not saved: no eks-talk checkout (config.env) was found.          \nPress y to start.                                                             ",
+  "Plan": [
+   {
+    "Step": "Create the cluster",
+    "Display": "create cluster",
+    "Summary": false,
+    "Minutes": 20,
+    "Hourly": "1.4858334246575344",
+    "Unknown": ""
+   },
+   {
+    "Step": "Provision AWS resources",
+    "Display": "bootstrap",
+    "Summary": false,
+    "Minutes": 1,
+    "Hourly": "0",
+    "Unknown": ""
+   },
+   {
+    "Step": "Turn on Substrate",
+    "Display": "deploy --snap-bucket new-snap-111122223333-us-west-2",
+    "Summary": false,
+    "Minutes": 2,
+    "Hourly": "0",
+    "Unknown": ""
+   },
+   {
+    "Step": "Deploy the demo",
+    "Display": "demo",
+    "Summary": false,
+    "Minutes": 11,
+    "Hourly": "0",
+    "Unknown": ""
+   }
+  ],
+  "Checklist": [
+   "Checking the account, Region and quotas",
+   "Creating the VPC and subnets",
+   "Creating the cluster and node IAM roles",
+   "Creating the EKS cluster",
+   "Granting cluster access",
+   "Installing EKS add-ons",
+   "Creating the node groups' launch templates",
+   "Creating the self-managed node groups",
+   "Waiting for the self-managed nodes to be Ready",
+   "Creating Karpenter's IAM role and interruption queue",
+   "Installing Karpenter and its NodePools"
+  ]
+ }
+}

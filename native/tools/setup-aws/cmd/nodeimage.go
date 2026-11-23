@@ -152,14 +152,14 @@ func (r *clusterRun) checkImage(ctx context.Context) error {
 // imageFits refuses im (from setting) for group g.
 func (r *clusterRun) imageFits(im *nodeImage, setting string, g nodeGroupSpec) error {
 	if r.enaRequired[g.InstanceType] && !im.ENA {
-		return fmt.Errorf("%s=%s has no ENA support, which the %s node group's %s requires", setting, im.ID, g.Name, g.InstanceType)
+		return fmt.Errorf("%s=%s has no ENA support, which the %s's %s requires", setting, im.ID, g.noun(), g.InstanceType)
 	}
 	if want := archOf(r.amiTypes[g.InstanceType]); im.Arch != want {
-		return fmt.Errorf("%s=%s is %s, but the %s node group's %s runs %s; pick an AMI or an instance type of the same architecture",
-			setting, im.ID, im.Arch, g.Name, g.InstanceType, want)
+		return fmt.Errorf("%s=%s is %s, but the %s's %s runs %s; pick an AMI or an instance type of the same architecture",
+			setting, im.ID, im.Arch, g.noun(), g.InstanceType, want)
 	}
 	if im.RootGB > g.VolumeGB {
-		return fmt.Errorf("%s=%s has a %d GB root snapshot, more than the %s node group's %d GB root volume", setting, im.ID, im.RootGB, g.Name, g.VolumeGB)
+		return fmt.Errorf("%s=%s has a %d GB root snapshot, more than the %s's %d GB root volume", setting, im.ID, im.RootGB, g.noun(), g.VolumeGB)
 	}
 	return nil
 }
@@ -188,28 +188,39 @@ func (r *clusterRun) resolveImages(ctx context.Context) error {
 		if r.groupExists(g.Name) || g.Name == nodegroups.Nitro {
 			continue
 		}
-		arch := archOf(r.amiTypes[g.InstanceType])
-		name := eksAMIParameter(version, arch)
-		im := r.archImages[arch]
-		if im == nil {
-			out, err := r.c.SSM.GetParameter(ctx, &ssm.GetParameterInput{Name: aws.String(name)})
-			switch {
-			case hasCode(err, "ParameterNotFound"):
-				return fmt.Errorf("SSM has no parameter %s: no EKS optimized AL2023 AMI for Kubernetes %s on %s in %s; set NODE_AMI_ID", name, version, arch, r.e.names.Region)
-			case err != nil:
-				return fmt.Errorf("read SSM parameter %s: %w", name, err)
-			case out.Parameter == nil || aws.ToString(out.Parameter.Value) == "":
-				return fmt.Errorf("SSM parameter %s is empty", name)
-			}
-			if im, err = describeImage(ctx, r.c.EC2, aws.ToString(out.Parameter.Value), "SSM parameter "+name); err != nil {
-				return err
-			}
-			r.archImages[arch] = im
-			slog.Info("EKS optimized AMI", "arch", string(arch), "ami", im.ID, "name", im.Name)
+		im, name, err := r.recommendedImage(ctx, version, archOf(r.amiTypes[g.InstanceType]))
+		if err != nil {
+			return err
 		}
 		if err := r.imageFits(im, "SSM parameter "+name, g); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// recommendedImage is the recommended EKS optimized AL2023 AMI of
+// Kubernetes version and arch, and the SSM parameter that names it: read
+// once per architecture in a run (archImages).
+func (r *clusterRun) recommendedImage(ctx context.Context, version string, arch ec2types.ArchitectureValues) (*nodeImage, string, error) {
+	name := eksAMIParameter(version, arch)
+	if im := r.archImages[arch]; im != nil {
+		return im, name, nil
+	}
+	out, err := r.c.SSM.GetParameter(ctx, &ssm.GetParameterInput{Name: aws.String(name)})
+	switch {
+	case hasCode(err, "ParameterNotFound"):
+		return nil, name, fmt.Errorf("SSM has no parameter %s: no EKS optimized AL2023 AMI for Kubernetes %s on %s in %s; set NODE_AMI_ID", name, version, arch, r.e.names.Region)
+	case err != nil:
+		return nil, name, fmt.Errorf("read SSM parameter %s: %w", name, err)
+	case out.Parameter == nil || aws.ToString(out.Parameter.Value) == "":
+		return nil, name, fmt.Errorf("SSM parameter %s is empty", name)
+	}
+	im, err := describeImage(ctx, r.c.EC2, aws.ToString(out.Parameter.Value), "SSM parameter "+name)
+	if err != nil {
+		return nil, name, err
+	}
+	r.archImages[arch] = im
+	slog.Info("EKS optimized AMI", "arch", string(arch), "ami", im.ID, "name", im.Name)
+	return im, name, nil
 }

@@ -322,6 +322,37 @@ func TestCreateClusterShowsSelfManagedOnly(t *testing.T) {
 	}
 }
 
+// KARPENTER=on reaches setup-aws and is shown, as a knob a pasted command
+// needs; the dry run replays Karpenter's two phases after the type's, both
+// node group types alike. Without it nothing is shown, the environment
+// carries it empty, and the phases are the type's (TestDefaultSpecsUnchanged).
+func TestCreateClusterShowsKarpenterOnly(t *testing.T) {
+	b, s := testBuilder()
+	s.NewClusterConfig.AutoMode, s.NewClusterConfig.Karpenter = "", ""
+	s.NewCluster("demo")
+	sp := b.createCluster(s)
+	if strings.Contains(sp.Display, "KARPENTER") || !slices.Contains(sp.Env, "KARPENTER=") || strings.Contains(strings.Join(sp.SimLines, "\n"), "Karpenter") {
+		t.Errorf("off: shown %q, env %q", sp.Display, sp.Env)
+	}
+	for _, typ := range []string{"managed", "self-managed"} {
+		s.NewClusterConfig.NodeGroupType, s.NewClusterConfig.Karpenter = typ, "on"
+		sp = b.createCluster(s)
+		if !strings.HasPrefix(sp.Display, "NODE_GROUPS=system,gvisor,microvm ") || !strings.Contains(sp.Display, " KARPENTER=on CLUSTER_NAME=demo ") || !slices.Contains(sp.Env, "KARPENTER=on") {
+			t.Errorf("%s: shown %q, env %q", typ, sp.Display, sp.Env)
+		}
+		list := phases.ClusterFor(typ, true)
+		items, active, lit := steps.FromPhases(list), -1, 0
+		for _, line := range sp.SimLines {
+			if next := steps.Progress(items, active, line); next != active {
+				active, lit = next, lit+1
+			}
+		}
+		if lit != 11 || !slices.Contains(sp.SimLines, `level=INFO msg="Step 11/11: Installing Karpenter and its NodePools..."`) {
+			t.Errorf("%s: lit %d of %d rows: %q", typ, lit, len(items), sp.SimLines)
+		}
+	}
+}
+
 // AC8.5: each setup-aws step's dry-run replay lights every row of its
 // checklist in order, because both come from the same phase list.
 func TestDryRunLinesWalkEveryPhase(t *testing.T) {

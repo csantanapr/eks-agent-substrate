@@ -45,14 +45,27 @@ var ClusterSelfManaged = append(Cluster[:7:7],
 	"Waiting for the self-managed nodes to be Ready...",
 )
 
+// KarpenterPhases are the phases KARPENTER=on adds after a create cluster
+// list's own: Karpenter's AWS resources, then Karpenter and its NodePools
+// in the cluster.
+var KarpenterPhases = []string{
+	"Creating Karpenter's IAM role and interruption queue...",
+	"Installing Karpenter and its NodePools...",
+}
+
 // ClusterFor is the create cluster list of a node group type
-// (nodegroups.Types). Any other value gets Cluster: create cluster refuses
-// it in its first phase.
-func ClusterFor(nodeGroupType string) []string {
+// (nodegroups.Types), with KarpenterPhases at the end when karpenter
+// (KARPENTER=on). Any other type gets Cluster's phases: create cluster
+// refuses it in its first phase.
+func ClusterFor(nodeGroupType string, karpenter bool) []string {
+	list := Cluster
 	if nodeGroupType == nodegroups.SelfManaged {
-		return ClusterSelfManaged
+		list = ClusterSelfManaged
 	}
-	return Cluster
+	if karpenter {
+		return append(list[:len(list):len(list)], KarpenterPhases...)
+	}
+	return list
 }
 
 // RDS is `setup-aws create rds`.

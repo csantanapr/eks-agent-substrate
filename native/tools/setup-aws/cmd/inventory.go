@@ -19,6 +19,7 @@ import (
 	ecrtypes "github.com/aws/aws-sdk-go-v2/service/ecr/types"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
 	ekstypes "github.com/aws/aws-sdk-go-v2/service/eks/types"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"github.com/aws/aws-sdk-go-v2/service/rds"
@@ -29,6 +30,7 @@ import (
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	smtypes "github.com/aws/aws-sdk-go-v2/service/secretsmanager/types"
+	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/aws/smithy-go"
 	"github.com/spf13/cobra"
@@ -86,6 +88,8 @@ type (
 		DeleteLaunchTemplate(context.Context, *ec2.DeleteLaunchTemplateInput, ...func(*ec2.Options)) (*ec2.DeleteLaunchTemplateOutput, error)
 		DeleteNetworkInterface(context.Context, *ec2.DeleteNetworkInterfaceInput, ...func(*ec2.Options)) (*ec2.DeleteNetworkInterfaceOutput, error)
 		DeleteVolume(context.Context, *ec2.DeleteVolumeInput, ...func(*ec2.Options)) (*ec2.DeleteVolumeOutput, error)
+		// TerminateInstances ends the instances Karpenter launched.
+		TerminateInstances(context.Context, *ec2.TerminateInstancesInput, ...func(*ec2.Options)) (*ec2.TerminateInstancesOutput, error)
 	}
 	tdEKSAPI interface {
 		DescribeCluster(context.Context, *eks.DescribeClusterInput, ...func(*eks.Options)) (*eks.DescribeClusterOutput, error)
@@ -158,6 +162,12 @@ type tdClients struct {
 	S3  tdS3API
 	ECR tdECRAPI
 	ASG tdASGAPI
+	// SQS, Events and Objects reach what KARPENTER=on made: the queue, the
+	// rules, and the NodePools, EC2NodeClasses and NodeOverlays
+	// (karpenter_teardown.go).
+	SQS     tdSQSAPI
+	Events  tdEventsAPI
+	Objects func(context.Context, *ekstypes.Cluster) (kubeObjects, error)
 }
 
 var newTDClients = func(ctx context.Context, c Config) (*tdClients, error) {
@@ -169,7 +179,10 @@ var newTDClients = func(ctx context.Context, c Config) (*tdClients, error) {
 		STS: sts.NewFromConfig(ac), Tag: rgt.NewFromConfig(ac), EC2: ec2.NewFromConfig(ac),
 		EKS: eks.NewFromConfig(ac), IAM: iam.NewFromConfig(ac), RDS: rds.NewFromConfig(ac),
 		SM: secretsmanager.NewFromConfig(ac), S3: s3.NewFromConfig(ac), ECR: ecr.NewFromConfig(ac),
-		ASG: autoscaling.NewFromConfig(ac),
+		ASG: autoscaling.NewFromConfig(ac), SQS: sqs.NewFromConfig(ac), Events: eventbridge.NewFromConfig(ac),
+		Objects: func(_ context.Context, cl *ekstypes.Cluster) (kubeObjects, error) {
+			return newKubeClient(cl, sts.NewPresignClient(sts.NewFromConfig(ac)))
+		},
 	}, nil
 }
 
@@ -183,6 +196,21 @@ type tdEnv struct {
 	// Identity associations point at, read before any of them is deleted.
 	// teardown deletes the owned ones after the cluster, whatever their name.
 	refRoles map[string]bool
+	// What the last inventory found of KARPENTER=on (karpenter_teardown.go):
+	// karpenterCluster is the cluster when it carries the marker;
+	// karpenterTagged, the tagging API listed the Karpenter queue or one of
+	// its rules; karpenterEC2, an owner-tagged instance or launch template
+	// carries a Karpenter tag.
+	karpenterCluster *ekstypes.Cluster
+	karpenterTagged  bool
+	karpenterEC2     bool
+	// kubeDown is how the Kubernetes API of the marked cluster failed in
+	// this teardown, after retries; nil while it answers.
+	kubeDown error
+	// karpenterDrained: Karpenter removed the nodes of the deleted NodePools
+	// in this teardown (waitDrained), so its controller has no NodePool to
+	// launch for and need not be cut off.
+	karpenterDrained bool
 }
 
 func newTDEnv(ctx context.Context, out io.Writer) (*tdEnv, error) {
@@ -985,6 +1013,11 @@ func (e *tdEnv) inventory(ctx context.Context) ([]tdRow, error) {
 	if err != nil {
 		return nil, err
 	}
+	karpenter := karpenterMarked(cl)
+	e.karpenterCluster, e.karpenterTagged, e.karpenterEC2, e.kubeDown = nil, false, false, nil
+	if karpenter {
+		e.karpenterCluster = cl
+	}
 	if cl != nil {
 		add(tdRow{"EKS cluster", e.n.Cluster, cl.Tags, true})
 		ngs, err := e.nodegroups(ctx)
@@ -1104,6 +1137,9 @@ func (e *tdEnv) inventory(ctx context.Context) ([]tdRow, error) {
 			if (kind == kNAT && (it.state == "deleted" || it.state == "failed")) || (kind == kInstance && it.state == "terminated") {
 				continue
 			}
+			if (kind == kInstance && karpenterLaunched(it.tags, karpenterPoolTag)) || (kind == kLT && karpenterLaunched(it.tags, karpenterClassTag)) {
+				e.karpenterEC2 = true
+			}
 			id := it.id
 			if it.name != "" {
 				id = it.name + " (" + it.id + ")"
@@ -1143,6 +1179,12 @@ func (e *tdEnv) inventory(ctx context.Context) ([]tdRow, error) {
 		for _, m := range page.ResourceTagMappingList {
 			svc, rtype, id := arnType(aws.ToString(m.ResourceARN))
 			if svc == "eks" || svc == "iam" || svc == "s3" || tdKnown[svc+":"+rtype] || pluginReadsType(svc+":"+rtype) {
+				continue
+			}
+			// The Karpenter queue and rules are read below, from SQS and
+			// EventBridge.
+			if e.karpenterARN(svc, rtype, id) {
+				e.karpenterTagged = true
 				continue
 			}
 			// Secrets beyond the two logins (the master user secret RDS
@@ -1194,6 +1236,17 @@ func (e *tdEnv) inventory(ctx context.Context) ([]tdRow, error) {
 			// eksctl's own stacks go with the cluster (eksctl delete cluster).
 			eksctl := svc == "cloudformation" && strings.HasPrefix(id, "eksctl-"+e.n.Cluster+"-")
 			add(tdRow{svc + " " + rtype, id, kvMap(m.Tags, rgtKV), eksctl})
+		}
+	}
+	// KARPENTER=on's queue and rules, of a deployment made with it, and the
+	// marked cluster's NodePools, EC2NodeClasses and NodeOverlays.
+	if karpenter || e.karpenterTagged {
+		krows, err := e.karpenterRows(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range krows {
+			add(r)
 		}
 	}
 	return rows, nil

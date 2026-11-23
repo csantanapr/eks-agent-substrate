@@ -69,6 +69,13 @@ func runMain(t *testing.T, answers string, args ...string) (error, string) {
 // and extra added to its environment, last, so it wins.
 func runMainIn(t *testing.T, cwd string, extra []string, answers string, args ...string) (error, string) {
 	t.Helper()
+	return runMainAt(t, cwd, "", extra, answers, args...)
+}
+
+// runMainAt is runMainIn with the trees under treeRoot ("" a new empty
+// directory).
+func runMainAt(t *testing.T, cwd, treeRoot string, extra []string, answers string, args ...string) (error, string) {
+	t.Helper()
 	self, err := filepath.Abs(os.Args[0])
 	if err != nil {
 		t.Fatal(err)
@@ -79,6 +86,9 @@ func runMainIn(t *testing.T, cwd string, extra []string, answers string, args ..
 	}))
 	defer srv.Close()
 	dir := t.TempDir()
+	if treeRoot == "" {
+		treeRoot = filepath.Join(dir, "trees")
+	}
 	bin := filepath.Join(dir, "bin")
 	if err := os.Mkdir(bin, 0o700); err != nil {
 		t.Fatal(err)
@@ -88,7 +98,7 @@ func runMainIn(t *testing.T, cwd string, extra []string, answers string, args ..
 	}
 	cmd := exec.Command(self, "-test.run=^TestSubcommandHelper$")
 	cmd.Env = append(os.Environ(),
-		mainArgsEnv+"="+strings.Join(append(args, "--cluster", "demo", "--region", "us-west-2", "--profile", "", "--tree-root", filepath.Join(dir, "trees")), "\n"),
+		mainArgsEnv+"="+strings.Join(append(args, "--cluster", "demo", "--region", "us-west-2", "--profile", "", "--tree-root", treeRoot), "\n"),
 		"AWS_PROFILE=", "AWS_CONFIG_FILE="+dir+"/none", "AWS_SHARED_CREDENTIALS_FILE="+dir+"/none",
 		"AWS_ACCESS_KEY_ID=placeholder", "AWS_SECRET_ACCESS_KEY=placeholder", "AWS_SESSION_TOKEN=",
 		"AWS_EC2_METADATA_DISABLED=true", "AWS_ENDPOINT_URL="+srv.URL, "XDG_CACHE_HOME="+dir,

@@ -84,6 +84,24 @@ continued and the snapshot is in the S3 bucket. That is the core claim of
 Substrate: report the counts, not just "it ran". It waits up to 10 minutes
 for the snapshot's S3 copy.
 
+With `KARPENTER=on`, the `gvisor` pool is a Karpenter NodePool and can have
+no node: the first demo or plugin Pod on it makes Karpenter launch one, so
+the step takes a few minutes longer. The `microvm` and `nitro` pools stay
+node groups. Check the pool with
+`kubectl get nodepools,ec2nodeclasses,nodeclaims`: the NodePool and
+EC2NodeClass `gvisor` are `Ready`, and its nodes carry `ate.dev/pool=gvisor`
+and `karpenter.sh/nodepool=gvisor`. The controller's log is
+`kubectl -n kube-system logs deploy/karpenter`. Five minutes after the
+pool's last Pod goes, Karpenter removes its node.
+
+With `KARPENTER_NODE_OVERLAY=on` too, the `microvm` and `nitro` pools are
+Karpenter NodePools as well, each with a NodeOverlay, and only `system` is a
+node group. NodeOverlay is an alpha Karpenter API and can change. Check
+`kubectl get nodeoverlays`: `microvm` and `nitro` are `Ready`. The
+`mode3-iso` step deploys on a `nitro` pool with no node, and Karpenter
+launches nodes for `counter-iso`'s Pods. It checks no capacity on that
+pool's nodes, only their architecture. `mode3` is refused in this mode.
+
 ## Troubleshooting
 
 Read the real error before changing anything. The wizard's log is under
@@ -108,6 +126,15 @@ Read the real error before changing anything. The wizard's log is under
 | A step stops with `ExpiredToken` after 30 minutes | The AWS session ended and was not refreshed | Refresh the profile's credentials and rerun the step |
 | `create cluster` stops: `NITRO_AMI_ID is empty`, or `the nodes of AMI ... advertise no Nitro sandbox capacity` | `NITRO_COMPUTE=node-group` needs a Nitro Sandbox AMI; the EKS optimized AMI, or an AMI built without `enable_pod_isolation=true`, has no Nitro sandbox | Build one with awslabs/amazon-eks-ami (`make k8s=<cluster version> os_distro=al2023 enable_pod_isolation=true`), set `NITRO_AMI_ID` and run `create cluster` again. A `nitro` node group that exists keeps its AMI: tear the deployment down (`--remove-control-plane`, then `setup-aws teardown`) and create it again |
 | `create cluster` stops: `the nitro node group's nodes have not all joined and become Ready` | The nodes are slow to join, or one is being replaced; no Ready node lacked the Nitro sandbox | Run `create cluster` again: it waits for them again |
+| `create cluster` stops: `KARPENTER=on needs AUTO_MODE off`, or `... does not name gvisor` | Karpenter makes a NodePool for the `gvisor` class, without Auto Mode | Set `AUTO_MODE=` and keep the `gvisor` class, or set `KARPENTER=` |
+| `create cluster` stops: `cluster ... was made with KARPENTER=on` (or `without Karpenter`) | Karpenter is fixed when the cluster is made | Set `KARPENTER` to match the cluster, or tear the deployment down and create it again |
+| `create cluster` stops on a CRD, Deployment, NodePool or EC2NodeClass `without the label app.kubernetes.io/managed-by=substrate-eks` | Another Karpenter is on the cluster; the installer never changes it | Use another `CLUSTER_NAME`, or remove that Karpenter yourself after checking whose it is |
+| `create cluster` stops: `the Deployment karpenter ...; controller Pod ... has no EKS Pod Identity credentials` | The controller Pods still had no credentials after `create cluster` restarted them three times: the Pod Identity association of `kube-system/karpenter` has not taken effect | Run `create cluster` again; it restarts such Pods. If they still have none, check that the association exists (`aws eks list-pod-identity-associations --cluster-name <cluster> --namespace kube-system`) |
+| A demo or plugin Pod stays `Pending` on the `gvisor` pool | Karpenter could not launch a node: an instance type with no capacity, the pool at its limit (`GVISOR_NODES`), or a denied call | `kubectl get nodeclaims`, `kubectl describe nodepool gvisor` and the controller's log name the reason |
+| `plugin mode3 needs nodes labeled katacontainers.io/kata-runtime=true ...; the microvm node group of ... is a Karpenter NodePool` | kata-deploy labels a node only after it runs, so Karpenter cannot make one for mode 3's Pods | Use a cluster whose `microvm` pool is a node group, as `KARPENTER=on` without `KARPENTER_NODE_OVERLAY` makes it |
+| `create cluster` stops: `KARPENTER_NODE_OVERLAY=on needs KARPENTER=on`, or `cluster ... was made with KARPENTER_NODE_OVERLAY=on` (or `without KARPENTER_NODE_OVERLAY`) | The overlay needs Karpenter, and is fixed when the cluster is made | Set `KARPENTER=on`, or set `KARPENTER_NODE_OVERLAY` to match the cluster; to change it, tear the deployment down and create it again |
+| `create cluster` stops: `timed out ... waiting for NodeOverlay ...` with `conflict with another overlay` | Another NodeOverlay of the same weight applies to the same NodePool, so Karpenter applies neither | `kubectl get nodeoverlays -o yaml` names them; remove the other one, after checking whose it is |
+| A `microvm` or `nitro` Pod stays `Pending` with `KARPENTER_NODE_OVERLAY=on` | The NodeOverlay is not `Ready`, or the pool is at its limit (`MICROVM_NODES`, `NITRO_NODES`); on `nitro`, a node of another AMI advertises no `eks.amazonaws.com/nitro-sandbox` | `kubectl get nodeoverlays,nodeclaims`, `kubectl describe nodepool <pool>` and the controller's log name the reason; for `nitro`, `NITRO_AMI_ID` must be a Nitro Sandbox AMI |
 | `mode3-iso`, or the control plane step with the `nitro` class, stops: `plugin mode3-iso was deployed with NITRO_COMPUTE=... (recorded in kube-system/substrate-eks-plugins), not ...` | The cluster records the `NITRO_COMPUTE` of the deploy, and this run has another | Deploy with the recorded value. Or move it, in this order: remove it (`--plugin-action remove --plugins mode3-iso`, which uses the recorded value), run `--deploy-control-plane` again with the `nitro` class and the new `--nitro-compute` (or rerun the wizard with the new value, which does this and the next step), then `--plugin-action deploy --plugins mode3-iso --nitro-compute <new value>` |
 | `mode3-iso` stops: `RuntimeClass isolated-sandbox exists with ...` | Another RuntimeClass of that name, with another handler, node selector or overhead, is on the cluster; the installer never changes it | Delete it if it is not in use, or give it the spec the message names, and deploy again |
 
@@ -129,6 +156,11 @@ jq .status`.
   cluster` stops on node groups of the other type. A node group keeps its
   instance type and AMI. To change any of these, tear the deployment down
   and create it again (never delete a node group by hand).
+- `KARPENTER=on` (Settings shows it when Auto Mode is off) is fixed when the
+  cluster is made, like Auto Mode, and so is `KARPENTER_NODE_OVERLAY=on`
+  (Settings shows it when Karpenter is on). A NodePool takes a new instance
+  type or node limit on a `create cluster` rerun; its EC2NodeClass keeps its
+  AMI, the `nitro` one too.
 - A new Substrate release (for example v1.0.1): remove Substrate with
   `--remove-control-plane` (it removes the plugins too), then run the
   Control plane, Demo and Plugins steps again with `--tag v1.0.1` (or set
@@ -156,6 +188,18 @@ final snapshot, both S3 buckets with every object version, the ECR images).
 objects then AWS resources, then Substrate, so its volumes and claims are
 released. `setup-aws teardown` deletes, in reverse order, only what carries
 this deployment's owner tag, and ends with the inventory. A rerun resumes.
+
+With `KARPENTER=on`, teardown deletes the NodePools first and waits
+up to 20 minutes for Karpenter to remove its nodes. If nodes are left, or
+the Kubernetes API fails, it removes the controller's IAM policy (also
+with no instance left at that moment), then terminates every Karpenter
+instance with the owner tag, and any that appears while it waits. Then it deletes the launch templates, the
+NodeOverlays (`KARPENTER_NODE_OVERLAY=on`), the EC2NodeClasses, the
+EventBridge rules, the queue, the Pod Identity association and the
+controller role. It never strips a finalizer: an
+EC2NodeClass still in use goes with the cluster. `--keep-cluster` keeps all
+of it. If `inventory` still lists a Karpenter instance or launch template,
+run the teardown again; do not delete them by hand.
 
 ## Never
 

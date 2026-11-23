@@ -74,9 +74,13 @@ type field struct {
 // group rows for groups, the node groups a new cluster gets. A new cluster
 // gets the row that says where the nitro class runs (NITRO_COMPUTE) when
 // that class is on or Auto Mode is off (nitroRow: off Auto Mode the class
-// needs node-group), and the nitro node group's AMI row when the group is
-// made (nitroAMI).
-func settingsFields(newCluster bool, groups []string, nitroRow, nitroAMI bool) []field {
+// needs node-group), the nitro node group's AMI row when the group is made
+// (nitroAMI), the Karpenter row when Auto Mode is off or KARPENTER is set
+// to something other than off (karpenterRow: Karpenter needs Auto Mode
+// off), and the Karpenter overlay row when KARPENTER is on or
+// KARPENTER_NODE_OVERLAY is set to something other than off (overlayRow:
+// the overlay needs Karpenter, and a value it refuses is shown).
+func settingsFields(newCluster bool, groups []string, nitroRow, nitroAMI, karpenterRow, overlayRow bool) []field {
 	var f []field
 	if newCluster {
 		f = append(f,
@@ -85,6 +89,12 @@ func settingsFields(newCluster bool, groups []string, nitroRow, nitroAMI bool) [
 			field{kind: fText, key: "EKS_PUBLIC_ACCESS_CIDRS", label: "API access CIDRs", section: "New cluster"},
 			field{kind: fText, key: "NODE_AMI_ID", label: "Node AMI", section: "New cluster"},
 			field{kind: fNodeGroupType, key: "NODE_GROUP_TYPE", label: "Node group type", section: "New cluster"})
+		if karpenterRow {
+			f = append(f, field{kind: fToggle, key: "KARPENTER", label: "Karpenter", section: "New cluster"})
+		}
+		if overlayRow {
+			f = append(f, field{kind: fToggle, key: "KARPENTER_NODE_OVERLAY", label: "Karpenter overlay", section: "New cluster"})
+		}
 	}
 	for _, c := range state.Classes {
 		f = append(f, field{kind: fClass, key: c, label: state.ClassTitle(c), section: "Sandbox classes"})
@@ -131,12 +141,18 @@ var help = map[string]string{
 	"SUBSTRATE_IMAGE_REPO":    "Where the release's images come from.",
 	state.ClassGVisor:         "gVisor runs actors in a user-space kernel, on the gvisor node group." + classesHelp,
 	state.ClassMicroVM:        "microVM runs actors in Kata microVMs on the microvm node group, whose instance type needs nested virtualization." + classesHelp,
+	"KARPENTER": "on: Karpenter " + nodegroups.KarpenterVersion + " makes the gvisor nodes in a NodePool, from no node up to GVISOR_NODES, " +
+		"only when a Pod needs one, and removes a node when it is empty. Karpenter runs on the system node group. Needs EKS Auto Mode off " +
+		"and the gVisor class. The microvm and nitro classes stay on their node groups. Fixed when the cluster is created.",
+	"KARPENTER_NODE_OVERLAY": "on: Karpenter also makes the microvm and nitro nodes in NodePools, up to MICROVM_NODES and NITRO_NODES, " +
+		"with a NodeOverlay each that tells Karpenter the resource their worker Pods ask for. NodeOverlay is an alpha Karpenter API: it can change. " +
+		"Needs Karpenter on. The mode 3 plugin cannot run then. Fixed when the cluster is created.",
 	state.ClassNitro: "The AWS Nitro sandbox makes each worker Pod an EKS Auto Mode isolated sandbox (RuntimeClass isolated-sandbox) " +
 		"on nodes Auto Mode launches for it, so it needs Auto Mode and makes no node group. With Nitro sandbox on node-group " +
 		"(NITRO_COMPUTE) it runs on the nitro node group instead, from a Nitro Sandbox AMI you build, and needs no Auto Mode. " +
 		"It installs the fork's release (one release per install), and is set up and checked in its own step after the control plane." + classesHelp,
 	"NITRO_COMPUTE": "Where the AWS Nitro sandbox runs. auto-mode: on nodes EKS Auto Mode launches (NodePool ate-isolated), which needs Auto Mode. " +
-		"node-group: on the nitro node group, of the node group type, with Nitro Enclaves on, from a Nitro Sandbox AMI (Nitro AMI); no Auto Mode needed. " +
+		"node-group: on the nitro node group (with the Karpenter overlay, the nitro Karpenter NodePool), of the node group type, with Nitro Enclaves on, from a Nitro Sandbox AMI (Nitro AMI); no Auto Mode needed. " +
 		"With Auto Mode off, Settings sets node-group when you turn the class on, and puts the old value back when you turn the class off or Auto Mode on, within one run. " +
 		"A value you pick yourself stays, and so does one a run wrote to config.local.env.",
 	// The panel adds the build command for the version Settings has
@@ -194,6 +210,26 @@ func nitroSubtitle(compute string) string {
 func (st *settingsScreen) nitroGroup() bool {
 	return st.values["NITRO_COMPUTE"] == plugin.NitroNodeGroup
 }
+
+// settingsKarpenter reports KARPENTER=on as Settings has it now. Only a new
+// cluster's rows and findings read it.
+func (m *Model) settingsKarpenter() bool {
+	return m.set.values["KARPENTER"] == nodegroups.KarpenterOn
+}
+
+// settingsNodeOverlay reports KARPENTER_NODE_OVERLAY=on with KARPENTER=on, as
+// Settings has them now.
+func (m *Model) settingsNodeOverlay() bool {
+	return m.settingsKarpenter() && m.set.values["KARPENTER_NODE_OVERLAY"] == nodegroups.KarpenterOn
+}
+
+// karpenterNotes are the notes of the node group rows Karpenter makes
+// NodePools (a microvm row's keeps nested virtualization), and
+// karpenterNodes the line under the rows' header: a NodePool's node count
+// is its limit. The left column fits 17 cells of note.
+var karpenterNotes = map[string]string{nodegroups.GVisor: " NodePool", nodegroups.MicroVM: " nested, NodePool", nodegroups.Nitro: " NodePool"}
+
+const karpenterNodes = "  nodes of a NodePool: its limit"
 
 // nitroCompute is the NITRO_COMPUTE the nitro class is judged on: Settings'
 // value, except node-group while turning the class on sets it
@@ -308,7 +344,9 @@ func (m *Model) refreshFields() {
 		at = st.fields[st.cursor].key
 	}
 	nitro := st.classOn(state.ClassNitro)
-	st.fields = settingsFields(m.s.ClusterIsNew, m.settingsGroups(), nitro || !m.settingsAutoMode(), nitro && st.nitroGroup())
+	k, o := st.values["KARPENTER"], st.values["KARPENTER_NODE_OVERLAY"]
+	st.fields = settingsFields(m.s.ClusterIsNew, m.settingsGroups(), nitro || !m.settingsAutoMode(), nitro && st.nitroGroup(),
+		!m.settingsAutoMode() || (k != "" && k != "off"), m.settingsKarpenter() || (o != "" && o != "off"))
 	for i, f := range st.fields {
 		if f.key == at {
 			st.cursor = i
@@ -350,7 +388,8 @@ func (m *Model) toggleClass(c string) string {
 func (m *Model) minimal() string {
 	st := m.set
 	if m.s.ClusterIsNew {
-		st.values["AUTO_MODE"] = "on"
+		// Karpenter needs Auto Mode off, and its overlay Karpenter.
+		st.values["AUTO_MODE"], st.values["KARPENTER"], st.values["KARPENTER_NODE_OVERLAY"] = "on", "", ""
 	} else if !m.s.AutoMode {
 		return "The minimal profile needs EKS Auto Mode, and " + m.s.ClusterName + " has it off."
 	}
@@ -421,6 +460,7 @@ func (m *Model) checkSettings() {
 	if _, bad := st.errs["NITRO_AMI_ID"]; shown["NITRO_AMI_ID"] && !bad && strings.TrimSpace(st.values["NITRO_AMI_ID"]) == "" {
 		st.errs["NITRO_AMI_ID"] = "a Nitro Sandbox AMI is needed: build one with awslabs/amazon-eks-ami (enable_pod_isolation=true)"
 	}
+	m.checkKarpenter()
 	if _, bad := st.errs[classKey]; bad {
 		return
 	}
@@ -436,6 +476,35 @@ func (m *Model) checkSettings() {
 		if err := nodegroups.Check(m.settingsAutoMode(), m.settingsGroups()); err != nil {
 			st.errs[classKey] = err.Error()
 		}
+	}
+}
+
+// checkKarpenter adds the findings of KARPENTER and KARPENTER_NODE_OVERLAY
+// on a new cluster. TAGS may not set a key setup-aws sets itself, nor with
+// KARPENTER=on one Karpenter sets (state.TagsProblem). KARPENTER=on needs
+// Auto Mode off, and the gvisor group to make a NodePool for;
+// KARPENTER_NODE_OVERLAY=on needs KARPENTER=on.
+func (m *Model) checkKarpenter() {
+	st := m.set
+	if !m.s.ClusterIsNew {
+		return
+	}
+	if _, bad := st.errs["TAGS"]; !bad {
+		if why := state.TagsProblem(st.values["TAGS"], m.settingsKarpenter()); why != "" {
+			st.errs["TAGS"] = why
+		}
+	}
+	if _, bad := st.errs["KARPENTER_NODE_OVERLAY"]; !bad && st.values["KARPENTER_NODE_OVERLAY"] == nodegroups.KarpenterOn && !m.settingsKarpenter() {
+		st.errs["KARPENTER_NODE_OVERLAY"] = "needs Karpenter on"
+	}
+	if _, bad := st.errs["KARPENTER"]; bad || !m.settingsKarpenter() {
+		return
+	}
+	switch {
+	case m.settingsAutoMode():
+		st.errs["KARPENTER"] = "needs EKS Auto Mode off: Auto Mode runs its own Karpenter"
+	case nodegroups.CheckKarpenter(nodegroups.KarpenterOn, false, m.settingsGroups()) != nil:
+		st.errs["KARPENTER"] = "makes a NodePool for gVisor: turn that class on"
 	}
 }
 
@@ -469,7 +538,8 @@ func (m *Model) applySettings() {
 		{"SYSTEM_NODES", &c.SystemNodes}, {"GVISOR_NODES", &c.GVisorNodes}, {"MICROVM_NODES", &c.MicroVMNodes},
 		{"NODE_AMI_ID", &c.NodeAMIID}, {"NODE_GROUP_TYPE", &c.NodeGroupType},
 		{"NITRO_COMPUTE", &c.NitroCompute}, {"NITRO_AMI_ID", &c.NitroAMIID},
-		{"NITRO_INSTANCE_TYPE", &c.NitroInstanceType}, {"NITRO_NODES", &c.NitroNodes},
+		{"NITRO_INSTANCE_TYPE", &c.NitroInstanceType}, {"NITRO_NODES", &c.NitroNodes}, {"KARPENTER", &c.Karpenter},
+		{"KARPENTER_NODE_OVERLAY", &c.KarpenterNodeOverlay},
 		{"TAGS", &m.s.Tags}, {"SUBSTRATE_TAG", &m.s.SubstrateTag}, {"SUBSTRATE_IMAGE_REPO", &m.s.ImageRepo},
 		{classKey, &m.s.SandboxClasses}, {dbKey, &m.s.Database},
 	} {
@@ -521,6 +591,10 @@ func (m *Model) settingsKey(msg tea.KeyMsg) tea.Cmd {
 		case fToggle:
 			if st.values[f.key] == "on" {
 				st.values[f.key] = ""
+				// The overlay needs Karpenter: it goes with it.
+				if f.key == "KARPENTER" {
+					st.values["KARPENTER_NODE_OVERLAY"] = ""
+				}
 			} else {
 				st.values[f.key] = "on"
 			}
@@ -607,9 +681,16 @@ func (m Model) settingsView() string {
 		if g := m.s.NodeGroups(); len(g) > 0 {
 			groups = "node groups: " + strings.Join(g, ", ")
 		}
+		// Karpenter's NodePools, on a line of their own.
+		var pools []string
+		if ngs, nps := m.s.ConnectedGroups(); len(nps) > 0 {
+			groups = "node groups: " + strings.Join(ngs, ", ")
+			pools = append(pools, "  "+theme.Subtle.Render(truncate("Karpenter NodePools: "+strings.Join(nps, ", "), leftW-4)))
+		}
 		left = append(left, "", theme.Title.Render("Cluster"),
 			"  "+m.s.ClusterName+theme.Subtle.Render(fmt.Sprintf(" · EKS %s · %s", m.s.ClusterVersion, auto)),
-			"  "+theme.Subtle.Render(truncate(groups, leftW-4)),
+			"  "+theme.Subtle.Render(truncate(groups, leftW-4)))
+		left = append(append(left, pools...),
 			theme.Fainted.Render(indent(lipgloss.NewStyle().Width(leftW-2).Render(
 				"connected, not created: the new-cluster settings apply only to a cluster this run creates."), "  ")))
 	}
@@ -681,6 +762,9 @@ func (m Model) settingsView() string {
 			left = append(left, "", theme.Title.Render(section))
 			if section == "Node groups" {
 				left = append(left, theme.Fainted.Render("  group     instance type      nodes"))
+				if m.settingsKarpenter() {
+					left = append(left, theme.Fainted.Render(karpenterNodes))
+				}
 			}
 			if section == "Sandbox classes" {
 				left = append(left, theme.Fainted.Render(truncate("  m: minimal, Auto Mode with the Nitro sandbox only", leftW)))
@@ -700,9 +784,15 @@ func (m Model) settingsView() string {
 			note := ""
 			switch f.group {
 			case nodegroups.MicroVM:
-				note = theme.Fainted.Render(" nested virt")
+				note = " nested virt"
 			case nodegroups.Nitro:
-				note = theme.Fainted.Render(" Nitro Enclaves")
+				note = " Nitro Enclaves"
+			}
+			if k, ok := karpenterNotes[f.group]; ok && m.settingsKarpenter() && nodegroups.IsKarpenterPool(f.group, m.settingsNodeOverlay()) {
+				note = k
+			}
+			if note != "" {
+				note = theme.Fainted.Render(note)
 			}
 			left = append(left, "  "+pad(f.group, 8)+cell(i, 18)+" "+cell(i+1, 5)+note)
 			i++

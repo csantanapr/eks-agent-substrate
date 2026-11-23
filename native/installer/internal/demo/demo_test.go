@@ -427,6 +427,37 @@ func TestDeployRefusesMixedNodeArchitectures(t *testing.T) {
 	}
 }
 
+// Both ways: a class whose pool has a Karpenter NodePool and no node yet
+// (Options.PoolArchs) builds the counter for the architecture the NodePool
+// requires; with neither a node nor a NodePool the deploy is refused as
+// before, and a NodePool of another architecture than the other class's
+// nodes is refused as two node groups of two are.
+func TestDeployBuildsForANodelessNodePool(t *testing.T) {
+	root, _ := testTree(t)
+	f := newFake(t)
+	f.archs = ""
+	o := testOptions(root)
+	o.SandboxClasses, o.PoolArchs = "gvisor", map[string][]string{"gvisor": {"arm64"}}
+	if err := f.env().deploy(context.Background(), io.Discard, o); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"counter|" + testBase + "|arm64|c1/counter|v1.0.0"}; !slices.Equal(f.pushed, want) {
+		t.Errorf("pushed %q, want %q", f.pushed, want)
+	}
+	f = newFake(t)
+	f.archs = ""
+	o.PoolArchs = map[string][]string{"microvm": {"arm64"}}
+	if err := f.env().deploy(context.Background(), io.Discard, o); err == nil || !strings.Contains(err.Error(), "no node labeled ate.dev/pool in (gvisor) to run the counter demo on") || len(f.pushed) != 0 {
+		t.Errorf("no node and no NodePool for gvisor: %v, pushed %q", err, f.pushed)
+	}
+	f = newFake(t)
+	f.archs = "amd64"
+	o.SandboxClasses, o.PoolArchs = "gvisor,microvm", map[string][]string{"microvm": {"arm64"}}
+	if err := f.env().deploy(context.Background(), io.Discard, o); err == nil || !strings.Contains(err.Error(), "amd64 and arm64") || len(f.pushed) != 0 {
+		t.Errorf("amd64 nodes and an arm64 NodePool: %v, pushed %q", err, f.pushed)
+	}
+}
+
 func TestRenderReplacesWholeReferencesAndDropsPlaceholders(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "t.yaml")
 	src := "# the ko:// image reference\nimage: ko://go.ate.dev/substrate/demos/counter\n${EXTERNAL_VOLUMES}\n  - --flag\n"

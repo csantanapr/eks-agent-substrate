@@ -41,12 +41,17 @@ func (r *clusterRun) nitroAMIHelp() string {
 
 // requireNitroAMI refuses a run that wants the nitro group without
 // NITRO_AMI_ID, before anything is read or made for the groups: no other
-// AMI runs the Nitro sandbox.
+// AMI runs the Nitro sandbox. That holds for the nitro NodePool of
+// KARPENTER_NODE_OVERLAY=on too, whose EC2NodeClass names that AMI.
 func (r *clusterRun) requireNitroAMI() error {
 	if !slices.Contains(r.wanted, nodegroups.Nitro) || strings.TrimSpace(r.cfg.NitroAMIID) != "" {
 		return nil
 	}
-	return fmt.Errorf("NITRO_AMI_ID is empty, and the nitro node group needs a Nitro Sandbox AMI (the EKS optimized AMI has no Nitro sandbox runtime): %s; then set NITRO_AMI_ID to its ID", r.nitroAMIHelp())
+	what := "nitro node group"
+	if r.isPool(nodegroups.Nitro) {
+		what = "nitro NodePool"
+	}
+	return fmt.Errorf("NITRO_AMI_ID is empty, and the %s needs a Nitro Sandbox AMI (the EKS optimized AMI has no Nitro sandbox runtime): %s; then set NITRO_AMI_ID to its ID", what, r.nitroAMIHelp())
 }
 
 // nitroWaitTimeout bounds waitNitroCapacity. Replaced in tests.

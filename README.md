@@ -40,7 +40,10 @@ virtualization. EKS Auto Mode is on as well (`AUTO_MODE=on`, the default),
 with its two built-in NodePools, `general-purpose` and `system`, for any
 other workloads. The sandbox classes you choose decide which node groups the
 cluster gets, down to none at all
-([Sandbox classes and node groups](#sandbox-classes-and-node-groups)). Around
+([Sandbox classes and node groups](#sandbox-classes-and-node-groups)).
+Without Auto Mode, [Karpenter](#karpenter) can make the `gvisor` nodes
+only when Pods need them, and with its alpha NodeOverlay the `microvm` and
+`nitro` nodes too. Around
 it: Amazon S3 for actor snapshots and microVM guest assets, Amazon RDS for
 PostgreSQL (TLS verify-full), Secrets Manager for the database logins, ECR
 for the demo images, and Bedrock for agent inference through the in-cluster
@@ -185,7 +188,8 @@ flag and make target.
 - An AWS account in the commercial partition and credentials for the AWS CLI
   with permission to create EKS, EC2, VPC, IAM, S3, RDS, Secrets Manager, ECR
   and Bedrock resources (and EFS, S3 Files, CloudFormation and Lambda for the
-  plugins that use them).
+  plugins that use them, and SQS and EventBridge with
+  [Karpenter](#karpenter)).
 - Quota for the nodes: 6 instances, 40 On-Demand standard vCPUs by default
   (`m8i`), plus a NAT gateway and an Elastic IP for the new VPC.
 - A Region with EKS 1.37, RDS for PostgreSQL 18, and the Bedrock inference
@@ -246,6 +250,8 @@ and no others (`setup-aws create cluster` takes them as `NODE_GROUPS`):
 | `mode3` plugin (Kata, kata-clh) | `microvm`, even without the `microvm` class |
 | `nitro` class | none: its `ate-isolated` NodePool is Auto Mode's |
 | `nitro` class with `NITRO_COMPUTE=node-group` | `nitro` (Nitro Enclaves on, the Nitro Sandbox AMI `NITRO_AMI_ID`) |
+| `gvisor` with `KARPENTER=on` (no Auto Mode) | a Karpenter NodePool instead of a node group, from no node up to `GVISOR_NODES`: see [Karpenter](#karpenter) |
+| `gvisor`, `microvm` and `nitro` with `KARPENTER_NODE_OVERLAY=on` too | a Karpenter NodePool each instead of a node group, up to `GVISOR_NODES`, `MICROVM_NODES` and `NITRO_NODES`: see [NodeOverlay mode](#nodeoverlay-mode) |
 | `system`, without Auto Mode | always (required) |
 | `system`, Auto Mode with RDS | when a `gvisor`, `microvm` or `nitro` group is created: the control plane is pinned to it |
 | `system`, Auto Mode with the bundled PostgreSQL | only for a plugin that runs on it: the control plane and PostgreSQL run on Auto Mode nodes |
@@ -275,8 +281,12 @@ What else follows from the classes:
 - With RDS and no `system` group, nothing is cordoned: the database
   bootstrap Job and the control plane run on Auto Mode nodes.
 - On a cluster you connect, nothing is created: the node groups its nodes
-  are labeled with (`ate.dev/pool`) decide, and a class or plugin whose
-  nodes are missing is refused, naming the label.
+  are labeled with (`ate.dev/pool`) decide, with the pools of the Karpenter
+  NodePools the installer made there, and a class or plugin whose nodes are
+  missing is refused, naming the label. To read them, your identity needs
+  to read the nodes, the CRDs `nodepools.karpenter.sh` and
+  `ec2nodeclasses.karpenter.k8s.aws`, and the NodePools; a denied read stops
+  the step.
 
 ### The minimal profile
 
@@ -324,7 +334,10 @@ says so, and the Nitro AMI row appears: fill it in. When you turn the class
 off again, or Auto Mode on, Settings puts back the value it replaced, so
 `config.local.env` keeps only what you chose. A value you set yourself
 stays. Settings puts it back only within one run: a value a run wrote to
-`config.local.env` is yours on the next run, and stays. In `config.local.env`:
+`config.local.env` is yours on the next run, and stays. With
+`KARPENTER_NODE_OVERLAY=on`, `node-group` puts the class on the `nitro`
+Karpenter NodePool instead of a node group, and the switch works the same
+([NodeOverlay mode](#nodeoverlay-mode)). In `config.local.env`:
 
 ```bash
 SANDBOX_CLASSES=gvisor,microvm,nitro
@@ -409,8 +422,10 @@ Deploy it with the recorded value, or move it to the new one:
 With either value, removal deletes the pool and its counter image tag,
 `atelet-iso`, the `atelet-iso-credential-provider` ConfigMap, and the
 RuntimeClass only when it carries those labels and no Pod uses it. Only a
-removal with `auto-mode` deletes NodePool and NodeClass `ate-isolated`.
-With `node-group` the installer never makes them, and objects of those
+removal with `auto-mode` deletes NodePool and NodeClass `ate-isolated`,
+and only on a cluster that has both kinds. A cluster that runs its own
+Karpenter (`KARPENTER=on`) has NodePools and no NodeClass kind, so there it
+deletes neither. With `node-group` the installer never makes them, and objects of those
 names may belong to someone else, so a removal with `node-group` leaves
 them and prints the ones it found. On an Auto Mode cluster with `auto-mode`
 it does not read the RuntimeClass, which is Auto Mode's own there.
@@ -560,6 +575,247 @@ and `iam:CreateServiceLinkedRole` once in an account that has no
 `iam:RemoveRoleFromInstanceProfile` and `iam:DeleteInstanceProfile`. A
 managed run reads `autoscaling:DescribeAutoScalingGroups` too when it adds a
 node group to a cluster that exists, to find self-managed groups there.
+
+## Karpenter
+
+By default the `gvisor` class runs on a node group of a fixed size, whose
+nodes run when no actor needs them. With `KARPENTER=on`,
+[Karpenter](https://karpenter.sh/docs/) 1.15.2 makes those nodes instead:
+only when a Pod needs one, and it removes a node when it is empty. There
+are two modes:
+
+| Mode | Settings | Classes on Karpenter | Classes on node groups |
+|---|---|---|---|
+| Karpenter | `KARPENTER=on` | `gvisor` | `microvm`, `nitro` (and `system`) |
+| NodeOverlay (alpha) | `KARPENTER=on` and `KARPENTER_NODE_OVERLAY=on` | `gvisor`, `microvm`, `nitro` | only `system` |
+
+The second mode uses Karpenter's NodeOverlay, an alpha API that can change
+in a later Karpenter release: see [NodeOverlay mode](#nodeoverlay-mode). Set
+them before the cluster is created: on Settings (Karpenter, shown when EKS
+Auto Mode is off, then Karpenter overlay, shown when Karpenter is on), or in
+`config.local.env`:
+
+```bash
+AUTO_MODE=
+KARPENTER=on
+# KARPENTER_NODE_OVERLAY=on
+```
+
+It needs Auto Mode off, since Auto Mode runs its own Karpenter and the two
+cannot share the `karpenter.sh` resources. Both settings apply to a new
+cluster only, as `AUTO_MODE` does: `create cluster` tags the cluster
+`agent-substrate-on-eks/karpenter=on`, or `=node-overlay` with
+`KARPENTER_NODE_OVERLAY=on`, and stops on a cluster whose tag does not match
+`KARPENTER` and `KARPENTER_NODE_OVERLAY`. Both modes need the `gvisor`
+class, which gets a NodePool.
+
+`NODE_GROUPS` keeps its meaning, the pools the cluster gets. With
+`KARPENTER=on`, `setup-aws create cluster` then makes:
+
+- the `system` and `microvm` node groups, and the `nitro` group with
+  `NITRO_COMPUTE=node-group`, of `NODE_GROUP_TYPE`, as before;
+- Karpenter on the `system` group: its five CRDs and its controller, from
+  the chart rendered once into
+  `native/tools/setup-aws/cmd/karpenter-chart.yaml` (the image pinned by
+  digest, a ClusterIP Service, no webhook), applied through the Kubernetes
+  API. Nothing runs Helm. The controller has two replicas, one when
+  `SYSTEM_NODES` is 1, each with 1 vCPU and 1 GiB as requests and limits,
+  and its PodDisruptionBudget lets one be down at a time;
+- an EC2NodeClass and a NodePool named `gvisor`, when `NODE_GROUPS` names
+  it;
+- the AWS resources Karpenter needs, below.
+
+The NodePool starts with no node. `GVISOR_NODES` is its limit, not its
+size: it limits both its nodes and its vCPUs (the nodes times the instance
+type's vCPUs). Its nodes get the node group's label and taint
+(`ate.dev/pool=gvisor`, `ate.dev/sandboxClass=gvisor:NoSchedule`), its one
+instance type, on-demand, and that type's CPU architecture. Karpenter
+removes a node 5 minutes after it is empty. It does not replace nodes on a
+schedule (`expireAfter: Never`). While a node drains, a Pod still on it
+after 15 minutes is deleted (`terminationGracePeriod`), so a drain cannot
+hold a teardown forever.
+
+The EC2NodeClass has:
+
+- the AMI `NODE_AMI_ID`, or else the recommended EKS optimized AL2023 AMI of
+  the cluster's version, read from SSM. The pool keeps the AMI it was made
+  with: every later run reads it off the EC2NodeClass and never changes it,
+  and warns when `NODE_AMI_ID` names another one;
+- the instance profile `<cluster>-<region>-eks-node`;
+- the private subnets and the cluster security group, by ID;
+- IMDSv2 with a hop limit of 1;
+- the node group's encrypted gp3 root volume on the AMI's root device,
+  marked as the root volume, so Karpenter counts it as the node's storage;
+- the owner tag and `TAGS` on each instance, volume and network interface.
+  So `TAGS` may not set a key Karpenter sets itself (`karpenter.sh/*`,
+  `karpenter.k8s.aws/*`, any key that starts with `kubernetes.io/cluster`,
+  `eks:eks-cluster-name`), nor the owner or created-by key.
+  `agent-substrate-on-eks/karpenter` is refused in `TAGS` with or without
+  Karpenter.
+
+Every chart object, NodePool and EC2NodeClass carries the label
+`app.kubernetes.io/managed-by=substrate-eks`. `create cluster` reads each
+object first and stops on one that exists without the label, so it never
+changes a Karpenter it did not install. A rerun changes nothing that
+matches, whatever status Karpenter has written since. `--plan` lists what
+it would apply: it asks the Kubernetes API for a server-side dry run of each
+object that exists, so it needs the right to patch those objects, though it
+stores nothing. On a cluster that is not ACTIVE, `--plan` says it would read
+them once it is.
+
+The AWS resources, each tagged at create time with the owner tag and `TAGS`
+and reused only with the owner tag:
+
+- the controller role `<cluster>-<region>-karpenter` and its EKS Pod
+  Identity association for `kube-system/karpenter`. Its inline policy
+  `access` is the Karpenter reference policy for this cluster, without the
+  statements that make, tag or change instance profiles (the nodes use the
+  installer's) and without ZonalShift. EKS gives credentials only to a Pod
+  made after the association takes effect: while the controller is not
+  available, `create cluster` deletes each controller Pod that has none, so
+  the Deployment makes a new one, up to three times, and if one still has
+  none it stops and says so;
+- the instance profile `<cluster>-<region>-eks-node` with the node role, and
+  an `EC2_LINUX` access entry for the node role. With managed node groups,
+  `create cluster` keeps the one EKS makes for them;
+- the interruption queue `<cluster>-karpenter` (SQS, encrypted, messages kept
+  5 minutes, open only to EventBridge and SQS over TLS) and five EventBridge
+  rules `<cluster>-karpenter-<kind>` that send it Spot interruption,
+  rebalance, state change, capacity reservation and AWS Health events.
+
+What stays on node groups with `KARPENTER=on` alone:
+
+- The `microvm` class. Substrate's controller gives each microVM worker
+  container a limit of `ate.dev/kvm`, which atelet's device plugin
+  advertises only on a node that already runs. Karpenter 1.15.2 learns of
+  such a resource only through its alpha NodeOverlay, so it would find no
+  instance type for those Pods.
+- The `nitro` class (`NITRO_COMPUTE=node-group`), for the same reason: its
+  Pods request `eks.amazonaws.com/nitro-sandbox`.
+- So the `mode3` plugin works as without Karpenter, on the `microvm` node
+  group. It is refused only where `microvm` is a Karpenter NodePool, as in
+  [NodeOverlay mode](#nodeoverlay-mode): its RuntimeClass selects the label
+  `katacontainers.io/kata-runtime=true`, which kata-deploy puts on a node
+  after the node starts.
+
+A pool can have no node, so the installer checks the NodePools it made, not
+only the nodes. A class, a plugin or the counter demo on such a pool is
+accepted, and its image is built for the architecture the NodePool requires.
+To read them, the installer's identity needs, besides reading nodes, the
+right to get the CRDs `nodepools.karpenter.sh` and
+`ec2nodeclasses.karpenter.k8s.aws` and to list `nodepools.karpenter.sh`, on
+every cluster: the probe, the plugin steps and the demo read them. A failed
+read stops the step; a cluster without the `nodepools.karpenter.sh` CRD has
+only its nodes' pools. Review names the NodePool with its limit and prices
+it as a range, from $0 with no node to its node limit. The control plane
+and the node groups are priced as before. On a cluster you connect to,
+Review names the Karpenter NodePools this installer made, or says the
+cluster runs Karpenter with none of them when it has the
+`ec2nodeclasses.karpenter.k8s.aws` CRD, whoever installed it.
+
+`create cluster` with `KARPENTER=on` needs these permissions besides those of
+[self-managed node groups](#self-managed-node-groups) (the instance profile,
+the access entry and the SSM read):
+
+- SQS: `sqs:GetQueueUrl`, `sqs:ListQueueTags`, `sqs:GetQueueAttributes`,
+  `sqs:CreateQueue` with `sqs:TagQueue`, and `sqs:SetQueueAttributes`;
+- EventBridge: `events:DescribeRule`, `events:ListTagsForResource`,
+  `events:PutRule` with `events:TagResource`, `events:ListTargetsByRule` and
+  `events:PutTargets`;
+- IAM: `iam:GetRole`, `iam:ListRoleTags`, `iam:CreateRole` with
+  `iam:TagRole`, `iam:UpdateAssumeRolePolicy`, `iam:GetRolePolicy`,
+  `iam:PutRolePolicy`, and `iam:PassRole` on the Karpenter role, which the
+  Pod Identity association hands to EKS;
+- EKS Pod Identity: `eks:ListPodIdentityAssociations`,
+  `eks:DescribePodIdentityAssociation`, `eks:CreatePodIdentityAssociation`
+  with `eks:TagResource`, and `eks:UpdatePodIdentityAssociation`;
+- EC2: `ec2:DescribeInstanceTypes` (the vCPUs) and `ec2:DescribeImages`;
+- in the cluster, the access entry `create cluster` gives you.
+
+Teardown deletes it in the node groups phase, before the node groups (the
+controller runs on `system`). It deletes the `gvisor` NodePool and waits up
+to 20 minutes for Karpenter to remove its nodes. It leaves alone every other
+NodePool, Auto Mode's among them. When nodes stay, or the Kubernetes API
+does not answer or refuses (it is tried again for a moment first), teardown
+cuts the controller off by deleting its role's inline policy, also when no
+instance is left at that moment. Then it terminates each instance with the
+owner tag and a `karpenter.sh/nodepool` tag, and any that appears while it
+waits. It never strips a finalizer, and
+leaves EKS Auto Mode's instances to EKS. Then it deletes the launch
+templates with the owner tag and a `karpenter.k8s.aws/ec2nodeclass` tag, the
+NodeOverlays (NodeOverlay mode only), the EC2NodeClass once no NodeClaim
+uses it (one still in use goes with the cluster), the EventBridge targets
+and rules, the queue, the Pod Identity association and the controller role. The instance profile and the access
+entry go where teardown deletes them for self-managed groups.
+`--keep-cluster` keeps all of it, the Kubernetes objects too. `setup-aws
+inventory` lists each AWS resource while it exists, and the NodePools,
+EC2NodeClasses and NodeOverlays while the cluster answers. Teardown also calls
+`sqs:DeleteQueue`, `events:RemoveTargets`, `events:DeleteRule`,
+`eks:DeletePodIdentityAssociation`, `iam:DeleteRolePolicy`,
+`ec2:TerminateInstances` and `ec2:DeleteLaunchTemplate`. It reads the
+cluster's Karpenter objects and its association only for a cluster made with
+`KARPENTER=on`, and the queue, rules and role also when the tagging API
+still lists the queue or a rule. It looks for Karpenter's instances and
+launch templates only then, or when the inventory finds one, so a teardown
+of any other deployment makes the same calls as before. It reads the
+NodeOverlays only for a cluster tagged `node-overlay`.
+
+### NodeOverlay mode
+
+`KARPENTER_NODE_OVERLAY=on` (with `KARPENTER=on`) makes the `microvm` and
+`nitro` nodes in Karpenter NodePools too, so only the `system` node group is
+left. **It uses Karpenter's NodeOverlay, an alpha API
+(`karpenter.sh/v1alpha1`) behind a feature gate. It can change in a later
+Karpenter release, and this mode can change with it.**
+
+Karpenter makes a node only for a Pod that one of the NodePool's instance
+types can hold. A `microvm` worker container has a limit of `ate.dev/kvm`,
+and a `nitro` worker Pod has `eks.amazonaws.com/nitro-sandbox` as overhead
+from RuntimeClass `isolated-sandbox`. A node advertises each only once it
+runs, so EC2's instance types have neither. A NodeOverlay adds such a
+resource to the instance types Karpenter simulates. It changes nothing on
+the node: the scheduler uses what the node advertises.
+
+`create cluster` then:
+
+- sets `NodeOverlay=true` in the controller's `FEATURE_GATES` (the rendered
+  chart has it off);
+- makes the `microvm` pool: an EC2NodeClass with nested virtualization and
+  a NodePool of `MICROVM_INSTANCE_TYPE`, up to `MICROVM_NODES` nodes, as
+  for `gvisor`;
+- makes the `nitro` pool, with `NITRO_COMPUTE=node-group` and `nitro` in
+  the classes: an EC2NodeClass on `NITRO_AMI_ID` (required, and checked as
+  for the `nitro` node group) with Nitro Enclaves on and the `nitro` group's
+  100 GB root volume, and a NodePool of `NITRO_INSTANCE_TYPE`, up to
+  `NITRO_NODES` nodes. It keeps its AMI as the other pools do, and warns
+  when `NITRO_AMI_ID` names another one. Its nodes get both
+  `ate.dev/pool=nitro` and `eks.amazonaws.com/nitro-sandbox=true` (the
+  RuntimeClass's nodeSelector; the AMI sets it too), and the taint
+  `ate.dev/sandboxClass=nitro:NoSchedule`;
+- makes a NodeOverlay for each of the two pools, named after it and labeled
+  as the other objects: `ate.dev/kvm: 4096` for `microvm` (what atelet
+  advertises on an m8i.2xlarge), and `eks.amazonaws.com/nitro-sandbox: 20`
+  for `nitro` (the sandboxes the Nitro Sandbox runtime advertises on an
+  m8i.xlarge). Each requires `karpenter.sh/nodepool` to be its pool, so it
+  applies to that NodePool only, even where two pools share an instance
+  type. A NodeOverlay that conflicts with another one of the same weight is
+  not applied and is not Ready: `create cluster` waits until each one is
+  Ready, as it does for the NodePools, and says why when one is not.
+
+The `nitro` pool starts with no node, so `create cluster` does not wait for
+Nitro sandbox capacity. The `mode3-iso` step makes the RuntimeClass as on
+the node group, takes the architecture from the NodePool, and deploys
+`atelet-iso` and the `counter-iso` pool on the `nitro` nodes. Karpenter
+launches nodes for the pool's worker Pods, up to `NITRO_NODES`, and the
+step waits for them to run. It never checks the capacity of the nodes the
+pool has, which may still be starting or draining; it checks only that
+they have the NodePool's architecture.
+The `mode3` plugin is refused, since `microvm` is a NodePool.
+
+Teardown deletes the NodeOverlays after the NodePools and before the
+EC2NodeClasses. `--keep-cluster` keeps them, and inventory lists them as
+the cluster's. `create cluster` reads, applies and waits on them with the
+access entry it gives you; this mode needs no other permission.
 
 ## Try it
 
@@ -754,6 +1010,12 @@ keeps a mode 3 worker's actors on a tmpfs in the guest, so the pool gets
 | WorkerPool | A counter pool with `spec.networkTransport.runtimeClassName: kata`: the controller runs the worker Pods under Kata, and atelet reaches them over mutual TLS on the Pod network instead of the node's shared files and Unix sockets. |
 | Check | Every worker Pod of the pool runs under RuntimeClass `kata`, and a counter suspends and resumes on it. |
 
+Mode 3 runs with [Karpenter](#karpenter) too, since `KARPENTER=on` keeps
+the `microvm` node group. It is refused only on a cluster whose `microvm`
+pool is a Karpenter NodePool, as with `KARPENTER_NODE_OVERLAY=on`: the
+`kata` RuntimeClass selects the label kata-deploy puts on a node that
+already runs, and Karpenter cannot make a node for those Pods.
+
 `mode3-iso`, the `nitro` sandbox class (the AWS Nitro sandbox), runs the
 same worker Pods under RuntimeClass `isolated-sandbox`, which EKS Auto Mode
 ships: each Pod runs in its own sandbox with its own guest kernel, on a node
@@ -810,7 +1072,9 @@ so the nodes it launches, their volumes and their network interfaces carry
 the owner tag and `TAGS`, as the node groups' do through their launch
 templates. Set `AUTO_MODE=` in `config.local.env` (or switch it
 off on Settings) for a cluster without Auto Mode: the mode is fixed when the
-cluster is created.
+cluster is created. Without Auto Mode, [Karpenter](#karpenter) can make the
+`gvisor` nodes instead of a node group, and in
+[NodeOverlay mode](#nodeoverlay-mode) the `nitro` nodes too.
 
 ## Run each step yourself
 
@@ -866,16 +1130,18 @@ Substrate with `ate-setup delete ate-system`, so its volumes and claims are
 released. Then `setup-aws teardown` deletes, in reverse order, everything
 the installer created that carries this deployment's owner tag: Pod Identity
 associations and roles, the RDS instance (without a final snapshot) and its
-logins, both S3 buckets with every object version, the ECR repositories, the
-node groups (with self-managed ones, their Auto Scaling groups, the node
-role's access entry and its instance profile), the cluster, the launch
-template and the VPC.
+logins, both S3 buckets with every object version, the ECR repositories,
+Karpenter's NodePools, nodes, NodeOverlays and AWS resources (with
+`KARPENTER=on`; see [Karpenter](#karpenter)), the node groups (with self-managed ones, their
+Auto Scaling groups, the node role's access entry and its instance
+profile), the cluster, the launch template and the VPC.
 Every network interface in a VPC the installer created is tagged and treated
 as the deployment's own (the install tags each one there that has no owner
 tag), so teardown deletes an available one, even one you added to that VPC
 yourself. One an AWS service manages is never deleted: teardown waits for it
 to go with what it belongs to.
-`KEEP_CLUSTER=true` keeps the cluster, its node groups and its network.
+`KEEP_CLUSTER=true` keeps the cluster, its node groups, Karpenter and its
+network.
 
 ![Delete AWS resources: each teardown phase checked off, ending with the inventory](native/installer/docs/delete-aws.png)
 
@@ -896,7 +1162,7 @@ they do on any denied read. What self-managed groups need besides is in
 |---|---|
 | Installer | A Bubble Tea wizard over Go provisioning code, package for package like substrate-gke's. `setup-aws` calls AWS through the AWS SDK for Go v2; the control plane is upstream's `ate-setup` with a kustomize Component for EKS (`native/deploy/eks`). Every child process starts from an argv. |
 | Nodes | Amazon Linux 2023 EKS-optimized AMI (or your own, `NODE_AMI_ID`), IMDSv2 only with a hop limit of 1, so pods in their own network namespace cannot read node credentials from IMDS. Host-network pods (CNI, kube-proxy, CSI) still can, so keep host networking to trusted system DaemonSets. AWS access is only through Pod Identity. |
-| Node groups | EKS managed node groups, or with `NODE_GROUP_TYPE=self-managed` an Auto Scaling group each that you own, whose nodes join with the nodeadm `NodeConfig` in their launch template. Both kinds get the same launch template settings, labels and taints. |
+| Node groups | EKS managed node groups, or with `NODE_GROUP_TYPE=self-managed` an Auto Scaling group each that you own, whose nodes join with the nodeadm `NodeConfig` in their launch template. Both kinds get the same launch template settings, labels and taints. With `KARPENTER=on`, a Karpenter NodePool makes the `gvisor` nodes when Pods need them, with the same labels, taints, instance type and node settings; with `KARPENTER_NODE_OVERLAY=on` (alpha), the `microvm` and `nitro` nodes too. |
 | microVM nodes | Nested virtualization through the launch template's `CpuOptions`, on Intel 7th and 8th generation families (m8i here; `setup-aws create cluster` checks the type). No bare metal needed. |
 | Network | VPC CNI with NetworkPolicy enforcement on: Substrate ships default-deny policies. Actors have no external egress except what their EgressPolicy allows. |
 | Identity | One IAM role per ServiceAccount through EKS Pod Identity, scoped to its buckets, repositories or model. Actors get no AWS identity. |

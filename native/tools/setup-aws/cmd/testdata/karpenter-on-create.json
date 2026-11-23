@@ -1,0 +1,5499 @@
+{
+ "fresh": {
+  "Writes": [
+   "CreateVpc demo-vpc",
+   "ModifyVpcAttribute vpc-0001",
+   "CreateTags rtb-0002",
+   "CreateTags sg-0003",
+   "CreateTags acl-0004",
+   "CreateSubnet demo-public-1",
+   "CreateSubnet demo-private-1",
+   "CreateSubnet demo-public-2",
+   "CreateSubnet demo-private-2",
+   "CreateSubnet demo-public-3",
+   "CreateSubnet demo-private-3",
+   "CreateInternetGateway demo-igw",
+   "AttachInternetGateway igw-0011",
+   "AllocateAddress demo-nat",
+   "CreateNatGateway demo-nat",
+   "CreateRouteTable demo-public",
+   "CreateRoute rtb-0014",
+   "AssociateRouteTable subnet-0005",
+   "AssociateRouteTable subnet-0007",
+   "AssociateRouteTable subnet-0009",
+   "CreateRouteTable demo-private",
+   "CreateRoute rtb-0015",
+   "AssociateRouteTable subnet-0006",
+   "AssociateRouteTable subnet-0008",
+   "AssociateRouteTable subnet-0010",
+   "CreateRole demo-us-west-2-eks-cluster",
+   "AttachRolePolicy demo-us-west-2-eks-cluster arn:aws:iam::aws:policy/AmazonEKSClusterPolicy",
+   "CreateRole demo-us-west-2-eks-node",
+   "AttachRolePolicy demo-us-west-2-eks-node arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy",
+   "AttachRolePolicy demo-us-west-2-eks-node arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy",
+   "AttachRolePolicy demo-us-west-2-eks-node arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPullOnly",
+   "CreateRole demo-us-west-2-ebs-csi-driver",
+   "AttachRolePolicy demo-us-west-2-ebs-csi-driver arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy",
+   "CreateInstanceProfile demo-us-west-2-eks-node",
+   "AddRoleToInstanceProfile demo-us-west-2-eks-node demo-us-west-2-eks-node",
+   "CreateCluster demo",
+   "CreateTags sg-0016",
+   "CreateAccessEntry arn:aws:iam::111122223333:role/Admin",
+   "AssociateAccessPolicy arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy",
+   "CreateAddon vpc-cni",
+   "CreateAddon kube-proxy",
+   "CreateAddon eks-pod-identity-agent",
+   "CreateAddon coredns",
+   "CreateAddon aws-ebs-csi-driver",
+   "CreateLaunchTemplate demo-system-nodes",
+   "CreateLaunchTemplate demo-microvm-nested-virt",
+   "CreateNodegroup system",
+   "CreateNodegroup microvm",
+   "CreateOrUpdateTags eks-system-asg",
+   "CreateOrUpdateTags eks-microvm-asg",
+   "CreateRole demo-us-west-2-karpenter",
+   "PutRolePolicy demo-us-west-2-karpenter access",
+   "CreatePodIdentityAssociation kube-system/karpenter",
+   "CreateQueue demo-karpenter",
+   "PutRule demo-karpenter-health",
+   "PutTargets demo-karpenter-health",
+   "PutRule demo-karpenter-spot",
+   "PutTargets demo-karpenter-spot",
+   "PutRule demo-karpenter-rebalance",
+   "PutTargets demo-karpenter-rebalance",
+   "PutRule demo-karpenter-state-change",
+   "PutTargets demo-karpenter-state-change",
+   "PutRule demo-karpenter-capacity-reservation",
+   "PutTargets demo-karpenter-capacity-reservation"
+  ],
+  "Reads": [
+   "DescribeCluster",
+   "DescribeInstanceTypes",
+   "GetParameter",
+   "DescribeImages",
+   "DescribeAvailabilityZones",
+   "DescribeInstanceTypeOfferings",
+   "DescribeVpcs",
+   "DescribeVpcs",
+   "GetRole",
+   "GetRole",
+   "GetRole",
+   "GetInstanceProfile",
+   "DescribeCluster",
+   "DescribeCluster",
+   "DescribeVpcs",
+   "DescribeNetworkInterfaces",
+   "GetRole",
+   "DescribeAccessEntry",
+   "DescribeLaunchTemplates",
+   "DescribeLaunchTemplates",
+   "DescribeNodegroup system",
+   "DescribeNodegroup system",
+   "DescribeNodegroup microvm",
+   "DescribeNodegroup microvm",
+   "DescribeAccessEntry",
+   "ListPodIdentityAssociations",
+   "GetRole",
+   "GetQueueUrl",
+   "DescribeRule",
+   "DescribeRule",
+   "DescribeRule",
+   "DescribeRule",
+   "DescribeRule",
+   "KubeObjects"
+  ],
+  "Inputs": [
+   "DescribeInstanceTypes {\"DryRun\":null,\"Filters\":null,\"IncludeUnsupportedInRegion\":null,\"InstanceTypes\":[\"m8i.xlarge\",\"m8i.2xlarge\"],\"MaxResults\":null,\"NextToken\":null}",
+   "GetParameter {\"Name\":\"/aws/service/eks/optimized-ami/1.37/amazon-linux-2023/x86_64/standard/recommended/image_id\",\"WithDecryption\":null}",
+   "DescribeImages {\"DryRun\":null,\"ExecutableUsers\":null,\"Filters\":null,\"ImageIds\":[\"ami-0e1e0000000000086\"],\"IncludeDeprecated\":null,\"IncludeDisabled\":null,\"MaxResults\":null,\"NextToken\":null,\"Owners\":null}",
+   "DescribeLaunchTemplates {\"DryRun\":null,\"Filters\":[{\"Name\":\"launch-template-name\",\"Values\":[\"demo-system-nodes\"]}],\"IncludeManagedResources\":null,\"LaunchTemplateIds\":null,\"LaunchTemplateNames\":null,\"MaxResults\":null,\"NextToken\":null}",
+   "DescribeLaunchTemplates {\"DryRun\":null,\"Filters\":[{\"Name\":\"launch-template-name\",\"Values\":[\"demo-microvm-nested-virt\"]}],\"IncludeManagedResources\":null,\"LaunchTemplateIds\":null,\"LaunchTemplateNames\":null,\"MaxResults\":null,\"NextToken\":null}",
+   "DescribeNodegroup system {\"ClusterName\":\"demo\",\"NodegroupName\":\"system\"}",
+   "DescribeNodegroup system {\"ClusterName\":\"demo\",\"NodegroupName\":\"system\"}",
+   "DescribeNodegroup microvm {\"ClusterName\":\"demo\",\"NodegroupName\":\"microvm\"}",
+   "DescribeNodegroup microvm {\"ClusterName\":\"demo\",\"NodegroupName\":\"microvm\"}",
+   "GetQueueUrl {\"QueueName\":\"demo-karpenter\",\"QueueOwnerAWSAccountId\":\"111122223333\"}"
+  ],
+  "Creates": [
+   "VPC demo-vpc (192.168.0.0/16)",
+   "subnet demo-public-1 (192.168.0.0/19, us-west-2a)",
+   "subnet demo-private-1 (192.168.96.0/19, us-west-2a)",
+   "subnet demo-public-2 (192.168.32.0/19, us-west-2b)",
+   "subnet demo-private-2 (192.168.128.0/19, us-west-2b)",
+   "subnet demo-public-3 (192.168.64.0/19, us-west-2c)",
+   "subnet demo-private-3 (192.168.160.0/19, us-west-2c)",
+   "internet gateway demo-igw",
+   "Elastic IP demo-nat",
+   "NAT gateway demo-nat",
+   "route table demo-public",
+   "route table demo-private",
+   "IAM role demo-us-west-2-eks-cluster",
+   "IAM role demo-us-west-2-eks-node",
+   "IAM role demo-us-west-2-ebs-csi-driver",
+   "IAM instance profile demo-us-west-2-eks-node",
+   "EKS cluster demo (Kubernetes 1.37, Auto Mode off)",
+   "access entry for arn:aws:iam::********3333:role/Admin",
+   "add-on vpc-cni",
+   "add-on kube-proxy",
+   "add-on eks-pod-identity-agent",
+   "add-on coredns",
+   "add-on aws-ebs-csi-driver",
+   "launch template demo-system-nodes",
+   "launch template demo-microvm-nested-virt",
+   "node group system (2 x m8i.xlarge)",
+   "node group microvm (2 x m8i.2xlarge)",
+   "IAM role demo-us-west-2-karpenter",
+   "Pod Identity association kube-system/karpenter with demo-us-west-2-karpenter",
+   "SQS queue demo-karpenter",
+   "EventBridge rule demo-karpenter-health",
+   "EventBridge rule demo-karpenter-spot",
+   "EventBridge rule demo-karpenter-rebalance",
+   "EventBridge rule demo-karpenter-state-change",
+   "EventBridge rule demo-karpenter-capacity-reservation",
+   "Kubernetes CustomResourceDefinition capacitybuffers.autoscaling.x-k8s.io",
+   "Kubernetes CustomResourceDefinition ec2nodeclasses.karpenter.k8s.aws",
+   "Kubernetes CustomResourceDefinition nodeclaims.karpenter.sh",
+   "Kubernetes CustomResourceDefinition nodeoverlays.karpenter.sh",
+   "Kubernetes CustomResourceDefinition nodepools.karpenter.sh",
+   "Kubernetes PodDisruptionBudget kube-system/karpenter",
+   "Kubernetes ServiceAccount kube-system/karpenter",
+   "Kubernetes ClusterRole karpenter-admin",
+   "Kubernetes ClusterRole karpenter-core",
+   "Kubernetes ClusterRole karpenter",
+   "Kubernetes ClusterRoleBinding karpenter-core",
+   "Kubernetes ClusterRoleBinding karpenter",
+   "Kubernetes Role kube-system/karpenter",
+   "Kubernetes Role kube-system/karpenter-dns",
+   "Kubernetes RoleBinding kube-system/karpenter",
+   "Kubernetes RoleBinding kube-system/karpenter-dns",
+   "Kubernetes Service kube-system/karpenter",
+   "Kubernetes Deployment kube-system/karpenter",
+   "Kubernetes EC2NodeClass gvisor",
+   "Kubernetes NodePool gvisor"
+  ],
+  "Changes": [
+   "turn on enableDnsHostnames of vpc-0001",
+   "tag main route table rtb-0002",
+   "tag default security group sg-0003",
+   "tag default network ACL acl-0004",
+   "attach internet gateway igw-0011 to vpc-0001",
+   "add the default route of demo-public via igw-0011",
+   "associate demo-public with subnet-0005",
+   "associate demo-public with subnet-0007",
+   "associate demo-public with subnet-0009",
+   "add the default route of demo-private via nat-0013",
+   "associate demo-private with subnet-0006",
+   "associate demo-private with subnet-0008",
+   "associate demo-private with subnet-0010",
+   "tag cluster security group sg-0016",
+   "tag Auto Scaling group eks-system-asg",
+   "tag Auto Scaling group eks-microvm-asg"
+  ],
+  "KubeCalls": [
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/capacitybuffers.autoscaling.x-k8s.io",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/ec2nodeclasses.karpenter.k8s.aws",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodeclaims.karpenter.sh",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodeoverlays.karpenter.sh",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodepools.karpenter.sh",
+   "GET /apis/policy/v1/namespaces/kube-system/poddisruptionbudgets/karpenter",
+   "GET /api/v1/namespaces/kube-system/serviceaccounts/karpenter",
+   "GET /apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter-admin",
+   "GET /apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter-core",
+   "GET /apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter",
+   "GET /apis/rbac.authorization.k8s.io/v1/clusterrolebindings/karpenter-core",
+   "GET /apis/rbac.authorization.k8s.io/v1/clusterrolebindings/karpenter",
+   "GET /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/roles/karpenter",
+   "GET /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/roles/karpenter-dns",
+   "GET /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/rolebindings/karpenter",
+   "GET /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/rolebindings/karpenter-dns",
+   "GET /api/v1/namespaces/kube-system/services/karpenter",
+   "GET /apis/apps/v1/namespaces/kube-system/deployments/karpenter",
+   "GET /apis/karpenter.k8s.aws/v1/ec2nodeclasses/gvisor",
+   "GET /apis/karpenter.sh/v1/nodepools/gvisor",
+   "PATCH /apis/apiextensions.k8s.io/v1/customresourcedefinitions/capacitybuffers.autoscaling.x-k8s.io",
+   "PATCH /apis/apiextensions.k8s.io/v1/customresourcedefinitions/ec2nodeclasses.karpenter.k8s.aws",
+   "PATCH /apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodeclaims.karpenter.sh",
+   "PATCH /apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodeoverlays.karpenter.sh",
+   "PATCH /apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodepools.karpenter.sh",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/capacitybuffers.autoscaling.x-k8s.io",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/ec2nodeclasses.karpenter.k8s.aws",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodeclaims.karpenter.sh",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodeoverlays.karpenter.sh",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodepools.karpenter.sh",
+   "PATCH /apis/policy/v1/namespaces/kube-system/poddisruptionbudgets/karpenter",
+   "PATCH /api/v1/namespaces/kube-system/serviceaccounts/karpenter",
+   "PATCH /apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter-admin",
+   "PATCH /apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter-core",
+   "PATCH /apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter",
+   "PATCH /apis/rbac.authorization.k8s.io/v1/clusterrolebindings/karpenter-core",
+   "PATCH /apis/rbac.authorization.k8s.io/v1/clusterrolebindings/karpenter",
+   "PATCH /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/roles/karpenter",
+   "PATCH /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/roles/karpenter-dns",
+   "PATCH /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/rolebindings/karpenter",
+   "PATCH /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/rolebindings/karpenter-dns",
+   "PATCH /api/v1/namespaces/kube-system/services/karpenter",
+   "PATCH /apis/apps/v1/namespaces/kube-system/deployments/karpenter",
+   "GET /apis/apps/v1/namespaces/kube-system/deployments/karpenter",
+   "PATCH /apis/karpenter.k8s.aws/v1/ec2nodeclasses/gvisor",
+   "PATCH /apis/karpenter.sh/v1/nodepools/gvisor",
+   "GET /apis/karpenter.k8s.aws/v1/ec2nodeclasses/gvisor",
+   "GET /apis/karpenter.sh/v1/nodepools/gvisor"
+  ],
+  "ClusterTags": {
+   "agent-substrate-on-eks/created-by": "setup-aws",
+   "agent-substrate-on-eks/deployment": "demo.us-west-2",
+   "agent-substrate-on-eks/karpenter": "on",
+   "auto-delete": "no",
+   "project": "agent-substrate"
+  },
+  "NodeGroups": [
+   "microvm",
+   "system"
+  ],
+  "Policy": "{\"Statement\":[{\"Action\":[\"ec2:RunInstances\",\"ec2:CreateFleet\"],\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:ec2:us-west-2::image/*\",\"arn:aws:ec2:us-west-2::snapshot/*\",\"arn:aws:ec2:us-west-2:*:security-group/*\",\"arn:aws:ec2:us-west-2:*:subnet/*\",\"arn:aws:ec2:us-west-2:*:capacity-reservation/*\",\"arn:aws:ec2:us-west-2:*:placement-group/*\"],\"Sid\":\"AllowScopedEC2InstanceAccessActions\"},{\"Action\":[\"ec2:RunInstances\",\"ec2:CreateFleet\"],\"Condition\":{\"StringEquals\":{\"aws:ResourceTag/kubernetes.io/cluster/demo\":\"owned\"},\"StringLike\":{\"aws:ResourceTag/karpenter.sh/nodepool\":\"*\"}},\"Effect\":\"Allow\",\"Resource\":\"arn:aws:ec2:us-west-2:*:launch-template/*\",\"Sid\":\"AllowScopedEC2LaunchTemplateAccessActions\"},{\"Action\":[\"ec2:RunInstances\",\"ec2:CreateFleet\",\"ec2:CreateLaunchTemplate\"],\"Condition\":{\"StringEquals\":{\"aws:RequestTag/eks:eks-cluster-name\":\"demo\",\"aws:RequestTag/kubernetes.io/cluster/demo\":\"owned\"},\"StringLike\":{\"aws:RequestTag/karpenter.sh/nodepool\":\"*\"}},\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:ec2:us-west-2:*:fleet/*\",\"arn:aws:ec2:us-west-2:*:instance/*\",\"arn:aws:ec2:us-west-2:*:volume/*\",\"arn:aws:ec2:us-west-2:*:network-interface/*\",\"arn:aws:ec2:us-west-2:*:launch-template/*\",\"arn:aws:ec2:us-west-2:*:spot-instances-request/*\"],\"Sid\":\"AllowScopedEC2InstanceActionsWithTags\"},{\"Action\":\"ec2:CreateTags\",\"Condition\":{\"StringEquals\":{\"aws:RequestTag/eks:eks-cluster-name\":\"demo\",\"aws:RequestTag/kubernetes.io/cluster/demo\":\"owned\",\"ec2:CreateAction\":[\"RunInstances\",\"CreateFleet\",\"CreateLaunchTemplate\"]},\"StringLike\":{\"aws:RequestTag/karpenter.sh/nodepool\":\"*\"}},\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:ec2:us-west-2:*:fleet/*\",\"arn:aws:ec2:us-west-2:*:instance/*\",\"arn:aws:ec2:us-west-2:*:volume/*\",\"arn:aws:ec2:us-west-2:*:network-interface/*\",\"arn:aws:ec2:us-west-2:*:launch-template/*\",\"arn:aws:ec2:us-west-2:*:spot-instances-request/*\"],\"Sid\":\"AllowScopedResourceCreationTagging\"},{\"Action\":\"ec2:CreateTags\",\"Condition\":{\"ForAllValues:StringEquals\":{\"aws:TagKeys\":[\"eks:eks-cluster-name\",\"karpenter.sh/nodeclaim\",\"Name\"]},\"StringEquals\":{\"aws:ResourceTag/kubernetes.io/cluster/demo\":\"owned\"},\"StringEqualsIfExists\":{\"aws:RequestTag/eks:eks-cluster-name\":\"demo\"},\"StringLike\":{\"aws:ResourceTag/karpenter.sh/nodepool\":\"*\"}},\"Effect\":\"Allow\",\"Resource\":\"arn:aws:ec2:us-west-2:*:instance/*\",\"Sid\":\"AllowScopedResourceTagging\"},{\"Action\":[\"ec2:TerminateInstances\",\"ec2:DeleteLaunchTemplate\"],\"Condition\":{\"StringEquals\":{\"aws:ResourceTag/kubernetes.io/cluster/demo\":\"owned\"},\"StringLike\":{\"aws:ResourceTag/karpenter.sh/nodepool\":\"*\"}},\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:ec2:us-west-2:*:instance/*\",\"arn:aws:ec2:us-west-2:*:launch-template/*\"],\"Sid\":\"AllowScopedDeletion\"},{\"Action\":\"iam:PassRole\",\"Condition\":{\"StringEquals\":{\"iam:PassedToService\":[\"ec2.amazonaws.com\",\"ec2.amazonaws.com.cn\"]}},\"Effect\":\"Allow\",\"Resource\":\"arn:aws:iam::111122223333:role/demo-us-west-2-eks-node\",\"Sid\":\"AllowPassingInstanceRole\"},{\"Action\":\"eks:DescribeCluster\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:eks:us-west-2:111122223333:cluster/demo\",\"Sid\":\"AllowAPIServerEndpointDiscovery\"},{\"Action\":[\"sqs:DeleteMessage\",\"sqs:GetQueueUrl\",\"sqs:ReceiveMessage\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:sqs:us-west-2:111122223333:demo-karpenter\",\"Sid\":\"AllowInterruptionQueueActions\"},{\"Action\":[\"ec2:DescribeCapacityReservations\",\"ec2:DescribeImages\",\"ec2:DescribeInstances\",\"ec2:DescribeInstanceStatus\",\"ec2:DescribeInstanceTypeOfferings\",\"ec2:DescribeInstanceTypes\",\"ec2:DescribeLaunchTemplates\",\"ec2:DescribePlacementGroups\",\"ec2:DescribeSecurityGroups\",\"ec2:DescribeSpotPriceHistory\",\"ec2:DescribeSubnets\"],\"Condition\":{\"StringEquals\":{\"aws:RequestedRegion\":\"us-west-2\"}},\"Effect\":\"Allow\",\"Resource\":\"*\",\"Sid\":\"AllowRegionalReadActions\"},{\"Action\":\"ssm:GetParameter\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:ssm:us-west-2::parameter/aws/service/*\",\"Sid\":\"AllowSSMReadActions\"},{\"Action\":\"pricing:GetProducts\",\"Effect\":\"Allow\",\"Resource\":\"*\",\"Sid\":\"AllowPricingReadActions\"},{\"Action\":\"iam:ListInstanceProfiles\",\"Effect\":\"Allow\",\"Resource\":\"*\",\"Sid\":\"AllowUnscopedInstanceProfileListAction\"},{\"Action\":\"iam:GetInstanceProfile\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:iam::111122223333:instance-profile/*\",\"Sid\":\"AllowInstanceProfileReadActions\"}],\"Version\":\"2012-10-17\"}",
+  "Queue": {
+   "MessageRetentionPeriod": "300",
+   "Policy": "{\"Id\":\"EC2InterruptionPolicy\",\"Statement\":[{\"Action\":\"sqs:SendMessage\",\"Effect\":\"Allow\",\"Principal\":{\"Service\":[\"events.amazonaws.com\",\"sqs.amazonaws.com\"]},\"Resource\":\"arn:aws:sqs:us-west-2:111122223333:demo-karpenter\"},{\"Action\":\"sqs:*\",\"Condition\":{\"Bool\":{\"aws:SecureTransport\":\"false\"}},\"Effect\":\"Deny\",\"Principal\":\"*\",\"Resource\":\"arn:aws:sqs:us-west-2:111122223333:demo-karpenter\",\"Sid\":\"DenyHTTP\"}],\"Version\":\"2012-10-17\"}",
+   "SqsManagedSseEnabled": "true"
+  },
+  "Rules": {
+   "demo-karpenter-capacity-reservation": "{\"detail-type\":[\"EC2 Capacity Reservation Instance Interruption Warning\"],\"source\":[\"aws.ec2\"]}",
+   "demo-karpenter-health": "{\"detail-type\":[\"AWS Health Event\"],\"source\":[\"aws.health\"]}",
+   "demo-karpenter-rebalance": "{\"detail-type\":[\"EC2 Instance Rebalance Recommendation\"],\"source\":[\"aws.ec2\"]}",
+   "demo-karpenter-spot": "{\"detail-type\":[\"EC2 Spot Instance Interruption Warning\"],\"source\":[\"aws.ec2\"]}",
+   "demo-karpenter-state-change": "{\"detail-type\":[\"EC2 Instance State-change Notification\"],\"source\":[\"aws.ec2\"]}"
+  },
+  "Objects": {
+   "/api/v1/namespaces/kube-system/serviceaccounts/karpenter": {
+    "apiVersion": "v1",
+    "automountServiceAccountToken": false,
+    "kind": "ServiceAccount",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter",
+     "namespace": "kube-system",
+     "resourceVersion": "7",
+     "uid": "uid-karpenter"
+    },
+    "status": {}
+   },
+   "/api/v1/namespaces/kube-system/services/karpenter": {
+    "apiVersion": "v1",
+    "kind": "Service",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter",
+     "namespace": "kube-system",
+     "resourceVersion": "17",
+     "uid": "uid-karpenter"
+    },
+    "spec": {
+     "ports": [
+      {
+       "name": "http-metrics",
+       "port": 8080,
+       "protocol": "TCP",
+       "targetPort": "http-metrics"
+      }
+     ],
+     "selector": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/name": "karpenter"
+     },
+     "type": "ClusterIP"
+    },
+    "status": {}
+   },
+   "/apis/apiextensions.k8s.io/v1/customresourcedefinitions/capacitybuffers.autoscaling.x-k8s.io": "sha256:513b09eb8820cb07a01e9a825463744d36129a6d2fb48da0e8b55df54d958e95",
+   "/apis/apiextensions.k8s.io/v1/customresourcedefinitions/ec2nodeclasses.karpenter.k8s.aws": "sha256:8657cdc0ccc631120296874cd271e8b2e86e302496c1a1631092448f077f6e18",
+   "/apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodeclaims.karpenter.sh": "sha256:32b17064e3afc3d833893aa2dcea2ac2d23626881d223507ef3a57c78168aa06",
+   "/apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodeoverlays.karpenter.sh": "sha256:6dd1273a2dbed1e09c06933f07e471cff2498630c48ffb0f8f5485800ac84d3e",
+   "/apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodepools.karpenter.sh": "sha256:9a9b4b1e12159814abf427cf876f5169238d21ad2e1a6063af3e8aa936452e9f",
+   "/apis/apps/v1/namespaces/kube-system/deployments/karpenter": {
+    "apiVersion": "apps/v1",
+    "kind": "Deployment",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter",
+     "namespace": "kube-system",
+     "resourceVersion": "18",
+     "uid": "uid-karpenter"
+    },
+    "spec": {
+     "replicas": 2,
+     "revisionHistoryLimit": 10,
+     "selector": {
+      "matchLabels": {
+       "app.kubernetes.io/instance": "karpenter",
+       "app.kubernetes.io/name": "karpenter"
+      }
+     },
+     "strategy": {
+      "rollingUpdate": {
+       "maxUnavailable": 1
+      }
+     },
+     "template": {
+      "metadata": {
+       "annotations": null,
+       "labels": {
+        "app.kubernetes.io/instance": "karpenter",
+        "app.kubernetes.io/name": "karpenter"
+       }
+      },
+      "spec": {
+       "affinity": {
+        "nodeAffinity": {
+         "requiredDuringSchedulingIgnoredDuringExecution": {
+          "nodeSelectorTerms": [
+           {
+            "matchExpressions": [
+             {
+              "key": "karpenter.sh/nodepool",
+              "operator": "DoesNotExist"
+             }
+            ]
+           }
+          ]
+         }
+        },
+        "podAntiAffinity": {
+         "requiredDuringSchedulingIgnoredDuringExecution": [
+          {
+           "labelSelector": {
+            "matchLabels": {
+             "app.kubernetes.io/instance": "karpenter",
+             "app.kubernetes.io/name": "karpenter"
+            }
+           },
+           "topologyKey": "kubernetes.io/hostname"
+          }
+         ]
+        }
+       },
+       "automountServiceAccountToken": true,
+       "containers": [
+        {
+         "env": [
+          {
+           "name": "KUBERNETES_MIN_VERSION",
+           "value": "1.19.0-0"
+          },
+          {
+           "name": "KARPENTER_SERVICE",
+           "value": "karpenter"
+          },
+          {
+           "name": "LOG_LEVEL",
+           "value": "info"
+          },
+          {
+           "name": "LOG_OUTPUT_PATHS",
+           "value": "stdout"
+          },
+          {
+           "name": "LOG_ERROR_OUTPUT_PATHS",
+           "value": "stderr"
+          },
+          {
+           "name": "METRICS_PORT",
+           "value": "8080"
+          },
+          {
+           "name": "HEALTH_PROBE_PORT",
+           "value": "8081"
+          },
+          {
+           "name": "SYSTEM_NAMESPACE",
+           "valueFrom": {
+            "fieldRef": {
+             "fieldPath": "metadata.namespace"
+            }
+           }
+          },
+          {
+           "name": "CPU_REQUESTS",
+           "valueFrom": {
+            "resourceFieldRef": {
+             "containerName": "controller",
+             "divisor": "1m",
+             "resource": "requests.cpu"
+            }
+           }
+          },
+          {
+           "name": "MEMORY_LIMIT",
+           "valueFrom": {
+            "resourceFieldRef": {
+             "containerName": "controller",
+             "divisor": "0",
+             "resource": "limits.memory"
+            }
+           }
+          },
+          {
+           "name": "FEATURE_GATES",
+           "value": "ReservedCapacity=true,SpotToSpotConsolidation=false,NodeRepair=false,NodeOverlay=false,StaticCapacity=false,CapacityBuffer=false,TerminateFirstDrift=false,TerminateFirstRepair=false,PodDeletionCostManagement=false"
+          },
+          {
+           "name": "AWS_FEATURE_GATES",
+           "value": "NodeClassCEL=false,DRANVIDIAGPU=false,DRAEFA=false,RebootForRepair=false"
+          },
+          {
+           "name": "BATCH_MAX_DURATION",
+           "value": "10s"
+          },
+          {
+           "name": "BATCH_IDLE_DURATION",
+           "value": "1s"
+          },
+          {
+           "name": "PREFERENCE_POLICY",
+           "value": "Respect"
+          },
+          {
+           "name": "MIN_VALUES_POLICY",
+           "value": "Strict"
+          },
+          {
+           "name": "CLUSTER_NAME",
+           "value": "demo"
+          },
+          {
+           "name": "CLUSTER_ENDPOINT",
+           "value": "https://FAKE.gr7.us-west-2.eks.amazonaws.com"
+          },
+          {
+           "name": "EKS_CONTROL_PLANE",
+           "value": "true"
+          },
+          {
+           "name": "VM_MEMORY_OVERHEAD_PERCENT",
+           "value": "0.075"
+          },
+          {
+           "name": "INTERRUPTION_QUEUE",
+           "value": "demo-karpenter"
+          },
+          {
+           "name": "RESERVED_ENIS",
+           "value": "0"
+          },
+          {
+           "name": "IGNORE_DRA_REQUESTS",
+           "value": "true"
+          },
+          {
+           "name": "AMI_REFRESH_INTERVAL",
+           "value": "1m"
+          },
+          {
+           "name": "SUBNET_REFRESH_INTERVAL",
+           "value": "1m"
+          },
+          {
+           "name": "SECURITY_GROUP_REFRESH_INTERVAL",
+           "value": "1m"
+          },
+          {
+           "name": "AWS_REGION",
+           "value": "us-west-2"
+          },
+          {
+           "name": "AWS_EC2_METADATA_DISABLED",
+           "value": "true"
+          }
+         ],
+         "image": "public.ecr.aws/karpenter/controller:1.15.2@sha256:4a7dc37f85ad8987ece1cf5df55e607aa17a879a6faa76f5258c5bf182fbdfff",
+         "imagePullPolicy": "IfNotPresent",
+         "livenessProbe": {
+          "httpGet": {
+           "path": "/healthz",
+           "port": "http"
+          },
+          "initialDelaySeconds": 30,
+          "timeoutSeconds": 30
+         },
+         "name": "controller",
+         "ports": [
+          {
+           "containerPort": 8080,
+           "name": "http-metrics",
+           "protocol": "TCP"
+          },
+          {
+           "containerPort": 8081,
+           "name": "http",
+           "protocol": "TCP"
+          }
+         ],
+         "readinessProbe": {
+          "httpGet": {
+           "path": "/readyz",
+           "port": "http"
+          },
+          "initialDelaySeconds": 5,
+          "timeoutSeconds": 30
+         },
+         "resources": {
+          "limits": {
+           "cpu": 1,
+           "memory": "1Gi"
+          },
+          "requests": {
+           "cpu": 1,
+           "memory": "1Gi"
+          }
+         },
+         "securityContext": {
+          "allowPrivilegeEscalation": false,
+          "capabilities": {
+           "drop": [
+            "ALL"
+           ]
+          },
+          "privileged": false,
+          "readOnlyRootFilesystem": true,
+          "runAsGroup": 65532,
+          "runAsNonRoot": true,
+          "runAsUser": 65532
+         }
+        }
+       ],
+       "dnsPolicy": "ClusterFirst",
+       "nodeSelector": {
+        "ate.dev/pool": "system",
+        "kubernetes.io/os": "linux"
+       },
+       "priorityClassName": "system-cluster-critical",
+       "schedulerName": "default-scheduler",
+       "securityContext": {
+        "fsGroup": 65532,
+        "seccompProfile": {
+         "type": "RuntimeDefault"
+        }
+       },
+       "serviceAccountName": "karpenter",
+       "tolerations": [
+        {
+         "key": "CriticalAddonsOnly",
+         "operator": "Exists"
+        }
+       ],
+       "topologySpreadConstraints": [
+        {
+         "labelSelector": {
+          "matchLabels": {
+           "app.kubernetes.io/instance": "karpenter",
+           "app.kubernetes.io/name": "karpenter"
+          }
+         },
+         "maxSkew": 1,
+         "topologyKey": "topology.kubernetes.io/zone",
+         "whenUnsatisfiable": "DoNotSchedule"
+        }
+       ]
+      }
+     }
+    },
+    "status": {
+     "availableReplicas": 2,
+     "conditions": [
+      {
+       "message": "",
+       "reason": "Available",
+       "status": "True",
+       "type": "Available"
+      }
+     ],
+     "observedGeneration": 1
+    }
+   },
+   "/apis/karpenter.k8s.aws/v1/ec2nodeclasses/gvisor": {
+    "apiVersion": "karpenter.k8s.aws/v1",
+    "kind": "EC2NodeClass",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/managed-by": "substrate-eks"
+     },
+     "name": "gvisor",
+     "resourceVersion": "19",
+     "uid": "uid-gvisor"
+    },
+    "spec": {
+     "amiFamily": "AL2023",
+     "amiSelectorTerms": [
+      {
+       "id": "ami-0e1e0000000000086"
+      }
+     ],
+     "blockDeviceMappings": [
+      {
+       "deviceName": "/dev/xvda",
+       "ebs": {
+        "deleteOnTermination": true,
+        "encrypted": true,
+        "volumeSize": "200Gi",
+        "volumeType": "gp3"
+       },
+       "rootVolume": true
+      }
+     ],
+     "instanceProfile": "demo-us-west-2-eks-node",
+     "metadataOptions": {
+      "httpEndpoint": "enabled",
+      "httpProtocolIPv6": "disabled",
+      "httpPutResponseHopLimit": 1,
+      "httpTokens": "required"
+     },
+     "securityGroupSelectorTerms": [
+      {
+       "id": "sg-0016"
+      }
+     ],
+     "subnetSelectorTerms": [
+      {
+       "id": "subnet-0006"
+      },
+      {
+       "id": "subnet-0008"
+      },
+      {
+       "id": "subnet-0010"
+      }
+     ],
+     "tags": {
+      "agent-substrate-on-eks/deployment": "demo.us-west-2",
+      "auto-delete": "no",
+      "project": "agent-substrate"
+     }
+    },
+    "status": {
+     "conditions": [
+      {
+       "message": "",
+       "reason": "Ready",
+       "status": "True",
+       "type": "Ready"
+      }
+     ]
+    }
+   },
+   "/apis/karpenter.sh/v1/nodepools/gvisor": {
+    "apiVersion": "karpenter.sh/v1",
+    "kind": "NodePool",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/managed-by": "substrate-eks"
+     },
+     "name": "gvisor",
+     "resourceVersion": "20",
+     "uid": "uid-gvisor"
+    },
+    "spec": {
+     "disruption": {
+      "consolidateAfter": "5m",
+      "consolidationPolicy": "WhenEmpty"
+     },
+     "limits": {
+      "cpu": "16",
+      "nodes": "2"
+     },
+     "template": {
+      "metadata": {
+       "labels": {
+        "ate.dev/pool": "gvisor"
+       }
+      },
+      "spec": {
+       "expireAfter": "Never",
+       "nodeClassRef": {
+        "group": "karpenter.k8s.aws",
+        "kind": "EC2NodeClass",
+        "name": "gvisor"
+       },
+       "requirements": [
+        {
+         "key": "node.kubernetes.io/instance-type",
+         "operator": "In",
+         "values": [
+          "m8i.2xlarge"
+         ]
+        },
+        {
+         "key": "karpenter.sh/capacity-type",
+         "operator": "In",
+         "values": [
+          "on-demand"
+         ]
+        },
+        {
+         "key": "kubernetes.io/arch",
+         "operator": "In",
+         "values": [
+          "amd64"
+         ]
+        },
+        {
+         "key": "kubernetes.io/os",
+         "operator": "In",
+         "values": [
+          "linux"
+         ]
+        }
+       ],
+       "taints": [
+        {
+         "effect": "NoSchedule",
+         "key": "ate.dev/sandboxClass",
+         "value": "gvisor"
+        }
+       ],
+       "terminationGracePeriod": "15m"
+      }
+     }
+    },
+    "status": {
+     "conditions": [
+      {
+       "message": "",
+       "reason": "Ready",
+       "status": "True",
+       "type": "Ready"
+      }
+     ]
+    }
+   },
+   "/apis/policy/v1/namespaces/kube-system/poddisruptionbudgets/karpenter": {
+    "apiVersion": "policy/v1",
+    "kind": "PodDisruptionBudget",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter",
+     "namespace": "kube-system",
+     "resourceVersion": "6",
+     "uid": "uid-karpenter"
+    },
+    "spec": {
+     "maxUnavailable": 1,
+     "selector": {
+      "matchLabels": {
+       "app.kubernetes.io/instance": "karpenter",
+       "app.kubernetes.io/name": "karpenter"
+      }
+     }
+    },
+    "status": {}
+   },
+   "/apis/rbac.authorization.k8s.io/v1/clusterrolebindings/karpenter": {
+    "apiVersion": "rbac.authorization.k8s.io/v1",
+    "kind": "ClusterRoleBinding",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter",
+     "resourceVersion": "12",
+     "uid": "uid-karpenter"
+    },
+    "roleRef": {
+     "apiGroup": "rbac.authorization.k8s.io",
+     "kind": "ClusterRole",
+     "name": "karpenter"
+    },
+    "status": {},
+    "subjects": [
+     {
+      "kind": "ServiceAccount",
+      "name": "karpenter",
+      "namespace": "kube-system"
+     }
+    ]
+   },
+   "/apis/rbac.authorization.k8s.io/v1/clusterrolebindings/karpenter-core": {
+    "apiVersion": "rbac.authorization.k8s.io/v1",
+    "kind": "ClusterRoleBinding",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter-core",
+     "resourceVersion": "11",
+     "uid": "uid-karpenter-core"
+    },
+    "roleRef": {
+     "apiGroup": "rbac.authorization.k8s.io",
+     "kind": "ClusterRole",
+     "name": "karpenter-core"
+    },
+    "status": {},
+    "subjects": [
+     {
+      "kind": "ServiceAccount",
+      "name": "karpenter",
+      "namespace": "kube-system"
+     }
+    ]
+   },
+   "/apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter": {
+    "apiVersion": "rbac.authorization.k8s.io/v1",
+    "kind": "ClusterRole",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter",
+     "resourceVersion": "10",
+     "uid": "uid-karpenter"
+    },
+    "rules": [
+     {
+      "apiGroups": [
+       "karpenter.k8s.aws"
+      ],
+      "resources": [
+       "ec2nodeclasses"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "karpenter.k8s.aws"
+      ],
+      "resources": [
+       "ec2nodeclasses",
+       "ec2nodeclasses/status"
+      ],
+      "verbs": [
+       "patch",
+       "update"
+      ]
+     }
+    ],
+    "status": {}
+   },
+   "/apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter-admin": {
+    "apiVersion": "rbac.authorization.k8s.io/v1",
+    "kind": "ClusterRole",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2",
+      "rbac.authorization.k8s.io/aggregate-to-admin": "true"
+     },
+     "name": "karpenter-admin",
+     "resourceVersion": "8",
+     "uid": "uid-karpenter-admin"
+    },
+    "rules": [
+     {
+      "apiGroups": [
+       "karpenter.sh"
+      ],
+      "resources": [
+       "nodepools",
+       "nodepools/status",
+       "nodeclaims",
+       "nodeclaims/status"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch",
+       "create",
+       "delete",
+       "patch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "karpenter.k8s.aws"
+      ],
+      "resources": [
+       "ec2nodeclasses"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch",
+       "create",
+       "delete",
+       "patch"
+      ]
+     }
+    ],
+    "status": {}
+   },
+   "/apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter-core": {
+    "apiVersion": "rbac.authorization.k8s.io/v1",
+    "kind": "ClusterRole",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter-core",
+     "resourceVersion": "9",
+     "uid": "uid-karpenter-core"
+    },
+    "rules": [
+     {
+      "apiGroups": [
+       "karpenter.sh"
+      ],
+      "resources": [
+       "nodepools",
+       "nodepools/status",
+       "nodeclaims",
+       "nodeclaims/status",
+       "nodeoverlays",
+       "nodeoverlays/status"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "autoscaling.x-k8s.io"
+      ],
+      "resources": [
+       "capacitybuffers",
+       "capacitybuffers/status"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       ""
+      ],
+      "resources": [
+       "podtemplates"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       ""
+      ],
+      "resources": [
+       "pods",
+       "nodes",
+       "persistentvolumes",
+       "persistentvolumeclaims",
+       "replicationcontrollers",
+       "namespaces"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "storage.k8s.io"
+      ],
+      "resources": [
+       "storageclasses",
+       "csinodes",
+       "volumeattachments"
+      ],
+      "verbs": [
+       "get",
+       "watch",
+       "list"
+      ]
+     },
+     {
+      "apiGroups": [
+       "apps"
+      ],
+      "resources": [
+       "daemonsets",
+       "deployments",
+       "replicasets",
+       "statefulsets"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "autoscaling.k8s.io"
+      ],
+      "resources": [
+       "verticalpodautoscalers"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "policy"
+      ],
+      "resources": [
+       "poddisruptionbudgets"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       ""
+      ],
+      "resources": [
+       "events"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "resource.k8s.io"
+      ],
+      "resources": [
+       "deviceclasses",
+       "resourceclaims",
+       "resourceslices"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "karpenter.sh"
+      ],
+      "resources": [
+       "nodeclaims",
+       "nodeclaims/status"
+      ],
+      "verbs": [
+       "create",
+       "delete",
+       "update",
+       "patch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "karpenter.sh"
+      ],
+      "resources": [
+       "nodepools",
+       "nodepools/status",
+       "nodeoverlays/status"
+      ],
+      "verbs": [
+       "update",
+       "patch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "autoscaling.x-k8s.io"
+      ],
+      "resources": [
+       "capacitybuffers/status"
+      ],
+      "verbs": [
+       "update",
+       "patch"
+      ]
+     },
+     {
+      "apiGroups": [
+       ""
+      ],
+      "resources": [
+       "events"
+      ],
+      "verbs": [
+       "create",
+       "patch"
+      ]
+     },
+     {
+      "apiGroups": [
+       ""
+      ],
+      "resources": [
+       "nodes"
+      ],
+      "verbs": [
+       "patch",
+       "delete",
+       "update"
+      ]
+     },
+     {
+      "apiGroups": [
+       ""
+      ],
+      "resources": [
+       "pods/eviction"
+      ],
+      "verbs": [
+       "create"
+      ]
+     },
+     {
+      "apiGroups": [
+       ""
+      ],
+      "resources": [
+       "pods"
+      ],
+      "verbs": [
+       "delete"
+      ]
+     }
+    ],
+    "status": {}
+   },
+   "/apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/rolebindings/karpenter": {
+    "apiVersion": "rbac.authorization.k8s.io/v1",
+    "kind": "RoleBinding",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter",
+     "namespace": "kube-system",
+     "resourceVersion": "15",
+     "uid": "uid-karpenter"
+    },
+    "roleRef": {
+     "apiGroup": "rbac.authorization.k8s.io",
+     "kind": "Role",
+     "name": "karpenter"
+    },
+    "status": {},
+    "subjects": [
+     {
+      "kind": "ServiceAccount",
+      "name": "karpenter",
+      "namespace": "kube-system"
+     }
+    ]
+   },
+   "/apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/rolebindings/karpenter-dns": {
+    "apiVersion": "rbac.authorization.k8s.io/v1",
+    "kind": "RoleBinding",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter-dns",
+     "namespace": "kube-system",
+     "resourceVersion": "16",
+     "uid": "uid-karpenter-dns"
+    },
+    "roleRef": {
+     "apiGroup": "rbac.authorization.k8s.io",
+     "kind": "Role",
+     "name": "karpenter-dns"
+    },
+    "status": {},
+    "subjects": [
+     {
+      "kind": "ServiceAccount",
+      "name": "karpenter",
+      "namespace": "kube-system"
+     }
+    ]
+   },
+   "/apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/roles/karpenter": {
+    "apiVersion": "rbac.authorization.k8s.io/v1",
+    "kind": "Role",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter",
+     "namespace": "kube-system",
+     "resourceVersion": "13",
+     "uid": "uid-karpenter"
+    },
+    "rules": [
+     {
+      "apiGroups": [
+       "coordination.k8s.io"
+      ],
+      "resources": [
+       "leases"
+      ],
+      "verbs": [
+       "get",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "coordination.k8s.io"
+      ],
+      "resourceNames": [
+       "karpenter-leader-election"
+      ],
+      "resources": [
+       "leases"
+      ],
+      "verbs": [
+       "patch",
+       "update"
+      ]
+     },
+     {
+      "apiGroups": [
+       "coordination.k8s.io"
+      ],
+      "resources": [
+       "leases"
+      ],
+      "verbs": [
+       "create"
+      ]
+     }
+    ],
+    "status": {}
+   },
+   "/apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/roles/karpenter-dns": {
+    "apiVersion": "rbac.authorization.k8s.io/v1",
+    "kind": "Role",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter-dns",
+     "namespace": "kube-system",
+     "resourceVersion": "14",
+     "uid": "uid-karpenter-dns"
+    },
+    "rules": [
+     {
+      "apiGroups": [
+       ""
+      ],
+      "resourceNames": [
+       "kube-dns"
+      ],
+      "resources": [
+       "services"
+      ],
+      "verbs": [
+       "get"
+      ]
+     }
+    ],
+    "status": {}
+   }
+  }
+ },
+ "fresh, self-managed": {
+  "Writes": [
+   "CreateVpc demo-vpc",
+   "ModifyVpcAttribute vpc-0001",
+   "CreateTags rtb-0002",
+   "CreateTags sg-0003",
+   "CreateTags acl-0004",
+   "CreateSubnet demo-public-1",
+   "CreateSubnet demo-private-1",
+   "CreateSubnet demo-public-2",
+   "CreateSubnet demo-private-2",
+   "CreateSubnet demo-public-3",
+   "CreateSubnet demo-private-3",
+   "CreateInternetGateway demo-igw",
+   "AttachInternetGateway igw-0011",
+   "AllocateAddress demo-nat",
+   "CreateNatGateway demo-nat",
+   "CreateRouteTable demo-public",
+   "CreateRoute rtb-0014",
+   "AssociateRouteTable subnet-0005",
+   "AssociateRouteTable subnet-0007",
+   "AssociateRouteTable subnet-0009",
+   "CreateRouteTable demo-private",
+   "CreateRoute rtb-0015",
+   "AssociateRouteTable subnet-0006",
+   "AssociateRouteTable subnet-0008",
+   "AssociateRouteTable subnet-0010",
+   "CreateRole demo-us-west-2-eks-cluster",
+   "AttachRolePolicy demo-us-west-2-eks-cluster arn:aws:iam::aws:policy/AmazonEKSClusterPolicy",
+   "CreateRole demo-us-west-2-eks-node",
+   "AttachRolePolicy demo-us-west-2-eks-node arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy",
+   "AttachRolePolicy demo-us-west-2-eks-node arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy",
+   "AttachRolePolicy demo-us-west-2-eks-node arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPullOnly",
+   "CreateRole demo-us-west-2-ebs-csi-driver",
+   "AttachRolePolicy demo-us-west-2-ebs-csi-driver arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy",
+   "CreateInstanceProfile demo-us-west-2-eks-node",
+   "AddRoleToInstanceProfile demo-us-west-2-eks-node demo-us-west-2-eks-node",
+   "CreateCluster demo",
+   "CreateTags sg-0016",
+   "CreateAccessEntry arn:aws:iam::111122223333:role/Admin",
+   "AssociateAccessPolicy arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy",
+   "CreateAccessEntry arn:aws:iam::111122223333:role/demo-us-west-2-eks-node",
+   "CreateAddon vpc-cni",
+   "CreateAddon kube-proxy",
+   "CreateAddon eks-pod-identity-agent",
+   "CreateAddon coredns",
+   "CreateAddon aws-ebs-csi-driver",
+   "CreateLaunchTemplate demo-system-nodes",
+   "CreateLaunchTemplate demo-microvm-nested-virt",
+   "CreateAutoScalingGroup demo-system",
+   "CreateAutoScalingGroup demo-microvm",
+   "CreateRole demo-us-west-2-karpenter",
+   "PutRolePolicy demo-us-west-2-karpenter access",
+   "CreatePodIdentityAssociation kube-system/karpenter",
+   "CreateQueue demo-karpenter",
+   "PutRule demo-karpenter-health",
+   "PutTargets demo-karpenter-health",
+   "PutRule demo-karpenter-spot",
+   "PutTargets demo-karpenter-spot",
+   "PutRule demo-karpenter-rebalance",
+   "PutTargets demo-karpenter-rebalance",
+   "PutRule demo-karpenter-state-change",
+   "PutTargets demo-karpenter-state-change",
+   "PutRule demo-karpenter-capacity-reservation",
+   "PutTargets demo-karpenter-capacity-reservation"
+  ],
+  "Reads": [
+   "DescribeCluster",
+   "DescribeAutoScalingGroups",
+   "DescribeInstanceTypes",
+   "GetParameter",
+   "DescribeImages",
+   "DescribeAvailabilityZones",
+   "DescribeInstanceTypeOfferings",
+   "DescribeVpcs",
+   "DescribeVpcs",
+   "GetRole",
+   "GetRole",
+   "GetRole",
+   "GetInstanceProfile",
+   "DescribeCluster",
+   "DescribeCluster",
+   "DescribeVpcs",
+   "DescribeNetworkInterfaces",
+   "GetRole",
+   "DescribeAccessEntry",
+   "DescribeAccessEntry",
+   "DescribeLaunchTemplates",
+   "DescribeLaunchTemplates",
+   "DescribeAutoScalingGroups",
+   "DescribeAutoScalingGroups",
+   "ListNodes",
+   "DescribeAutoScalingGroups",
+   "DescribeAutoScalingGroups",
+   "ListNodes",
+   "ListPodIdentityAssociations",
+   "GetRole",
+   "GetQueueUrl",
+   "DescribeRule",
+   "DescribeRule",
+   "DescribeRule",
+   "DescribeRule",
+   "DescribeRule",
+   "KubeObjects"
+  ],
+  "Inputs": [
+   "DescribeAutoScalingGroups {\"AutoScalingGroupNames\":[\"demo-system\",\"demo-gvisor\",\"demo-microvm\",\"demo-nitro\"],\"Filters\":null,\"IncludeInstances\":null,\"IncludeManagedResources\":null,\"MaxRecords\":null,\"NextToken\":null}",
+   "DescribeInstanceTypes {\"DryRun\":null,\"Filters\":null,\"IncludeUnsupportedInRegion\":null,\"InstanceTypes\":[\"m8i.xlarge\",\"m8i.2xlarge\"],\"MaxResults\":null,\"NextToken\":null}",
+   "GetParameter {\"Name\":\"/aws/service/eks/optimized-ami/1.37/amazon-linux-2023/x86_64/standard/recommended/image_id\",\"WithDecryption\":null}",
+   "DescribeImages {\"DryRun\":null,\"ExecutableUsers\":null,\"Filters\":null,\"ImageIds\":[\"ami-0e1e0000000000086\"],\"IncludeDeprecated\":null,\"IncludeDisabled\":null,\"MaxResults\":null,\"NextToken\":null,\"Owners\":null}",
+   "DescribeLaunchTemplates {\"DryRun\":null,\"Filters\":[{\"Name\":\"launch-template-name\",\"Values\":[\"demo-system-nodes\"]}],\"IncludeManagedResources\":null,\"LaunchTemplateIds\":null,\"LaunchTemplateNames\":null,\"MaxResults\":null,\"NextToken\":null}",
+   "DescribeLaunchTemplates {\"DryRun\":null,\"Filters\":[{\"Name\":\"launch-template-name\",\"Values\":[\"demo-microvm-nested-virt\"]}],\"IncludeManagedResources\":null,\"LaunchTemplateIds\":null,\"LaunchTemplateNames\":null,\"MaxResults\":null,\"NextToken\":null}",
+   "DescribeAutoScalingGroups {\"AutoScalingGroupNames\":[\"demo-system\"],\"Filters\":null,\"IncludeInstances\":null,\"IncludeManagedResources\":null,\"MaxRecords\":null,\"NextToken\":null}",
+   "DescribeAutoScalingGroups {\"AutoScalingGroupNames\":[\"demo-system\"],\"Filters\":null,\"IncludeInstances\":null,\"IncludeManagedResources\":null,\"MaxRecords\":null,\"NextToken\":null}",
+   "DescribeAutoScalingGroups {\"AutoScalingGroupNames\":[\"demo-microvm\"],\"Filters\":null,\"IncludeInstances\":null,\"IncludeManagedResources\":null,\"MaxRecords\":null,\"NextToken\":null}",
+   "DescribeAutoScalingGroups {\"AutoScalingGroupNames\":[\"demo-microvm\"],\"Filters\":null,\"IncludeInstances\":null,\"IncludeManagedResources\":null,\"MaxRecords\":null,\"NextToken\":null}",
+   "GetQueueUrl {\"QueueName\":\"demo-karpenter\",\"QueueOwnerAWSAccountId\":\"111122223333\"}"
+  ],
+  "Creates": [
+   "VPC demo-vpc (192.168.0.0/16)",
+   "subnet demo-public-1 (192.168.0.0/19, us-west-2a)",
+   "subnet demo-private-1 (192.168.96.0/19, us-west-2a)",
+   "subnet demo-public-2 (192.168.32.0/19, us-west-2b)",
+   "subnet demo-private-2 (192.168.128.0/19, us-west-2b)",
+   "subnet demo-public-3 (192.168.64.0/19, us-west-2c)",
+   "subnet demo-private-3 (192.168.160.0/19, us-west-2c)",
+   "internet gateway demo-igw",
+   "Elastic IP demo-nat",
+   "NAT gateway demo-nat",
+   "route table demo-public",
+   "route table demo-private",
+   "IAM role demo-us-west-2-eks-cluster",
+   "IAM role demo-us-west-2-eks-node",
+   "IAM role demo-us-west-2-ebs-csi-driver",
+   "IAM instance profile demo-us-west-2-eks-node",
+   "EKS cluster demo (Kubernetes 1.37, Auto Mode off)",
+   "access entry for arn:aws:iam::********3333:role/Admin",
+   "EC2_LINUX access entry for the node role arn:aws:iam::********3333:role/demo-us-west-2-eks-node",
+   "add-on vpc-cni",
+   "add-on kube-proxy",
+   "add-on eks-pod-identity-agent",
+   "add-on coredns",
+   "add-on aws-ebs-csi-driver",
+   "launch template demo-system-nodes",
+   "launch template demo-microvm-nested-virt",
+   "Auto Scaling group demo-system (2 x m8i.xlarge)",
+   "Auto Scaling group demo-microvm (2 x m8i.2xlarge)",
+   "IAM role demo-us-west-2-karpenter",
+   "Pod Identity association kube-system/karpenter with demo-us-west-2-karpenter",
+   "SQS queue demo-karpenter",
+   "EventBridge rule demo-karpenter-health",
+   "EventBridge rule demo-karpenter-spot",
+   "EventBridge rule demo-karpenter-rebalance",
+   "EventBridge rule demo-karpenter-state-change",
+   "EventBridge rule demo-karpenter-capacity-reservation",
+   "Kubernetes CustomResourceDefinition capacitybuffers.autoscaling.x-k8s.io",
+   "Kubernetes CustomResourceDefinition ec2nodeclasses.karpenter.k8s.aws",
+   "Kubernetes CustomResourceDefinition nodeclaims.karpenter.sh",
+   "Kubernetes CustomResourceDefinition nodeoverlays.karpenter.sh",
+   "Kubernetes CustomResourceDefinition nodepools.karpenter.sh",
+   "Kubernetes PodDisruptionBudget kube-system/karpenter",
+   "Kubernetes ServiceAccount kube-system/karpenter",
+   "Kubernetes ClusterRole karpenter-admin",
+   "Kubernetes ClusterRole karpenter-core",
+   "Kubernetes ClusterRole karpenter",
+   "Kubernetes ClusterRoleBinding karpenter-core",
+   "Kubernetes ClusterRoleBinding karpenter",
+   "Kubernetes Role kube-system/karpenter",
+   "Kubernetes Role kube-system/karpenter-dns",
+   "Kubernetes RoleBinding kube-system/karpenter",
+   "Kubernetes RoleBinding kube-system/karpenter-dns",
+   "Kubernetes Service kube-system/karpenter",
+   "Kubernetes Deployment kube-system/karpenter",
+   "Kubernetes EC2NodeClass gvisor",
+   "Kubernetes NodePool gvisor"
+  ],
+  "Changes": [
+   "turn on enableDnsHostnames of vpc-0001",
+   "tag main route table rtb-0002",
+   "tag default security group sg-0003",
+   "tag default network ACL acl-0004",
+   "attach internet gateway igw-0011 to vpc-0001",
+   "add the default route of demo-public via igw-0011",
+   "associate demo-public with subnet-0005",
+   "associate demo-public with subnet-0007",
+   "associate demo-public with subnet-0009",
+   "add the default route of demo-private via nat-0013",
+   "associate demo-private with subnet-0006",
+   "associate demo-private with subnet-0008",
+   "associate demo-private with subnet-0010",
+   "tag cluster security group sg-0016"
+  ],
+  "KubeCalls": [
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/capacitybuffers.autoscaling.x-k8s.io",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/ec2nodeclasses.karpenter.k8s.aws",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodeclaims.karpenter.sh",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodeoverlays.karpenter.sh",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodepools.karpenter.sh",
+   "GET /apis/policy/v1/namespaces/kube-system/poddisruptionbudgets/karpenter",
+   "GET /api/v1/namespaces/kube-system/serviceaccounts/karpenter",
+   "GET /apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter-admin",
+   "GET /apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter-core",
+   "GET /apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter",
+   "GET /apis/rbac.authorization.k8s.io/v1/clusterrolebindings/karpenter-core",
+   "GET /apis/rbac.authorization.k8s.io/v1/clusterrolebindings/karpenter",
+   "GET /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/roles/karpenter",
+   "GET /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/roles/karpenter-dns",
+   "GET /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/rolebindings/karpenter",
+   "GET /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/rolebindings/karpenter-dns",
+   "GET /api/v1/namespaces/kube-system/services/karpenter",
+   "GET /apis/apps/v1/namespaces/kube-system/deployments/karpenter",
+   "GET /apis/karpenter.k8s.aws/v1/ec2nodeclasses/gvisor",
+   "GET /apis/karpenter.sh/v1/nodepools/gvisor",
+   "PATCH /apis/apiextensions.k8s.io/v1/customresourcedefinitions/capacitybuffers.autoscaling.x-k8s.io",
+   "PATCH /apis/apiextensions.k8s.io/v1/customresourcedefinitions/ec2nodeclasses.karpenter.k8s.aws",
+   "PATCH /apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodeclaims.karpenter.sh",
+   "PATCH /apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodeoverlays.karpenter.sh",
+   "PATCH /apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodepools.karpenter.sh",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/capacitybuffers.autoscaling.x-k8s.io",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/ec2nodeclasses.karpenter.k8s.aws",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodeclaims.karpenter.sh",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodeoverlays.karpenter.sh",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodepools.karpenter.sh",
+   "PATCH /apis/policy/v1/namespaces/kube-system/poddisruptionbudgets/karpenter",
+   "PATCH /api/v1/namespaces/kube-system/serviceaccounts/karpenter",
+   "PATCH /apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter-admin",
+   "PATCH /apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter-core",
+   "PATCH /apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter",
+   "PATCH /apis/rbac.authorization.k8s.io/v1/clusterrolebindings/karpenter-core",
+   "PATCH /apis/rbac.authorization.k8s.io/v1/clusterrolebindings/karpenter",
+   "PATCH /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/roles/karpenter",
+   "PATCH /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/roles/karpenter-dns",
+   "PATCH /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/rolebindings/karpenter",
+   "PATCH /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/rolebindings/karpenter-dns",
+   "PATCH /api/v1/namespaces/kube-system/services/karpenter",
+   "PATCH /apis/apps/v1/namespaces/kube-system/deployments/karpenter",
+   "GET /apis/apps/v1/namespaces/kube-system/deployments/karpenter",
+   "PATCH /apis/karpenter.k8s.aws/v1/ec2nodeclasses/gvisor",
+   "PATCH /apis/karpenter.sh/v1/nodepools/gvisor",
+   "GET /apis/karpenter.k8s.aws/v1/ec2nodeclasses/gvisor",
+   "GET /apis/karpenter.sh/v1/nodepools/gvisor"
+  ],
+  "ClusterTags": {
+   "agent-substrate-on-eks/created-by": "setup-aws",
+   "agent-substrate-on-eks/deployment": "demo.us-west-2",
+   "agent-substrate-on-eks/karpenter": "on",
+   "auto-delete": "no",
+   "project": "agent-substrate"
+  },
+  "NodeGroups": [],
+  "Policy": "{\"Statement\":[{\"Action\":[\"ec2:RunInstances\",\"ec2:CreateFleet\"],\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:ec2:us-west-2::image/*\",\"arn:aws:ec2:us-west-2::snapshot/*\",\"arn:aws:ec2:us-west-2:*:security-group/*\",\"arn:aws:ec2:us-west-2:*:subnet/*\",\"arn:aws:ec2:us-west-2:*:capacity-reservation/*\",\"arn:aws:ec2:us-west-2:*:placement-group/*\"],\"Sid\":\"AllowScopedEC2InstanceAccessActions\"},{\"Action\":[\"ec2:RunInstances\",\"ec2:CreateFleet\"],\"Condition\":{\"StringEquals\":{\"aws:ResourceTag/kubernetes.io/cluster/demo\":\"owned\"},\"StringLike\":{\"aws:ResourceTag/karpenter.sh/nodepool\":\"*\"}},\"Effect\":\"Allow\",\"Resource\":\"arn:aws:ec2:us-west-2:*:launch-template/*\",\"Sid\":\"AllowScopedEC2LaunchTemplateAccessActions\"},{\"Action\":[\"ec2:RunInstances\",\"ec2:CreateFleet\",\"ec2:CreateLaunchTemplate\"],\"Condition\":{\"StringEquals\":{\"aws:RequestTag/eks:eks-cluster-name\":\"demo\",\"aws:RequestTag/kubernetes.io/cluster/demo\":\"owned\"},\"StringLike\":{\"aws:RequestTag/karpenter.sh/nodepool\":\"*\"}},\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:ec2:us-west-2:*:fleet/*\",\"arn:aws:ec2:us-west-2:*:instance/*\",\"arn:aws:ec2:us-west-2:*:volume/*\",\"arn:aws:ec2:us-west-2:*:network-interface/*\",\"arn:aws:ec2:us-west-2:*:launch-template/*\",\"arn:aws:ec2:us-west-2:*:spot-instances-request/*\"],\"Sid\":\"AllowScopedEC2InstanceActionsWithTags\"},{\"Action\":\"ec2:CreateTags\",\"Condition\":{\"StringEquals\":{\"aws:RequestTag/eks:eks-cluster-name\":\"demo\",\"aws:RequestTag/kubernetes.io/cluster/demo\":\"owned\",\"ec2:CreateAction\":[\"RunInstances\",\"CreateFleet\",\"CreateLaunchTemplate\"]},\"StringLike\":{\"aws:RequestTag/karpenter.sh/nodepool\":\"*\"}},\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:ec2:us-west-2:*:fleet/*\",\"arn:aws:ec2:us-west-2:*:instance/*\",\"arn:aws:ec2:us-west-2:*:volume/*\",\"arn:aws:ec2:us-west-2:*:network-interface/*\",\"arn:aws:ec2:us-west-2:*:launch-template/*\",\"arn:aws:ec2:us-west-2:*:spot-instances-request/*\"],\"Sid\":\"AllowScopedResourceCreationTagging\"},{\"Action\":\"ec2:CreateTags\",\"Condition\":{\"ForAllValues:StringEquals\":{\"aws:TagKeys\":[\"eks:eks-cluster-name\",\"karpenter.sh/nodeclaim\",\"Name\"]},\"StringEquals\":{\"aws:ResourceTag/kubernetes.io/cluster/demo\":\"owned\"},\"StringEqualsIfExists\":{\"aws:RequestTag/eks:eks-cluster-name\":\"demo\"},\"StringLike\":{\"aws:ResourceTag/karpenter.sh/nodepool\":\"*\"}},\"Effect\":\"Allow\",\"Resource\":\"arn:aws:ec2:us-west-2:*:instance/*\",\"Sid\":\"AllowScopedResourceTagging\"},{\"Action\":[\"ec2:TerminateInstances\",\"ec2:DeleteLaunchTemplate\"],\"Condition\":{\"StringEquals\":{\"aws:ResourceTag/kubernetes.io/cluster/demo\":\"owned\"},\"StringLike\":{\"aws:ResourceTag/karpenter.sh/nodepool\":\"*\"}},\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:ec2:us-west-2:*:instance/*\",\"arn:aws:ec2:us-west-2:*:launch-template/*\"],\"Sid\":\"AllowScopedDeletion\"},{\"Action\":\"iam:PassRole\",\"Condition\":{\"StringEquals\":{\"iam:PassedToService\":[\"ec2.amazonaws.com\",\"ec2.amazonaws.com.cn\"]}},\"Effect\":\"Allow\",\"Resource\":\"arn:aws:iam::111122223333:role/demo-us-west-2-eks-node\",\"Sid\":\"AllowPassingInstanceRole\"},{\"Action\":\"eks:DescribeCluster\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:eks:us-west-2:111122223333:cluster/demo\",\"Sid\":\"AllowAPIServerEndpointDiscovery\"},{\"Action\":[\"sqs:DeleteMessage\",\"sqs:GetQueueUrl\",\"sqs:ReceiveMessage\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:sqs:us-west-2:111122223333:demo-karpenter\",\"Sid\":\"AllowInterruptionQueueActions\"},{\"Action\":[\"ec2:DescribeCapacityReservations\",\"ec2:DescribeImages\",\"ec2:DescribeInstances\",\"ec2:DescribeInstanceStatus\",\"ec2:DescribeInstanceTypeOfferings\",\"ec2:DescribeInstanceTypes\",\"ec2:DescribeLaunchTemplates\",\"ec2:DescribePlacementGroups\",\"ec2:DescribeSecurityGroups\",\"ec2:DescribeSpotPriceHistory\",\"ec2:DescribeSubnets\"],\"Condition\":{\"StringEquals\":{\"aws:RequestedRegion\":\"us-west-2\"}},\"Effect\":\"Allow\",\"Resource\":\"*\",\"Sid\":\"AllowRegionalReadActions\"},{\"Action\":\"ssm:GetParameter\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:ssm:us-west-2::parameter/aws/service/*\",\"Sid\":\"AllowSSMReadActions\"},{\"Action\":\"pricing:GetProducts\",\"Effect\":\"Allow\",\"Resource\":\"*\",\"Sid\":\"AllowPricingReadActions\"},{\"Action\":\"iam:ListInstanceProfiles\",\"Effect\":\"Allow\",\"Resource\":\"*\",\"Sid\":\"AllowUnscopedInstanceProfileListAction\"},{\"Action\":\"iam:GetInstanceProfile\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:iam::111122223333:instance-profile/*\",\"Sid\":\"AllowInstanceProfileReadActions\"}],\"Version\":\"2012-10-17\"}",
+  "Queue": {
+   "MessageRetentionPeriod": "300",
+   "Policy": "{\"Id\":\"EC2InterruptionPolicy\",\"Statement\":[{\"Action\":\"sqs:SendMessage\",\"Effect\":\"Allow\",\"Principal\":{\"Service\":[\"events.amazonaws.com\",\"sqs.amazonaws.com\"]},\"Resource\":\"arn:aws:sqs:us-west-2:111122223333:demo-karpenter\"},{\"Action\":\"sqs:*\",\"Condition\":{\"Bool\":{\"aws:SecureTransport\":\"false\"}},\"Effect\":\"Deny\",\"Principal\":\"*\",\"Resource\":\"arn:aws:sqs:us-west-2:111122223333:demo-karpenter\",\"Sid\":\"DenyHTTP\"}],\"Version\":\"2012-10-17\"}",
+   "SqsManagedSseEnabled": "true"
+  },
+  "Rules": {
+   "demo-karpenter-capacity-reservation": "{\"detail-type\":[\"EC2 Capacity Reservation Instance Interruption Warning\"],\"source\":[\"aws.ec2\"]}",
+   "demo-karpenter-health": "{\"detail-type\":[\"AWS Health Event\"],\"source\":[\"aws.health\"]}",
+   "demo-karpenter-rebalance": "{\"detail-type\":[\"EC2 Instance Rebalance Recommendation\"],\"source\":[\"aws.ec2\"]}",
+   "demo-karpenter-spot": "{\"detail-type\":[\"EC2 Spot Instance Interruption Warning\"],\"source\":[\"aws.ec2\"]}",
+   "demo-karpenter-state-change": "{\"detail-type\":[\"EC2 Instance State-change Notification\"],\"source\":[\"aws.ec2\"]}"
+  },
+  "Objects": {
+   "/api/v1/namespaces/kube-system/serviceaccounts/karpenter": {
+    "apiVersion": "v1",
+    "automountServiceAccountToken": false,
+    "kind": "ServiceAccount",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter",
+     "namespace": "kube-system",
+     "resourceVersion": "7",
+     "uid": "uid-karpenter"
+    },
+    "status": {}
+   },
+   "/api/v1/namespaces/kube-system/services/karpenter": {
+    "apiVersion": "v1",
+    "kind": "Service",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter",
+     "namespace": "kube-system",
+     "resourceVersion": "17",
+     "uid": "uid-karpenter"
+    },
+    "spec": {
+     "ports": [
+      {
+       "name": "http-metrics",
+       "port": 8080,
+       "protocol": "TCP",
+       "targetPort": "http-metrics"
+      }
+     ],
+     "selector": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/name": "karpenter"
+     },
+     "type": "ClusterIP"
+    },
+    "status": {}
+   },
+   "/apis/apiextensions.k8s.io/v1/customresourcedefinitions/capacitybuffers.autoscaling.x-k8s.io": "sha256:513b09eb8820cb07a01e9a825463744d36129a6d2fb48da0e8b55df54d958e95",
+   "/apis/apiextensions.k8s.io/v1/customresourcedefinitions/ec2nodeclasses.karpenter.k8s.aws": "sha256:8657cdc0ccc631120296874cd271e8b2e86e302496c1a1631092448f077f6e18",
+   "/apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodeclaims.karpenter.sh": "sha256:32b17064e3afc3d833893aa2dcea2ac2d23626881d223507ef3a57c78168aa06",
+   "/apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodeoverlays.karpenter.sh": "sha256:6dd1273a2dbed1e09c06933f07e471cff2498630c48ffb0f8f5485800ac84d3e",
+   "/apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodepools.karpenter.sh": "sha256:9a9b4b1e12159814abf427cf876f5169238d21ad2e1a6063af3e8aa936452e9f",
+   "/apis/apps/v1/namespaces/kube-system/deployments/karpenter": {
+    "apiVersion": "apps/v1",
+    "kind": "Deployment",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter",
+     "namespace": "kube-system",
+     "resourceVersion": "18",
+     "uid": "uid-karpenter"
+    },
+    "spec": {
+     "replicas": 2,
+     "revisionHistoryLimit": 10,
+     "selector": {
+      "matchLabels": {
+       "app.kubernetes.io/instance": "karpenter",
+       "app.kubernetes.io/name": "karpenter"
+      }
+     },
+     "strategy": {
+      "rollingUpdate": {
+       "maxUnavailable": 1
+      }
+     },
+     "template": {
+      "metadata": {
+       "annotations": null,
+       "labels": {
+        "app.kubernetes.io/instance": "karpenter",
+        "app.kubernetes.io/name": "karpenter"
+       }
+      },
+      "spec": {
+       "affinity": {
+        "nodeAffinity": {
+         "requiredDuringSchedulingIgnoredDuringExecution": {
+          "nodeSelectorTerms": [
+           {
+            "matchExpressions": [
+             {
+              "key": "karpenter.sh/nodepool",
+              "operator": "DoesNotExist"
+             }
+            ]
+           }
+          ]
+         }
+        },
+        "podAntiAffinity": {
+         "requiredDuringSchedulingIgnoredDuringExecution": [
+          {
+           "labelSelector": {
+            "matchLabels": {
+             "app.kubernetes.io/instance": "karpenter",
+             "app.kubernetes.io/name": "karpenter"
+            }
+           },
+           "topologyKey": "kubernetes.io/hostname"
+          }
+         ]
+        }
+       },
+       "automountServiceAccountToken": true,
+       "containers": [
+        {
+         "env": [
+          {
+           "name": "KUBERNETES_MIN_VERSION",
+           "value": "1.19.0-0"
+          },
+          {
+           "name": "KARPENTER_SERVICE",
+           "value": "karpenter"
+          },
+          {
+           "name": "LOG_LEVEL",
+           "value": "info"
+          },
+          {
+           "name": "LOG_OUTPUT_PATHS",
+           "value": "stdout"
+          },
+          {
+           "name": "LOG_ERROR_OUTPUT_PATHS",
+           "value": "stderr"
+          },
+          {
+           "name": "METRICS_PORT",
+           "value": "8080"
+          },
+          {
+           "name": "HEALTH_PROBE_PORT",
+           "value": "8081"
+          },
+          {
+           "name": "SYSTEM_NAMESPACE",
+           "valueFrom": {
+            "fieldRef": {
+             "fieldPath": "metadata.namespace"
+            }
+           }
+          },
+          {
+           "name": "CPU_REQUESTS",
+           "valueFrom": {
+            "resourceFieldRef": {
+             "containerName": "controller",
+             "divisor": "1m",
+             "resource": "requests.cpu"
+            }
+           }
+          },
+          {
+           "name": "MEMORY_LIMIT",
+           "valueFrom": {
+            "resourceFieldRef": {
+             "containerName": "controller",
+             "divisor": "0",
+             "resource": "limits.memory"
+            }
+           }
+          },
+          {
+           "name": "FEATURE_GATES",
+           "value": "ReservedCapacity=true,SpotToSpotConsolidation=false,NodeRepair=false,NodeOverlay=false,StaticCapacity=false,CapacityBuffer=false,TerminateFirstDrift=false,TerminateFirstRepair=false,PodDeletionCostManagement=false"
+          },
+          {
+           "name": "AWS_FEATURE_GATES",
+           "value": "NodeClassCEL=false,DRANVIDIAGPU=false,DRAEFA=false,RebootForRepair=false"
+          },
+          {
+           "name": "BATCH_MAX_DURATION",
+           "value": "10s"
+          },
+          {
+           "name": "BATCH_IDLE_DURATION",
+           "value": "1s"
+          },
+          {
+           "name": "PREFERENCE_POLICY",
+           "value": "Respect"
+          },
+          {
+           "name": "MIN_VALUES_POLICY",
+           "value": "Strict"
+          },
+          {
+           "name": "CLUSTER_NAME",
+           "value": "demo"
+          },
+          {
+           "name": "CLUSTER_ENDPOINT",
+           "value": "https://FAKE.gr7.us-west-2.eks.amazonaws.com"
+          },
+          {
+           "name": "EKS_CONTROL_PLANE",
+           "value": "true"
+          },
+          {
+           "name": "VM_MEMORY_OVERHEAD_PERCENT",
+           "value": "0.075"
+          },
+          {
+           "name": "INTERRUPTION_QUEUE",
+           "value": "demo-karpenter"
+          },
+          {
+           "name": "RESERVED_ENIS",
+           "value": "0"
+          },
+          {
+           "name": "IGNORE_DRA_REQUESTS",
+           "value": "true"
+          },
+          {
+           "name": "AMI_REFRESH_INTERVAL",
+           "value": "1m"
+          },
+          {
+           "name": "SUBNET_REFRESH_INTERVAL",
+           "value": "1m"
+          },
+          {
+           "name": "SECURITY_GROUP_REFRESH_INTERVAL",
+           "value": "1m"
+          },
+          {
+           "name": "AWS_REGION",
+           "value": "us-west-2"
+          },
+          {
+           "name": "AWS_EC2_METADATA_DISABLED",
+           "value": "true"
+          }
+         ],
+         "image": "public.ecr.aws/karpenter/controller:1.15.2@sha256:4a7dc37f85ad8987ece1cf5df55e607aa17a879a6faa76f5258c5bf182fbdfff",
+         "imagePullPolicy": "IfNotPresent",
+         "livenessProbe": {
+          "httpGet": {
+           "path": "/healthz",
+           "port": "http"
+          },
+          "initialDelaySeconds": 30,
+          "timeoutSeconds": 30
+         },
+         "name": "controller",
+         "ports": [
+          {
+           "containerPort": 8080,
+           "name": "http-metrics",
+           "protocol": "TCP"
+          },
+          {
+           "containerPort": 8081,
+           "name": "http",
+           "protocol": "TCP"
+          }
+         ],
+         "readinessProbe": {
+          "httpGet": {
+           "path": "/readyz",
+           "port": "http"
+          },
+          "initialDelaySeconds": 5,
+          "timeoutSeconds": 30
+         },
+         "resources": {
+          "limits": {
+           "cpu": 1,
+           "memory": "1Gi"
+          },
+          "requests": {
+           "cpu": 1,
+           "memory": "1Gi"
+          }
+         },
+         "securityContext": {
+          "allowPrivilegeEscalation": false,
+          "capabilities": {
+           "drop": [
+            "ALL"
+           ]
+          },
+          "privileged": false,
+          "readOnlyRootFilesystem": true,
+          "runAsGroup": 65532,
+          "runAsNonRoot": true,
+          "runAsUser": 65532
+         }
+        }
+       ],
+       "dnsPolicy": "ClusterFirst",
+       "nodeSelector": {
+        "ate.dev/pool": "system",
+        "kubernetes.io/os": "linux"
+       },
+       "priorityClassName": "system-cluster-critical",
+       "schedulerName": "default-scheduler",
+       "securityContext": {
+        "fsGroup": 65532,
+        "seccompProfile": {
+         "type": "RuntimeDefault"
+        }
+       },
+       "serviceAccountName": "karpenter",
+       "tolerations": [
+        {
+         "key": "CriticalAddonsOnly",
+         "operator": "Exists"
+        }
+       ],
+       "topologySpreadConstraints": [
+        {
+         "labelSelector": {
+          "matchLabels": {
+           "app.kubernetes.io/instance": "karpenter",
+           "app.kubernetes.io/name": "karpenter"
+          }
+         },
+         "maxSkew": 1,
+         "topologyKey": "topology.kubernetes.io/zone",
+         "whenUnsatisfiable": "DoNotSchedule"
+        }
+       ]
+      }
+     }
+    },
+    "status": {
+     "availableReplicas": 2,
+     "conditions": [
+      {
+       "message": "",
+       "reason": "Available",
+       "status": "True",
+       "type": "Available"
+      }
+     ],
+     "observedGeneration": 1
+    }
+   },
+   "/apis/karpenter.k8s.aws/v1/ec2nodeclasses/gvisor": {
+    "apiVersion": "karpenter.k8s.aws/v1",
+    "kind": "EC2NodeClass",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/managed-by": "substrate-eks"
+     },
+     "name": "gvisor",
+     "resourceVersion": "19",
+     "uid": "uid-gvisor"
+    },
+    "spec": {
+     "amiFamily": "AL2023",
+     "amiSelectorTerms": [
+      {
+       "id": "ami-0e1e0000000000086"
+      }
+     ],
+     "blockDeviceMappings": [
+      {
+       "deviceName": "/dev/xvda",
+       "ebs": {
+        "deleteOnTermination": true,
+        "encrypted": true,
+        "volumeSize": "200Gi",
+        "volumeType": "gp3"
+       },
+       "rootVolume": true
+      }
+     ],
+     "instanceProfile": "demo-us-west-2-eks-node",
+     "metadataOptions": {
+      "httpEndpoint": "enabled",
+      "httpProtocolIPv6": "disabled",
+      "httpPutResponseHopLimit": 1,
+      "httpTokens": "required"
+     },
+     "securityGroupSelectorTerms": [
+      {
+       "id": "sg-0016"
+      }
+     ],
+     "subnetSelectorTerms": [
+      {
+       "id": "subnet-0006"
+      },
+      {
+       "id": "subnet-0008"
+      },
+      {
+       "id": "subnet-0010"
+      }
+     ],
+     "tags": {
+      "agent-substrate-on-eks/deployment": "demo.us-west-2",
+      "auto-delete": "no",
+      "project": "agent-substrate"
+     }
+    },
+    "status": {
+     "conditions": [
+      {
+       "message": "",
+       "reason": "Ready",
+       "status": "True",
+       "type": "Ready"
+      }
+     ]
+    }
+   },
+   "/apis/karpenter.sh/v1/nodepools/gvisor": {
+    "apiVersion": "karpenter.sh/v1",
+    "kind": "NodePool",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/managed-by": "substrate-eks"
+     },
+     "name": "gvisor",
+     "resourceVersion": "20",
+     "uid": "uid-gvisor"
+    },
+    "spec": {
+     "disruption": {
+      "consolidateAfter": "5m",
+      "consolidationPolicy": "WhenEmpty"
+     },
+     "limits": {
+      "cpu": "16",
+      "nodes": "2"
+     },
+     "template": {
+      "metadata": {
+       "labels": {
+        "ate.dev/pool": "gvisor"
+       }
+      },
+      "spec": {
+       "expireAfter": "Never",
+       "nodeClassRef": {
+        "group": "karpenter.k8s.aws",
+        "kind": "EC2NodeClass",
+        "name": "gvisor"
+       },
+       "requirements": [
+        {
+         "key": "node.kubernetes.io/instance-type",
+         "operator": "In",
+         "values": [
+          "m8i.2xlarge"
+         ]
+        },
+        {
+         "key": "karpenter.sh/capacity-type",
+         "operator": "In",
+         "values": [
+          "on-demand"
+         ]
+        },
+        {
+         "key": "kubernetes.io/arch",
+         "operator": "In",
+         "values": [
+          "amd64"
+         ]
+        },
+        {
+         "key": "kubernetes.io/os",
+         "operator": "In",
+         "values": [
+          "linux"
+         ]
+        }
+       ],
+       "taints": [
+        {
+         "effect": "NoSchedule",
+         "key": "ate.dev/sandboxClass",
+         "value": "gvisor"
+        }
+       ],
+       "terminationGracePeriod": "15m"
+      }
+     }
+    },
+    "status": {
+     "conditions": [
+      {
+       "message": "",
+       "reason": "Ready",
+       "status": "True",
+       "type": "Ready"
+      }
+     ]
+    }
+   },
+   "/apis/policy/v1/namespaces/kube-system/poddisruptionbudgets/karpenter": {
+    "apiVersion": "policy/v1",
+    "kind": "PodDisruptionBudget",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter",
+     "namespace": "kube-system",
+     "resourceVersion": "6",
+     "uid": "uid-karpenter"
+    },
+    "spec": {
+     "maxUnavailable": 1,
+     "selector": {
+      "matchLabels": {
+       "app.kubernetes.io/instance": "karpenter",
+       "app.kubernetes.io/name": "karpenter"
+      }
+     }
+    },
+    "status": {}
+   },
+   "/apis/rbac.authorization.k8s.io/v1/clusterrolebindings/karpenter": {
+    "apiVersion": "rbac.authorization.k8s.io/v1",
+    "kind": "ClusterRoleBinding",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter",
+     "resourceVersion": "12",
+     "uid": "uid-karpenter"
+    },
+    "roleRef": {
+     "apiGroup": "rbac.authorization.k8s.io",
+     "kind": "ClusterRole",
+     "name": "karpenter"
+    },
+    "status": {},
+    "subjects": [
+     {
+      "kind": "ServiceAccount",
+      "name": "karpenter",
+      "namespace": "kube-system"
+     }
+    ]
+   },
+   "/apis/rbac.authorization.k8s.io/v1/clusterrolebindings/karpenter-core": {
+    "apiVersion": "rbac.authorization.k8s.io/v1",
+    "kind": "ClusterRoleBinding",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter-core",
+     "resourceVersion": "11",
+     "uid": "uid-karpenter-core"
+    },
+    "roleRef": {
+     "apiGroup": "rbac.authorization.k8s.io",
+     "kind": "ClusterRole",
+     "name": "karpenter-core"
+    },
+    "status": {},
+    "subjects": [
+     {
+      "kind": "ServiceAccount",
+      "name": "karpenter",
+      "namespace": "kube-system"
+     }
+    ]
+   },
+   "/apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter": {
+    "apiVersion": "rbac.authorization.k8s.io/v1",
+    "kind": "ClusterRole",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter",
+     "resourceVersion": "10",
+     "uid": "uid-karpenter"
+    },
+    "rules": [
+     {
+      "apiGroups": [
+       "karpenter.k8s.aws"
+      ],
+      "resources": [
+       "ec2nodeclasses"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "karpenter.k8s.aws"
+      ],
+      "resources": [
+       "ec2nodeclasses",
+       "ec2nodeclasses/status"
+      ],
+      "verbs": [
+       "patch",
+       "update"
+      ]
+     }
+    ],
+    "status": {}
+   },
+   "/apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter-admin": {
+    "apiVersion": "rbac.authorization.k8s.io/v1",
+    "kind": "ClusterRole",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2",
+      "rbac.authorization.k8s.io/aggregate-to-admin": "true"
+     },
+     "name": "karpenter-admin",
+     "resourceVersion": "8",
+     "uid": "uid-karpenter-admin"
+    },
+    "rules": [
+     {
+      "apiGroups": [
+       "karpenter.sh"
+      ],
+      "resources": [
+       "nodepools",
+       "nodepools/status",
+       "nodeclaims",
+       "nodeclaims/status"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch",
+       "create",
+       "delete",
+       "patch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "karpenter.k8s.aws"
+      ],
+      "resources": [
+       "ec2nodeclasses"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch",
+       "create",
+       "delete",
+       "patch"
+      ]
+     }
+    ],
+    "status": {}
+   },
+   "/apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter-core": {
+    "apiVersion": "rbac.authorization.k8s.io/v1",
+    "kind": "ClusterRole",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter-core",
+     "resourceVersion": "9",
+     "uid": "uid-karpenter-core"
+    },
+    "rules": [
+     {
+      "apiGroups": [
+       "karpenter.sh"
+      ],
+      "resources": [
+       "nodepools",
+       "nodepools/status",
+       "nodeclaims",
+       "nodeclaims/status",
+       "nodeoverlays",
+       "nodeoverlays/status"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "autoscaling.x-k8s.io"
+      ],
+      "resources": [
+       "capacitybuffers",
+       "capacitybuffers/status"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       ""
+      ],
+      "resources": [
+       "podtemplates"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       ""
+      ],
+      "resources": [
+       "pods",
+       "nodes",
+       "persistentvolumes",
+       "persistentvolumeclaims",
+       "replicationcontrollers",
+       "namespaces"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "storage.k8s.io"
+      ],
+      "resources": [
+       "storageclasses",
+       "csinodes",
+       "volumeattachments"
+      ],
+      "verbs": [
+       "get",
+       "watch",
+       "list"
+      ]
+     },
+     {
+      "apiGroups": [
+       "apps"
+      ],
+      "resources": [
+       "daemonsets",
+       "deployments",
+       "replicasets",
+       "statefulsets"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "autoscaling.k8s.io"
+      ],
+      "resources": [
+       "verticalpodautoscalers"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "policy"
+      ],
+      "resources": [
+       "poddisruptionbudgets"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       ""
+      ],
+      "resources": [
+       "events"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "resource.k8s.io"
+      ],
+      "resources": [
+       "deviceclasses",
+       "resourceclaims",
+       "resourceslices"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "karpenter.sh"
+      ],
+      "resources": [
+       "nodeclaims",
+       "nodeclaims/status"
+      ],
+      "verbs": [
+       "create",
+       "delete",
+       "update",
+       "patch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "karpenter.sh"
+      ],
+      "resources": [
+       "nodepools",
+       "nodepools/status",
+       "nodeoverlays/status"
+      ],
+      "verbs": [
+       "update",
+       "patch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "autoscaling.x-k8s.io"
+      ],
+      "resources": [
+       "capacitybuffers/status"
+      ],
+      "verbs": [
+       "update",
+       "patch"
+      ]
+     },
+     {
+      "apiGroups": [
+       ""
+      ],
+      "resources": [
+       "events"
+      ],
+      "verbs": [
+       "create",
+       "patch"
+      ]
+     },
+     {
+      "apiGroups": [
+       ""
+      ],
+      "resources": [
+       "nodes"
+      ],
+      "verbs": [
+       "patch",
+       "delete",
+       "update"
+      ]
+     },
+     {
+      "apiGroups": [
+       ""
+      ],
+      "resources": [
+       "pods/eviction"
+      ],
+      "verbs": [
+       "create"
+      ]
+     },
+     {
+      "apiGroups": [
+       ""
+      ],
+      "resources": [
+       "pods"
+      ],
+      "verbs": [
+       "delete"
+      ]
+     }
+    ],
+    "status": {}
+   },
+   "/apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/rolebindings/karpenter": {
+    "apiVersion": "rbac.authorization.k8s.io/v1",
+    "kind": "RoleBinding",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter",
+     "namespace": "kube-system",
+     "resourceVersion": "15",
+     "uid": "uid-karpenter"
+    },
+    "roleRef": {
+     "apiGroup": "rbac.authorization.k8s.io",
+     "kind": "Role",
+     "name": "karpenter"
+    },
+    "status": {},
+    "subjects": [
+     {
+      "kind": "ServiceAccount",
+      "name": "karpenter",
+      "namespace": "kube-system"
+     }
+    ]
+   },
+   "/apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/rolebindings/karpenter-dns": {
+    "apiVersion": "rbac.authorization.k8s.io/v1",
+    "kind": "RoleBinding",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter-dns",
+     "namespace": "kube-system",
+     "resourceVersion": "16",
+     "uid": "uid-karpenter-dns"
+    },
+    "roleRef": {
+     "apiGroup": "rbac.authorization.k8s.io",
+     "kind": "Role",
+     "name": "karpenter-dns"
+    },
+    "status": {},
+    "subjects": [
+     {
+      "kind": "ServiceAccount",
+      "name": "karpenter",
+      "namespace": "kube-system"
+     }
+    ]
+   },
+   "/apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/roles/karpenter": {
+    "apiVersion": "rbac.authorization.k8s.io/v1",
+    "kind": "Role",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter",
+     "namespace": "kube-system",
+     "resourceVersion": "13",
+     "uid": "uid-karpenter"
+    },
+    "rules": [
+     {
+      "apiGroups": [
+       "coordination.k8s.io"
+      ],
+      "resources": [
+       "leases"
+      ],
+      "verbs": [
+       "get",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "coordination.k8s.io"
+      ],
+      "resourceNames": [
+       "karpenter-leader-election"
+      ],
+      "resources": [
+       "leases"
+      ],
+      "verbs": [
+       "patch",
+       "update"
+      ]
+     },
+     {
+      "apiGroups": [
+       "coordination.k8s.io"
+      ],
+      "resources": [
+       "leases"
+      ],
+      "verbs": [
+       "create"
+      ]
+     }
+    ],
+    "status": {}
+   },
+   "/apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/roles/karpenter-dns": {
+    "apiVersion": "rbac.authorization.k8s.io/v1",
+    "kind": "Role",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter-dns",
+     "namespace": "kube-system",
+     "resourceVersion": "14",
+     "uid": "uid-karpenter-dns"
+    },
+    "rules": [
+     {
+      "apiGroups": [
+       ""
+      ],
+      "resourceNames": [
+       "kube-dns"
+      ],
+      "resources": [
+       "services"
+      ],
+      "verbs": [
+       "get"
+      ]
+     }
+    ],
+    "status": {}
+   }
+  }
+ },
+ "plan, complete": {
+  "Writes": null,
+  "Reads": [
+   "DescribeCluster",
+   "DescribeNodegroup system",
+   "DescribeNodegroup microvm",
+   "DescribeInstanceTypes",
+   "KubeObjects",
+   "DescribeImages",
+   "GetInstanceProfile",
+   "ListInstanceProfileTags",
+   "DescribeVpcs",
+   "DescribeNetworkInterfaces",
+   "GetRole",
+   "DescribeAccessEntry",
+   "DescribeAccessEntry",
+   "ListPodIdentityAssociations",
+   "DescribePodIdentityAssociation",
+   "GetRole",
+   "GetRole",
+   "GetRolePolicy",
+   "GetQueueUrl",
+   "ListQueueTags",
+   "GetQueueAttributes",
+   "DescribeRule",
+   "ListTagsForResource",
+   "ListTargetsByRule",
+   "DescribeRule",
+   "ListTagsForResource",
+   "ListTargetsByRule",
+   "DescribeRule",
+   "ListTagsForResource",
+   "ListTargetsByRule",
+   "DescribeRule",
+   "ListTagsForResource",
+   "ListTargetsByRule",
+   "DescribeRule",
+   "ListTagsForResource",
+   "ListTargetsByRule",
+   "KubeObjects"
+  ],
+  "Inputs": [
+   "DescribeNodegroup system {\"ClusterName\":\"demo\",\"NodegroupName\":\"system\"}",
+   "DescribeNodegroup microvm {\"ClusterName\":\"demo\",\"NodegroupName\":\"microvm\"}",
+   "DescribeInstanceTypes {\"DryRun\":null,\"Filters\":null,\"IncludeUnsupportedInRegion\":null,\"InstanceTypes\":[\"m8i.xlarge\",\"m8i.2xlarge\"],\"MaxResults\":null,\"NextToken\":null}",
+   "DescribeImages {\"DryRun\":null,\"ExecutableUsers\":null,\"Filters\":null,\"ImageIds\":[\"ami-0e1e0000000000086\"],\"IncludeDeprecated\":null,\"IncludeDisabled\":null,\"MaxResults\":null,\"NextToken\":null,\"Owners\":null}",
+   "GetQueueUrl {\"QueueName\":\"demo-karpenter\",\"QueueOwnerAWSAccountId\":\"111122223333\"}"
+  ],
+  "Creates": null,
+  "Changes": null,
+  "KubeCalls": [
+   "GET /apis/karpenter.k8s.aws/v1/ec2nodeclasses/gvisor",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/capacitybuffers.autoscaling.x-k8s.io",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/ec2nodeclasses.karpenter.k8s.aws",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodeclaims.karpenter.sh",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodeoverlays.karpenter.sh",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodepools.karpenter.sh",
+   "GET /apis/policy/v1/namespaces/kube-system/poddisruptionbudgets/karpenter",
+   "GET /api/v1/namespaces/kube-system/serviceaccounts/karpenter",
+   "GET /apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter-admin",
+   "GET /apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter-core",
+   "GET /apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter",
+   "GET /apis/rbac.authorization.k8s.io/v1/clusterrolebindings/karpenter-core",
+   "GET /apis/rbac.authorization.k8s.io/v1/clusterrolebindings/karpenter",
+   "GET /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/roles/karpenter",
+   "GET /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/roles/karpenter-dns",
+   "GET /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/rolebindings/karpenter",
+   "GET /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/rolebindings/karpenter-dns",
+   "GET /api/v1/namespaces/kube-system/services/karpenter",
+   "GET /apis/apps/v1/namespaces/kube-system/deployments/karpenter",
+   "GET /apis/karpenter.k8s.aws/v1/ec2nodeclasses/gvisor",
+   "GET /apis/karpenter.sh/v1/nodepools/gvisor",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/capacitybuffers.autoscaling.x-k8s.io",
+   "PATCH /apis/apiextensions.k8s.io/v1/customresourcedefinitions/capacitybuffers.autoscaling.x-k8s.io dryRun",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/ec2nodeclasses.karpenter.k8s.aws",
+   "PATCH /apis/apiextensions.k8s.io/v1/customresourcedefinitions/ec2nodeclasses.karpenter.k8s.aws dryRun",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodeclaims.karpenter.sh",
+   "PATCH /apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodeclaims.karpenter.sh dryRun",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodeoverlays.karpenter.sh",
+   "PATCH /apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodeoverlays.karpenter.sh dryRun",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodepools.karpenter.sh",
+   "PATCH /apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodepools.karpenter.sh dryRun",
+   "GET /apis/policy/v1/namespaces/kube-system/poddisruptionbudgets/karpenter",
+   "PATCH /apis/policy/v1/namespaces/kube-system/poddisruptionbudgets/karpenter dryRun",
+   "GET /api/v1/namespaces/kube-system/serviceaccounts/karpenter",
+   "PATCH /api/v1/namespaces/kube-system/serviceaccounts/karpenter dryRun",
+   "GET /apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter-admin",
+   "PATCH /apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter-admin dryRun",
+   "GET /apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter-core",
+   "PATCH /apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter-core dryRun",
+   "GET /apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter",
+   "PATCH /apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter dryRun",
+   "GET /apis/rbac.authorization.k8s.io/v1/clusterrolebindings/karpenter-core",
+   "PATCH /apis/rbac.authorization.k8s.io/v1/clusterrolebindings/karpenter-core dryRun",
+   "GET /apis/rbac.authorization.k8s.io/v1/clusterrolebindings/karpenter",
+   "PATCH /apis/rbac.authorization.k8s.io/v1/clusterrolebindings/karpenter dryRun",
+   "GET /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/roles/karpenter",
+   "PATCH /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/roles/karpenter dryRun",
+   "GET /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/roles/karpenter-dns",
+   "PATCH /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/roles/karpenter-dns dryRun",
+   "GET /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/rolebindings/karpenter",
+   "PATCH /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/rolebindings/karpenter dryRun",
+   "GET /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/rolebindings/karpenter-dns",
+   "PATCH /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/rolebindings/karpenter-dns dryRun",
+   "GET /api/v1/namespaces/kube-system/services/karpenter",
+   "PATCH /api/v1/namespaces/kube-system/services/karpenter dryRun",
+   "GET /apis/apps/v1/namespaces/kube-system/deployments/karpenter",
+   "PATCH /apis/apps/v1/namespaces/kube-system/deployments/karpenter dryRun",
+   "GET /apis/karpenter.k8s.aws/v1/ec2nodeclasses/gvisor",
+   "PATCH /apis/karpenter.k8s.aws/v1/ec2nodeclasses/gvisor dryRun",
+   "GET /apis/karpenter.sh/v1/nodepools/gvisor",
+   "PATCH /apis/karpenter.sh/v1/nodepools/gvisor dryRun"
+  ],
+  "ClusterTags": {
+   "agent-substrate-on-eks/created-by": "setup-aws",
+   "agent-substrate-on-eks/deployment": "demo.us-west-2",
+   "agent-substrate-on-eks/karpenter": "on",
+   "auto-delete": "no",
+   "project": "agent-substrate"
+  },
+  "NodeGroups": [
+   "microvm",
+   "system"
+  ],
+  "Policy": "{\"Statement\":[{\"Action\":[\"ec2:RunInstances\",\"ec2:CreateFleet\"],\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:ec2:us-west-2::image/*\",\"arn:aws:ec2:us-west-2::snapshot/*\",\"arn:aws:ec2:us-west-2:*:security-group/*\",\"arn:aws:ec2:us-west-2:*:subnet/*\",\"arn:aws:ec2:us-west-2:*:capacity-reservation/*\",\"arn:aws:ec2:us-west-2:*:placement-group/*\"],\"Sid\":\"AllowScopedEC2InstanceAccessActions\"},{\"Action\":[\"ec2:RunInstances\",\"ec2:CreateFleet\"],\"Condition\":{\"StringEquals\":{\"aws:ResourceTag/kubernetes.io/cluster/demo\":\"owned\"},\"StringLike\":{\"aws:ResourceTag/karpenter.sh/nodepool\":\"*\"}},\"Effect\":\"Allow\",\"Resource\":\"arn:aws:ec2:us-west-2:*:launch-template/*\",\"Sid\":\"AllowScopedEC2LaunchTemplateAccessActions\"},{\"Action\":[\"ec2:RunInstances\",\"ec2:CreateFleet\",\"ec2:CreateLaunchTemplate\"],\"Condition\":{\"StringEquals\":{\"aws:RequestTag/eks:eks-cluster-name\":\"demo\",\"aws:RequestTag/kubernetes.io/cluster/demo\":\"owned\"},\"StringLike\":{\"aws:RequestTag/karpenter.sh/nodepool\":\"*\"}},\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:ec2:us-west-2:*:fleet/*\",\"arn:aws:ec2:us-west-2:*:instance/*\",\"arn:aws:ec2:us-west-2:*:volume/*\",\"arn:aws:ec2:us-west-2:*:network-interface/*\",\"arn:aws:ec2:us-west-2:*:launch-template/*\",\"arn:aws:ec2:us-west-2:*:spot-instances-request/*\"],\"Sid\":\"AllowScopedEC2InstanceActionsWithTags\"},{\"Action\":\"ec2:CreateTags\",\"Condition\":{\"StringEquals\":{\"aws:RequestTag/eks:eks-cluster-name\":\"demo\",\"aws:RequestTag/kubernetes.io/cluster/demo\":\"owned\",\"ec2:CreateAction\":[\"RunInstances\",\"CreateFleet\",\"CreateLaunchTemplate\"]},\"StringLike\":{\"aws:RequestTag/karpenter.sh/nodepool\":\"*\"}},\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:ec2:us-west-2:*:fleet/*\",\"arn:aws:ec2:us-west-2:*:instance/*\",\"arn:aws:ec2:us-west-2:*:volume/*\",\"arn:aws:ec2:us-west-2:*:network-interface/*\",\"arn:aws:ec2:us-west-2:*:launch-template/*\",\"arn:aws:ec2:us-west-2:*:spot-instances-request/*\"],\"Sid\":\"AllowScopedResourceCreationTagging\"},{\"Action\":\"ec2:CreateTags\",\"Condition\":{\"ForAllValues:StringEquals\":{\"aws:TagKeys\":[\"eks:eks-cluster-name\",\"karpenter.sh/nodeclaim\",\"Name\"]},\"StringEquals\":{\"aws:ResourceTag/kubernetes.io/cluster/demo\":\"owned\"},\"StringEqualsIfExists\":{\"aws:RequestTag/eks:eks-cluster-name\":\"demo\"},\"StringLike\":{\"aws:ResourceTag/karpenter.sh/nodepool\":\"*\"}},\"Effect\":\"Allow\",\"Resource\":\"arn:aws:ec2:us-west-2:*:instance/*\",\"Sid\":\"AllowScopedResourceTagging\"},{\"Action\":[\"ec2:TerminateInstances\",\"ec2:DeleteLaunchTemplate\"],\"Condition\":{\"StringEquals\":{\"aws:ResourceTag/kubernetes.io/cluster/demo\":\"owned\"},\"StringLike\":{\"aws:ResourceTag/karpenter.sh/nodepool\":\"*\"}},\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:ec2:us-west-2:*:instance/*\",\"arn:aws:ec2:us-west-2:*:launch-template/*\"],\"Sid\":\"AllowScopedDeletion\"},{\"Action\":\"iam:PassRole\",\"Condition\":{\"StringEquals\":{\"iam:PassedToService\":[\"ec2.amazonaws.com\",\"ec2.amazonaws.com.cn\"]}},\"Effect\":\"Allow\",\"Resource\":\"arn:aws:iam::111122223333:role/demo-us-west-2-eks-node\",\"Sid\":\"AllowPassingInstanceRole\"},{\"Action\":\"eks:DescribeCluster\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:eks:us-west-2:111122223333:cluster/demo\",\"Sid\":\"AllowAPIServerEndpointDiscovery\"},{\"Action\":[\"sqs:DeleteMessage\",\"sqs:GetQueueUrl\",\"sqs:ReceiveMessage\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:sqs:us-west-2:111122223333:demo-karpenter\",\"Sid\":\"AllowInterruptionQueueActions\"},{\"Action\":[\"ec2:DescribeCapacityReservations\",\"ec2:DescribeImages\",\"ec2:DescribeInstances\",\"ec2:DescribeInstanceStatus\",\"ec2:DescribeInstanceTypeOfferings\",\"ec2:DescribeInstanceTypes\",\"ec2:DescribeLaunchTemplates\",\"ec2:DescribePlacementGroups\",\"ec2:DescribeSecurityGroups\",\"ec2:DescribeSpotPriceHistory\",\"ec2:DescribeSubnets\"],\"Condition\":{\"StringEquals\":{\"aws:RequestedRegion\":\"us-west-2\"}},\"Effect\":\"Allow\",\"Resource\":\"*\",\"Sid\":\"AllowRegionalReadActions\"},{\"Action\":\"ssm:GetParameter\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:ssm:us-west-2::parameter/aws/service/*\",\"Sid\":\"AllowSSMReadActions\"},{\"Action\":\"pricing:GetProducts\",\"Effect\":\"Allow\",\"Resource\":\"*\",\"Sid\":\"AllowPricingReadActions\"},{\"Action\":\"iam:ListInstanceProfiles\",\"Effect\":\"Allow\",\"Resource\":\"*\",\"Sid\":\"AllowUnscopedInstanceProfileListAction\"},{\"Action\":\"iam:GetInstanceProfile\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:iam::111122223333:instance-profile/*\",\"Sid\":\"AllowInstanceProfileReadActions\"}],\"Version\":\"2012-10-17\"}",
+  "Queue": {
+   "MessageRetentionPeriod": "300",
+   "Policy": "{\"Id\":\"EC2InterruptionPolicy\",\"Statement\":[{\"Action\":\"sqs:SendMessage\",\"Effect\":\"Allow\",\"Principal\":{\"Service\":[\"events.amazonaws.com\",\"sqs.amazonaws.com\"]},\"Resource\":\"arn:aws:sqs:us-west-2:111122223333:demo-karpenter\"},{\"Action\":\"sqs:*\",\"Condition\":{\"Bool\":{\"aws:SecureTransport\":\"false\"}},\"Effect\":\"Deny\",\"Principal\":\"*\",\"Resource\":\"arn:aws:sqs:us-west-2:111122223333:demo-karpenter\",\"Sid\":\"DenyHTTP\"}],\"Version\":\"2012-10-17\"}",
+   "SqsManagedSseEnabled": "true"
+  },
+  "Rules": {
+   "demo-karpenter-capacity-reservation": "{\"detail-type\":[\"EC2 Capacity Reservation Instance Interruption Warning\"],\"source\":[\"aws.ec2\"]}",
+   "demo-karpenter-health": "{\"detail-type\":[\"AWS Health Event\"],\"source\":[\"aws.health\"]}",
+   "demo-karpenter-rebalance": "{\"detail-type\":[\"EC2 Instance Rebalance Recommendation\"],\"source\":[\"aws.ec2\"]}",
+   "demo-karpenter-spot": "{\"detail-type\":[\"EC2 Spot Instance Interruption Warning\"],\"source\":[\"aws.ec2\"]}",
+   "demo-karpenter-state-change": "{\"detail-type\":[\"EC2 Instance State-change Notification\"],\"source\":[\"aws.ec2\"]}"
+  },
+  "Objects": {
+   "/api/v1/namespaces/kube-system/serviceaccounts/karpenter": {
+    "apiVersion": "v1",
+    "automountServiceAccountToken": false,
+    "kind": "ServiceAccount",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter",
+     "namespace": "kube-system",
+     "resourceVersion": "7",
+     "uid": "uid-karpenter"
+    },
+    "status": {}
+   },
+   "/api/v1/namespaces/kube-system/services/karpenter": {
+    "apiVersion": "v1",
+    "kind": "Service",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter",
+     "namespace": "kube-system",
+     "resourceVersion": "17",
+     "uid": "uid-karpenter"
+    },
+    "spec": {
+     "ports": [
+      {
+       "name": "http-metrics",
+       "port": 8080,
+       "protocol": "TCP",
+       "targetPort": "http-metrics"
+      }
+     ],
+     "selector": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/name": "karpenter"
+     },
+     "type": "ClusterIP"
+    },
+    "status": {}
+   },
+   "/apis/apiextensions.k8s.io/v1/customresourcedefinitions/capacitybuffers.autoscaling.x-k8s.io": "sha256:513b09eb8820cb07a01e9a825463744d36129a6d2fb48da0e8b55df54d958e95",
+   "/apis/apiextensions.k8s.io/v1/customresourcedefinitions/ec2nodeclasses.karpenter.k8s.aws": "sha256:8657cdc0ccc631120296874cd271e8b2e86e302496c1a1631092448f077f6e18",
+   "/apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodeclaims.karpenter.sh": "sha256:32b17064e3afc3d833893aa2dcea2ac2d23626881d223507ef3a57c78168aa06",
+   "/apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodeoverlays.karpenter.sh": "sha256:6dd1273a2dbed1e09c06933f07e471cff2498630c48ffb0f8f5485800ac84d3e",
+   "/apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodepools.karpenter.sh": "sha256:9a9b4b1e12159814abf427cf876f5169238d21ad2e1a6063af3e8aa936452e9f",
+   "/apis/apps/v1/namespaces/kube-system/deployments/karpenter": {
+    "apiVersion": "apps/v1",
+    "kind": "Deployment",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter",
+     "namespace": "kube-system",
+     "resourceVersion": "18",
+     "uid": "uid-karpenter"
+    },
+    "spec": {
+     "replicas": 2,
+     "revisionHistoryLimit": 10,
+     "selector": {
+      "matchLabels": {
+       "app.kubernetes.io/instance": "karpenter",
+       "app.kubernetes.io/name": "karpenter"
+      }
+     },
+     "strategy": {
+      "rollingUpdate": {
+       "maxUnavailable": 1
+      }
+     },
+     "template": {
+      "metadata": {
+       "annotations": null,
+       "labels": {
+        "app.kubernetes.io/instance": "karpenter",
+        "app.kubernetes.io/name": "karpenter"
+       }
+      },
+      "spec": {
+       "affinity": {
+        "nodeAffinity": {
+         "requiredDuringSchedulingIgnoredDuringExecution": {
+          "nodeSelectorTerms": [
+           {
+            "matchExpressions": [
+             {
+              "key": "karpenter.sh/nodepool",
+              "operator": "DoesNotExist"
+             }
+            ]
+           }
+          ]
+         }
+        },
+        "podAntiAffinity": {
+         "requiredDuringSchedulingIgnoredDuringExecution": [
+          {
+           "labelSelector": {
+            "matchLabels": {
+             "app.kubernetes.io/instance": "karpenter",
+             "app.kubernetes.io/name": "karpenter"
+            }
+           },
+           "topologyKey": "kubernetes.io/hostname"
+          }
+         ]
+        }
+       },
+       "automountServiceAccountToken": true,
+       "containers": [
+        {
+         "env": [
+          {
+           "name": "KUBERNETES_MIN_VERSION",
+           "value": "1.19.0-0"
+          },
+          {
+           "name": "KARPENTER_SERVICE",
+           "value": "karpenter"
+          },
+          {
+           "name": "LOG_LEVEL",
+           "value": "info"
+          },
+          {
+           "name": "LOG_OUTPUT_PATHS",
+           "value": "stdout"
+          },
+          {
+           "name": "LOG_ERROR_OUTPUT_PATHS",
+           "value": "stderr"
+          },
+          {
+           "name": "METRICS_PORT",
+           "value": "8080"
+          },
+          {
+           "name": "HEALTH_PROBE_PORT",
+           "value": "8081"
+          },
+          {
+           "name": "SYSTEM_NAMESPACE",
+           "valueFrom": {
+            "fieldRef": {
+             "fieldPath": "metadata.namespace"
+            }
+           }
+          },
+          {
+           "name": "CPU_REQUESTS",
+           "valueFrom": {
+            "resourceFieldRef": {
+             "containerName": "controller",
+             "divisor": "1m",
+             "resource": "requests.cpu"
+            }
+           }
+          },
+          {
+           "name": "MEMORY_LIMIT",
+           "valueFrom": {
+            "resourceFieldRef": {
+             "containerName": "controller",
+             "divisor": "0",
+             "resource": "limits.memory"
+            }
+           }
+          },
+          {
+           "name": "FEATURE_GATES",
+           "value": "ReservedCapacity=true,SpotToSpotConsolidation=false,NodeRepair=false,NodeOverlay=false,StaticCapacity=false,CapacityBuffer=false,TerminateFirstDrift=false,TerminateFirstRepair=false,PodDeletionCostManagement=false"
+          },
+          {
+           "name": "AWS_FEATURE_GATES",
+           "value": "NodeClassCEL=false,DRANVIDIAGPU=false,DRAEFA=false,RebootForRepair=false"
+          },
+          {
+           "name": "BATCH_MAX_DURATION",
+           "value": "10s"
+          },
+          {
+           "name": "BATCH_IDLE_DURATION",
+           "value": "1s"
+          },
+          {
+           "name": "PREFERENCE_POLICY",
+           "value": "Respect"
+          },
+          {
+           "name": "MIN_VALUES_POLICY",
+           "value": "Strict"
+          },
+          {
+           "name": "CLUSTER_NAME",
+           "value": "demo"
+          },
+          {
+           "name": "CLUSTER_ENDPOINT",
+           "value": "https://FAKE.gr7.us-west-2.eks.amazonaws.com"
+          },
+          {
+           "name": "EKS_CONTROL_PLANE",
+           "value": "true"
+          },
+          {
+           "name": "VM_MEMORY_OVERHEAD_PERCENT",
+           "value": "0.075"
+          },
+          {
+           "name": "INTERRUPTION_QUEUE",
+           "value": "demo-karpenter"
+          },
+          {
+           "name": "RESERVED_ENIS",
+           "value": "0"
+          },
+          {
+           "name": "IGNORE_DRA_REQUESTS",
+           "value": "true"
+          },
+          {
+           "name": "AMI_REFRESH_INTERVAL",
+           "value": "1m"
+          },
+          {
+           "name": "SUBNET_REFRESH_INTERVAL",
+           "value": "1m"
+          },
+          {
+           "name": "SECURITY_GROUP_REFRESH_INTERVAL",
+           "value": "1m"
+          },
+          {
+           "name": "AWS_REGION",
+           "value": "us-west-2"
+          },
+          {
+           "name": "AWS_EC2_METADATA_DISABLED",
+           "value": "true"
+          }
+         ],
+         "image": "public.ecr.aws/karpenter/controller:1.15.2@sha256:4a7dc37f85ad8987ece1cf5df55e607aa17a879a6faa76f5258c5bf182fbdfff",
+         "imagePullPolicy": "IfNotPresent",
+         "livenessProbe": {
+          "httpGet": {
+           "path": "/healthz",
+           "port": "http"
+          },
+          "initialDelaySeconds": 30,
+          "timeoutSeconds": 30
+         },
+         "name": "controller",
+         "ports": [
+          {
+           "containerPort": 8080,
+           "name": "http-metrics",
+           "protocol": "TCP"
+          },
+          {
+           "containerPort": 8081,
+           "name": "http",
+           "protocol": "TCP"
+          }
+         ],
+         "readinessProbe": {
+          "httpGet": {
+           "path": "/readyz",
+           "port": "http"
+          },
+          "initialDelaySeconds": 5,
+          "timeoutSeconds": 30
+         },
+         "resources": {
+          "limits": {
+           "cpu": 1,
+           "memory": "1Gi"
+          },
+          "requests": {
+           "cpu": 1,
+           "memory": "1Gi"
+          }
+         },
+         "securityContext": {
+          "allowPrivilegeEscalation": false,
+          "capabilities": {
+           "drop": [
+            "ALL"
+           ]
+          },
+          "privileged": false,
+          "readOnlyRootFilesystem": true,
+          "runAsGroup": 65532,
+          "runAsNonRoot": true,
+          "runAsUser": 65532
+         }
+        }
+       ],
+       "dnsPolicy": "ClusterFirst",
+       "nodeSelector": {
+        "ate.dev/pool": "system",
+        "kubernetes.io/os": "linux"
+       },
+       "priorityClassName": "system-cluster-critical",
+       "schedulerName": "default-scheduler",
+       "securityContext": {
+        "fsGroup": 65532,
+        "seccompProfile": {
+         "type": "RuntimeDefault"
+        }
+       },
+       "serviceAccountName": "karpenter",
+       "tolerations": [
+        {
+         "key": "CriticalAddonsOnly",
+         "operator": "Exists"
+        }
+       ],
+       "topologySpreadConstraints": [
+        {
+         "labelSelector": {
+          "matchLabels": {
+           "app.kubernetes.io/instance": "karpenter",
+           "app.kubernetes.io/name": "karpenter"
+          }
+         },
+         "maxSkew": 1,
+         "topologyKey": "topology.kubernetes.io/zone",
+         "whenUnsatisfiable": "DoNotSchedule"
+        }
+       ]
+      }
+     }
+    },
+    "status": {
+     "availableReplicas": 2,
+     "conditions": [
+      {
+       "message": "",
+       "reason": "Available",
+       "status": "True",
+       "type": "Available"
+      }
+     ],
+     "observedGeneration": 1
+    }
+   },
+   "/apis/karpenter.k8s.aws/v1/ec2nodeclasses/gvisor": {
+    "apiVersion": "karpenter.k8s.aws/v1",
+    "kind": "EC2NodeClass",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/managed-by": "substrate-eks"
+     },
+     "name": "gvisor",
+     "resourceVersion": "19",
+     "uid": "uid-gvisor"
+    },
+    "spec": {
+     "amiFamily": "AL2023",
+     "amiSelectorTerms": [
+      {
+       "id": "ami-0e1e0000000000086"
+      }
+     ],
+     "blockDeviceMappings": [
+      {
+       "deviceName": "/dev/xvda",
+       "ebs": {
+        "deleteOnTermination": true,
+        "encrypted": true,
+        "volumeSize": "200Gi",
+        "volumeType": "gp3"
+       },
+       "rootVolume": true
+      }
+     ],
+     "instanceProfile": "demo-us-west-2-eks-node",
+     "metadataOptions": {
+      "httpEndpoint": "enabled",
+      "httpProtocolIPv6": "disabled",
+      "httpPutResponseHopLimit": 1,
+      "httpTokens": "required"
+     },
+     "securityGroupSelectorTerms": [
+      {
+       "id": "sg-0016"
+      }
+     ],
+     "subnetSelectorTerms": [
+      {
+       "id": "subnet-0006"
+      },
+      {
+       "id": "subnet-0008"
+      },
+      {
+       "id": "subnet-0010"
+      }
+     ],
+     "tags": {
+      "agent-substrate-on-eks/deployment": "demo.us-west-2",
+      "auto-delete": "no",
+      "project": "agent-substrate"
+     }
+    },
+    "status": {
+     "conditions": [
+      {
+       "message": "",
+       "reason": "Ready",
+       "status": "True",
+       "type": "Ready"
+      }
+     ]
+    }
+   },
+   "/apis/karpenter.sh/v1/nodepools/gvisor": {
+    "apiVersion": "karpenter.sh/v1",
+    "kind": "NodePool",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/managed-by": "substrate-eks"
+     },
+     "name": "gvisor",
+     "resourceVersion": "20",
+     "uid": "uid-gvisor"
+    },
+    "spec": {
+     "disruption": {
+      "consolidateAfter": "5m",
+      "consolidationPolicy": "WhenEmpty"
+     },
+     "limits": {
+      "cpu": "16",
+      "nodes": "2"
+     },
+     "template": {
+      "metadata": {
+       "labels": {
+        "ate.dev/pool": "gvisor"
+       }
+      },
+      "spec": {
+       "expireAfter": "Never",
+       "nodeClassRef": {
+        "group": "karpenter.k8s.aws",
+        "kind": "EC2NodeClass",
+        "name": "gvisor"
+       },
+       "requirements": [
+        {
+         "key": "node.kubernetes.io/instance-type",
+         "operator": "In",
+         "values": [
+          "m8i.2xlarge"
+         ]
+        },
+        {
+         "key": "karpenter.sh/capacity-type",
+         "operator": "In",
+         "values": [
+          "on-demand"
+         ]
+        },
+        {
+         "key": "kubernetes.io/arch",
+         "operator": "In",
+         "values": [
+          "amd64"
+         ]
+        },
+        {
+         "key": "kubernetes.io/os",
+         "operator": "In",
+         "values": [
+          "linux"
+         ]
+        }
+       ],
+       "taints": [
+        {
+         "effect": "NoSchedule",
+         "key": "ate.dev/sandboxClass",
+         "value": "gvisor"
+        }
+       ],
+       "terminationGracePeriod": "15m"
+      }
+     }
+    },
+    "status": {
+     "conditions": [
+      {
+       "message": "",
+       "reason": "Ready",
+       "status": "True",
+       "type": "Ready"
+      }
+     ]
+    }
+   },
+   "/apis/policy/v1/namespaces/kube-system/poddisruptionbudgets/karpenter": {
+    "apiVersion": "policy/v1",
+    "kind": "PodDisruptionBudget",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter",
+     "namespace": "kube-system",
+     "resourceVersion": "6",
+     "uid": "uid-karpenter"
+    },
+    "spec": {
+     "maxUnavailable": 1,
+     "selector": {
+      "matchLabels": {
+       "app.kubernetes.io/instance": "karpenter",
+       "app.kubernetes.io/name": "karpenter"
+      }
+     }
+    },
+    "status": {}
+   },
+   "/apis/rbac.authorization.k8s.io/v1/clusterrolebindings/karpenter": {
+    "apiVersion": "rbac.authorization.k8s.io/v1",
+    "kind": "ClusterRoleBinding",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter",
+     "resourceVersion": "12",
+     "uid": "uid-karpenter"
+    },
+    "roleRef": {
+     "apiGroup": "rbac.authorization.k8s.io",
+     "kind": "ClusterRole",
+     "name": "karpenter"
+    },
+    "status": {},
+    "subjects": [
+     {
+      "kind": "ServiceAccount",
+      "name": "karpenter",
+      "namespace": "kube-system"
+     }
+    ]
+   },
+   "/apis/rbac.authorization.k8s.io/v1/clusterrolebindings/karpenter-core": {
+    "apiVersion": "rbac.authorization.k8s.io/v1",
+    "kind": "ClusterRoleBinding",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter-core",
+     "resourceVersion": "11",
+     "uid": "uid-karpenter-core"
+    },
+    "roleRef": {
+     "apiGroup": "rbac.authorization.k8s.io",
+     "kind": "ClusterRole",
+     "name": "karpenter-core"
+    },
+    "status": {},
+    "subjects": [
+     {
+      "kind": "ServiceAccount",
+      "name": "karpenter",
+      "namespace": "kube-system"
+     }
+    ]
+   },
+   "/apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter": {
+    "apiVersion": "rbac.authorization.k8s.io/v1",
+    "kind": "ClusterRole",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter",
+     "resourceVersion": "10",
+     "uid": "uid-karpenter"
+    },
+    "rules": [
+     {
+      "apiGroups": [
+       "karpenter.k8s.aws"
+      ],
+      "resources": [
+       "ec2nodeclasses"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "karpenter.k8s.aws"
+      ],
+      "resources": [
+       "ec2nodeclasses",
+       "ec2nodeclasses/status"
+      ],
+      "verbs": [
+       "patch",
+       "update"
+      ]
+     }
+    ],
+    "status": {}
+   },
+   "/apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter-admin": {
+    "apiVersion": "rbac.authorization.k8s.io/v1",
+    "kind": "ClusterRole",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2",
+      "rbac.authorization.k8s.io/aggregate-to-admin": "true"
+     },
+     "name": "karpenter-admin",
+     "resourceVersion": "8",
+     "uid": "uid-karpenter-admin"
+    },
+    "rules": [
+     {
+      "apiGroups": [
+       "karpenter.sh"
+      ],
+      "resources": [
+       "nodepools",
+       "nodepools/status",
+       "nodeclaims",
+       "nodeclaims/status"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch",
+       "create",
+       "delete",
+       "patch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "karpenter.k8s.aws"
+      ],
+      "resources": [
+       "ec2nodeclasses"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch",
+       "create",
+       "delete",
+       "patch"
+      ]
+     }
+    ],
+    "status": {}
+   },
+   "/apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter-core": {
+    "apiVersion": "rbac.authorization.k8s.io/v1",
+    "kind": "ClusterRole",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter-core",
+     "resourceVersion": "9",
+     "uid": "uid-karpenter-core"
+    },
+    "rules": [
+     {
+      "apiGroups": [
+       "karpenter.sh"
+      ],
+      "resources": [
+       "nodepools",
+       "nodepools/status",
+       "nodeclaims",
+       "nodeclaims/status",
+       "nodeoverlays",
+       "nodeoverlays/status"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "autoscaling.x-k8s.io"
+      ],
+      "resources": [
+       "capacitybuffers",
+       "capacitybuffers/status"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       ""
+      ],
+      "resources": [
+       "podtemplates"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       ""
+      ],
+      "resources": [
+       "pods",
+       "nodes",
+       "persistentvolumes",
+       "persistentvolumeclaims",
+       "replicationcontrollers",
+       "namespaces"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "storage.k8s.io"
+      ],
+      "resources": [
+       "storageclasses",
+       "csinodes",
+       "volumeattachments"
+      ],
+      "verbs": [
+       "get",
+       "watch",
+       "list"
+      ]
+     },
+     {
+      "apiGroups": [
+       "apps"
+      ],
+      "resources": [
+       "daemonsets",
+       "deployments",
+       "replicasets",
+       "statefulsets"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "autoscaling.k8s.io"
+      ],
+      "resources": [
+       "verticalpodautoscalers"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "policy"
+      ],
+      "resources": [
+       "poddisruptionbudgets"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       ""
+      ],
+      "resources": [
+       "events"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "resource.k8s.io"
+      ],
+      "resources": [
+       "deviceclasses",
+       "resourceclaims",
+       "resourceslices"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "karpenter.sh"
+      ],
+      "resources": [
+       "nodeclaims",
+       "nodeclaims/status"
+      ],
+      "verbs": [
+       "create",
+       "delete",
+       "update",
+       "patch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "karpenter.sh"
+      ],
+      "resources": [
+       "nodepools",
+       "nodepools/status",
+       "nodeoverlays/status"
+      ],
+      "verbs": [
+       "update",
+       "patch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "autoscaling.x-k8s.io"
+      ],
+      "resources": [
+       "capacitybuffers/status"
+      ],
+      "verbs": [
+       "update",
+       "patch"
+      ]
+     },
+     {
+      "apiGroups": [
+       ""
+      ],
+      "resources": [
+       "events"
+      ],
+      "verbs": [
+       "create",
+       "patch"
+      ]
+     },
+     {
+      "apiGroups": [
+       ""
+      ],
+      "resources": [
+       "nodes"
+      ],
+      "verbs": [
+       "patch",
+       "delete",
+       "update"
+      ]
+     },
+     {
+      "apiGroups": [
+       ""
+      ],
+      "resources": [
+       "pods/eviction"
+      ],
+      "verbs": [
+       "create"
+      ]
+     },
+     {
+      "apiGroups": [
+       ""
+      ],
+      "resources": [
+       "pods"
+      ],
+      "verbs": [
+       "delete"
+      ]
+     }
+    ],
+    "status": {}
+   },
+   "/apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/rolebindings/karpenter": {
+    "apiVersion": "rbac.authorization.k8s.io/v1",
+    "kind": "RoleBinding",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter",
+     "namespace": "kube-system",
+     "resourceVersion": "15",
+     "uid": "uid-karpenter"
+    },
+    "roleRef": {
+     "apiGroup": "rbac.authorization.k8s.io",
+     "kind": "Role",
+     "name": "karpenter"
+    },
+    "status": {},
+    "subjects": [
+     {
+      "kind": "ServiceAccount",
+      "name": "karpenter",
+      "namespace": "kube-system"
+     }
+    ]
+   },
+   "/apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/rolebindings/karpenter-dns": {
+    "apiVersion": "rbac.authorization.k8s.io/v1",
+    "kind": "RoleBinding",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter-dns",
+     "namespace": "kube-system",
+     "resourceVersion": "16",
+     "uid": "uid-karpenter-dns"
+    },
+    "roleRef": {
+     "apiGroup": "rbac.authorization.k8s.io",
+     "kind": "Role",
+     "name": "karpenter-dns"
+    },
+    "status": {},
+    "subjects": [
+     {
+      "kind": "ServiceAccount",
+      "name": "karpenter",
+      "namespace": "kube-system"
+     }
+    ]
+   },
+   "/apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/roles/karpenter": {
+    "apiVersion": "rbac.authorization.k8s.io/v1",
+    "kind": "Role",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter",
+     "namespace": "kube-system",
+     "resourceVersion": "13",
+     "uid": "uid-karpenter"
+    },
+    "rules": [
+     {
+      "apiGroups": [
+       "coordination.k8s.io"
+      ],
+      "resources": [
+       "leases"
+      ],
+      "verbs": [
+       "get",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "coordination.k8s.io"
+      ],
+      "resourceNames": [
+       "karpenter-leader-election"
+      ],
+      "resources": [
+       "leases"
+      ],
+      "verbs": [
+       "patch",
+       "update"
+      ]
+     },
+     {
+      "apiGroups": [
+       "coordination.k8s.io"
+      ],
+      "resources": [
+       "leases"
+      ],
+      "verbs": [
+       "create"
+      ]
+     }
+    ],
+    "status": {}
+   },
+   "/apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/roles/karpenter-dns": {
+    "apiVersion": "rbac.authorization.k8s.io/v1",
+    "kind": "Role",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter-dns",
+     "namespace": "kube-system",
+     "resourceVersion": "14",
+     "uid": "uid-karpenter-dns"
+    },
+    "rules": [
+     {
+      "apiGroups": [
+       ""
+      ],
+      "resourceNames": [
+       "kube-dns"
+      ],
+      "resources": [
+       "services"
+      ],
+      "verbs": [
+       "get"
+      ]
+     }
+    ],
+    "status": {}
+   }
+  }
+ },
+ "plan, fresh": {
+  "Writes": null,
+  "Reads": [
+   "DescribeCluster",
+   "DescribeInstanceTypes",
+   "GetParameter",
+   "DescribeImages",
+   "DescribeAvailabilityZones",
+   "DescribeInstanceTypeOfferings",
+   "DescribeVpcs",
+   "DescribeVpcs",
+   "GetRole",
+   "GetRole",
+   "GetRole",
+   "GetInstanceProfile",
+   "GetRole",
+   "DescribeLaunchTemplates",
+   "DescribeLaunchTemplates",
+   "GetRole",
+   "GetQueueUrl",
+   "DescribeRule",
+   "DescribeRule",
+   "DescribeRule",
+   "DescribeRule",
+   "DescribeRule"
+  ],
+  "Inputs": [
+   "DescribeInstanceTypes {\"DryRun\":null,\"Filters\":null,\"IncludeUnsupportedInRegion\":null,\"InstanceTypes\":[\"m8i.xlarge\",\"m8i.2xlarge\"],\"MaxResults\":null,\"NextToken\":null}",
+   "GetParameter {\"Name\":\"/aws/service/eks/optimized-ami/1.37/amazon-linux-2023/x86_64/standard/recommended/image_id\",\"WithDecryption\":null}",
+   "DescribeImages {\"DryRun\":null,\"ExecutableUsers\":null,\"Filters\":null,\"ImageIds\":[\"ami-0e1e0000000000086\"],\"IncludeDeprecated\":null,\"IncludeDisabled\":null,\"MaxResults\":null,\"NextToken\":null,\"Owners\":null}",
+   "DescribeLaunchTemplates {\"DryRun\":null,\"Filters\":[{\"Name\":\"launch-template-name\",\"Values\":[\"demo-system-nodes\"]}],\"IncludeManagedResources\":null,\"LaunchTemplateIds\":null,\"LaunchTemplateNames\":null,\"MaxResults\":null,\"NextToken\":null}",
+   "DescribeLaunchTemplates {\"DryRun\":null,\"Filters\":[{\"Name\":\"launch-template-name\",\"Values\":[\"demo-microvm-nested-virt\"]}],\"IncludeManagedResources\":null,\"LaunchTemplateIds\":null,\"LaunchTemplateNames\":null,\"MaxResults\":null,\"NextToken\":null}",
+   "GetQueueUrl {\"QueueName\":\"demo-karpenter\",\"QueueOwnerAWSAccountId\":\"111122223333\"}"
+  ],
+  "Creates": [
+   "VPC demo-vpc (192.168.0.0/16)",
+   "subnet demo-public-1 (192.168.0.0/19, us-west-2a)",
+   "subnet demo-private-1 (192.168.96.0/19, us-west-2a)",
+   "subnet demo-public-2 (192.168.32.0/19, us-west-2b)",
+   "subnet demo-private-2 (192.168.128.0/19, us-west-2b)",
+   "subnet demo-public-3 (192.168.64.0/19, us-west-2c)",
+   "subnet demo-private-3 (192.168.160.0/19, us-west-2c)",
+   "internet gateway demo-igw",
+   "Elastic IP demo-nat",
+   "NAT gateway demo-nat",
+   "route table demo-public",
+   "route table demo-private",
+   "IAM role demo-us-west-2-eks-cluster",
+   "IAM role demo-us-west-2-eks-node",
+   "IAM role demo-us-west-2-ebs-csi-driver",
+   "IAM instance profile demo-us-west-2-eks-node",
+   "EKS cluster demo (Kubernetes 1.37, Auto Mode off)",
+   "access entry for arn:aws:iam::********3333:role/Admin",
+   "add-on vpc-cni",
+   "add-on kube-proxy",
+   "add-on eks-pod-identity-agent",
+   "add-on coredns",
+   "add-on aws-ebs-csi-driver",
+   "launch template demo-system-nodes",
+   "launch template demo-microvm-nested-virt",
+   "node group system (2 x m8i.xlarge)",
+   "node group microvm (2 x m8i.2xlarge)",
+   "IAM role demo-us-west-2-karpenter",
+   "Pod Identity association kube-system/karpenter with demo-us-west-2-karpenter",
+   "SQS queue demo-karpenter",
+   "EventBridge rule demo-karpenter-health",
+   "EventBridge rule demo-karpenter-spot",
+   "EventBridge rule demo-karpenter-rebalance",
+   "EventBridge rule demo-karpenter-state-change",
+   "EventBridge rule demo-karpenter-capacity-reservation",
+   "Kubernetes CustomResourceDefinition capacitybuffers.autoscaling.x-k8s.io",
+   "Kubernetes CustomResourceDefinition ec2nodeclasses.karpenter.k8s.aws",
+   "Kubernetes CustomResourceDefinition nodeclaims.karpenter.sh",
+   "Kubernetes CustomResourceDefinition nodeoverlays.karpenter.sh",
+   "Kubernetes CustomResourceDefinition nodepools.karpenter.sh",
+   "Kubernetes PodDisruptionBudget kube-system/karpenter",
+   "Kubernetes ServiceAccount kube-system/karpenter",
+   "Kubernetes ClusterRole karpenter-admin",
+   "Kubernetes ClusterRole karpenter-core",
+   "Kubernetes ClusterRole karpenter",
+   "Kubernetes ClusterRoleBinding karpenter-core",
+   "Kubernetes ClusterRoleBinding karpenter",
+   "Kubernetes Role kube-system/karpenter",
+   "Kubernetes Role kube-system/karpenter-dns",
+   "Kubernetes RoleBinding kube-system/karpenter",
+   "Kubernetes RoleBinding kube-system/karpenter-dns",
+   "Kubernetes Service kube-system/karpenter",
+   "Kubernetes Deployment kube-system/karpenter",
+   "Kubernetes EC2NodeClass gvisor",
+   "Kubernetes NodePool gvisor"
+  ],
+  "Changes": [
+   "VPC DNS hostnames",
+   "tags of the VPC's default route table, security group and network ACL",
+   "attach internet gateway planned-igw to planned-vpc",
+   "add the default route of demo-public via planned-igw",
+   "associate demo-public with planned-demo-public-1",
+   "associate demo-public with planned-demo-public-2",
+   "associate demo-public with planned-demo-public-3",
+   "add the default route of demo-private via planned-nat",
+   "associate demo-private with planned-demo-private-1",
+   "associate demo-private with planned-demo-private-2",
+   "associate demo-private with planned-demo-private-3"
+  ],
+  "KubeCalls": null,
+  "ClusterTags": null,
+  "NodeGroups": [],
+  "Policy": "",
+  "Queue": null,
+  "Rules": {},
+  "Objects": {}
+ },
+ "rerun": {
+  "Writes": null,
+  "Reads": [
+   "DescribeCluster",
+   "DescribeNodegroup system",
+   "DescribeNodegroup microvm",
+   "DescribeInstanceTypes",
+   "KubeObjects",
+   "DescribeImages",
+   "GetInstanceProfile",
+   "ListInstanceProfileTags",
+   "DescribeVpcs",
+   "DescribeNetworkInterfaces",
+   "GetRole",
+   "DescribeAccessEntry",
+   "DescribeNodegroup system",
+   "DescribeNodegroup microvm",
+   "DescribeAccessEntry",
+   "ListPodIdentityAssociations",
+   "DescribePodIdentityAssociation",
+   "GetRole",
+   "GetRole",
+   "GetRolePolicy",
+   "GetQueueUrl",
+   "ListQueueTags",
+   "GetQueueAttributes",
+   "DescribeRule",
+   "ListTagsForResource",
+   "ListTargetsByRule",
+   "DescribeRule",
+   "ListTagsForResource",
+   "ListTargetsByRule",
+   "DescribeRule",
+   "ListTagsForResource",
+   "ListTargetsByRule",
+   "DescribeRule",
+   "ListTagsForResource",
+   "ListTargetsByRule",
+   "DescribeRule",
+   "ListTagsForResource",
+   "ListTargetsByRule",
+   "KubeObjects"
+  ],
+  "Inputs": [
+   "DescribeNodegroup system {\"ClusterName\":\"demo\",\"NodegroupName\":\"system\"}",
+   "DescribeNodegroup microvm {\"ClusterName\":\"demo\",\"NodegroupName\":\"microvm\"}",
+   "DescribeInstanceTypes {\"DryRun\":null,\"Filters\":null,\"IncludeUnsupportedInRegion\":null,\"InstanceTypes\":[\"m8i.xlarge\",\"m8i.2xlarge\"],\"MaxResults\":null,\"NextToken\":null}",
+   "DescribeImages {\"DryRun\":null,\"ExecutableUsers\":null,\"Filters\":null,\"ImageIds\":[\"ami-0e1e0000000000086\"],\"IncludeDeprecated\":null,\"IncludeDisabled\":null,\"MaxResults\":null,\"NextToken\":null,\"Owners\":null}",
+   "DescribeNodegroup system {\"ClusterName\":\"demo\",\"NodegroupName\":\"system\"}",
+   "DescribeNodegroup microvm {\"ClusterName\":\"demo\",\"NodegroupName\":\"microvm\"}",
+   "GetQueueUrl {\"QueueName\":\"demo-karpenter\",\"QueueOwnerAWSAccountId\":\"111122223333\"}"
+  ],
+  "Creates": null,
+  "Changes": null,
+  "KubeCalls": [
+   "GET /apis/karpenter.k8s.aws/v1/ec2nodeclasses/gvisor",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/capacitybuffers.autoscaling.x-k8s.io",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/ec2nodeclasses.karpenter.k8s.aws",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodeclaims.karpenter.sh",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodeoverlays.karpenter.sh",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodepools.karpenter.sh",
+   "GET /apis/policy/v1/namespaces/kube-system/poddisruptionbudgets/karpenter",
+   "GET /api/v1/namespaces/kube-system/serviceaccounts/karpenter",
+   "GET /apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter-admin",
+   "GET /apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter-core",
+   "GET /apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter",
+   "GET /apis/rbac.authorization.k8s.io/v1/clusterrolebindings/karpenter-core",
+   "GET /apis/rbac.authorization.k8s.io/v1/clusterrolebindings/karpenter",
+   "GET /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/roles/karpenter",
+   "GET /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/roles/karpenter-dns",
+   "GET /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/rolebindings/karpenter",
+   "GET /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/rolebindings/karpenter-dns",
+   "GET /api/v1/namespaces/kube-system/services/karpenter",
+   "GET /apis/apps/v1/namespaces/kube-system/deployments/karpenter",
+   "GET /apis/karpenter.k8s.aws/v1/ec2nodeclasses/gvisor",
+   "GET /apis/karpenter.sh/v1/nodepools/gvisor",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/capacitybuffers.autoscaling.x-k8s.io",
+   "PATCH /apis/apiextensions.k8s.io/v1/customresourcedefinitions/capacitybuffers.autoscaling.x-k8s.io dryRun",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/ec2nodeclasses.karpenter.k8s.aws",
+   "PATCH /apis/apiextensions.k8s.io/v1/customresourcedefinitions/ec2nodeclasses.karpenter.k8s.aws dryRun",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodeclaims.karpenter.sh",
+   "PATCH /apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodeclaims.karpenter.sh dryRun",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodeoverlays.karpenter.sh",
+   "PATCH /apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodeoverlays.karpenter.sh dryRun",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodepools.karpenter.sh",
+   "PATCH /apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodepools.karpenter.sh dryRun",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/capacitybuffers.autoscaling.x-k8s.io",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/ec2nodeclasses.karpenter.k8s.aws",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodeclaims.karpenter.sh",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodeoverlays.karpenter.sh",
+   "GET /apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodepools.karpenter.sh",
+   "GET /apis/policy/v1/namespaces/kube-system/poddisruptionbudgets/karpenter",
+   "PATCH /apis/policy/v1/namespaces/kube-system/poddisruptionbudgets/karpenter dryRun",
+   "GET /api/v1/namespaces/kube-system/serviceaccounts/karpenter",
+   "PATCH /api/v1/namespaces/kube-system/serviceaccounts/karpenter dryRun",
+   "GET /apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter-admin",
+   "PATCH /apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter-admin dryRun",
+   "GET /apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter-core",
+   "PATCH /apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter-core dryRun",
+   "GET /apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter",
+   "PATCH /apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter dryRun",
+   "GET /apis/rbac.authorization.k8s.io/v1/clusterrolebindings/karpenter-core",
+   "PATCH /apis/rbac.authorization.k8s.io/v1/clusterrolebindings/karpenter-core dryRun",
+   "GET /apis/rbac.authorization.k8s.io/v1/clusterrolebindings/karpenter",
+   "PATCH /apis/rbac.authorization.k8s.io/v1/clusterrolebindings/karpenter dryRun",
+   "GET /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/roles/karpenter",
+   "PATCH /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/roles/karpenter dryRun",
+   "GET /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/roles/karpenter-dns",
+   "PATCH /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/roles/karpenter-dns dryRun",
+   "GET /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/rolebindings/karpenter",
+   "PATCH /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/rolebindings/karpenter dryRun",
+   "GET /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/rolebindings/karpenter-dns",
+   "PATCH /apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/rolebindings/karpenter-dns dryRun",
+   "GET /api/v1/namespaces/kube-system/services/karpenter",
+   "PATCH /api/v1/namespaces/kube-system/services/karpenter dryRun",
+   "GET /apis/apps/v1/namespaces/kube-system/deployments/karpenter",
+   "PATCH /apis/apps/v1/namespaces/kube-system/deployments/karpenter dryRun",
+   "GET /apis/apps/v1/namespaces/kube-system/deployments/karpenter",
+   "GET /apis/karpenter.k8s.aws/v1/ec2nodeclasses/gvisor",
+   "PATCH /apis/karpenter.k8s.aws/v1/ec2nodeclasses/gvisor dryRun",
+   "GET /apis/karpenter.sh/v1/nodepools/gvisor",
+   "PATCH /apis/karpenter.sh/v1/nodepools/gvisor dryRun",
+   "GET /apis/karpenter.k8s.aws/v1/ec2nodeclasses/gvisor",
+   "GET /apis/karpenter.sh/v1/nodepools/gvisor"
+  ],
+  "ClusterTags": {
+   "agent-substrate-on-eks/created-by": "setup-aws",
+   "agent-substrate-on-eks/deployment": "demo.us-west-2",
+   "agent-substrate-on-eks/karpenter": "on",
+   "auto-delete": "no",
+   "project": "agent-substrate"
+  },
+  "NodeGroups": [
+   "microvm",
+   "system"
+  ],
+  "Policy": "{\"Statement\":[{\"Action\":[\"ec2:RunInstances\",\"ec2:CreateFleet\"],\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:ec2:us-west-2::image/*\",\"arn:aws:ec2:us-west-2::snapshot/*\",\"arn:aws:ec2:us-west-2:*:security-group/*\",\"arn:aws:ec2:us-west-2:*:subnet/*\",\"arn:aws:ec2:us-west-2:*:capacity-reservation/*\",\"arn:aws:ec2:us-west-2:*:placement-group/*\"],\"Sid\":\"AllowScopedEC2InstanceAccessActions\"},{\"Action\":[\"ec2:RunInstances\",\"ec2:CreateFleet\"],\"Condition\":{\"StringEquals\":{\"aws:ResourceTag/kubernetes.io/cluster/demo\":\"owned\"},\"StringLike\":{\"aws:ResourceTag/karpenter.sh/nodepool\":\"*\"}},\"Effect\":\"Allow\",\"Resource\":\"arn:aws:ec2:us-west-2:*:launch-template/*\",\"Sid\":\"AllowScopedEC2LaunchTemplateAccessActions\"},{\"Action\":[\"ec2:RunInstances\",\"ec2:CreateFleet\",\"ec2:CreateLaunchTemplate\"],\"Condition\":{\"StringEquals\":{\"aws:RequestTag/eks:eks-cluster-name\":\"demo\",\"aws:RequestTag/kubernetes.io/cluster/demo\":\"owned\"},\"StringLike\":{\"aws:RequestTag/karpenter.sh/nodepool\":\"*\"}},\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:ec2:us-west-2:*:fleet/*\",\"arn:aws:ec2:us-west-2:*:instance/*\",\"arn:aws:ec2:us-west-2:*:volume/*\",\"arn:aws:ec2:us-west-2:*:network-interface/*\",\"arn:aws:ec2:us-west-2:*:launch-template/*\",\"arn:aws:ec2:us-west-2:*:spot-instances-request/*\"],\"Sid\":\"AllowScopedEC2InstanceActionsWithTags\"},{\"Action\":\"ec2:CreateTags\",\"Condition\":{\"StringEquals\":{\"aws:RequestTag/eks:eks-cluster-name\":\"demo\",\"aws:RequestTag/kubernetes.io/cluster/demo\":\"owned\",\"ec2:CreateAction\":[\"RunInstances\",\"CreateFleet\",\"CreateLaunchTemplate\"]},\"StringLike\":{\"aws:RequestTag/karpenter.sh/nodepool\":\"*\"}},\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:ec2:us-west-2:*:fleet/*\",\"arn:aws:ec2:us-west-2:*:instance/*\",\"arn:aws:ec2:us-west-2:*:volume/*\",\"arn:aws:ec2:us-west-2:*:network-interface/*\",\"arn:aws:ec2:us-west-2:*:launch-template/*\",\"arn:aws:ec2:us-west-2:*:spot-instances-request/*\"],\"Sid\":\"AllowScopedResourceCreationTagging\"},{\"Action\":\"ec2:CreateTags\",\"Condition\":{\"ForAllValues:StringEquals\":{\"aws:TagKeys\":[\"eks:eks-cluster-name\",\"karpenter.sh/nodeclaim\",\"Name\"]},\"StringEquals\":{\"aws:ResourceTag/kubernetes.io/cluster/demo\":\"owned\"},\"StringEqualsIfExists\":{\"aws:RequestTag/eks:eks-cluster-name\":\"demo\"},\"StringLike\":{\"aws:ResourceTag/karpenter.sh/nodepool\":\"*\"}},\"Effect\":\"Allow\",\"Resource\":\"arn:aws:ec2:us-west-2:*:instance/*\",\"Sid\":\"AllowScopedResourceTagging\"},{\"Action\":[\"ec2:TerminateInstances\",\"ec2:DeleteLaunchTemplate\"],\"Condition\":{\"StringEquals\":{\"aws:ResourceTag/kubernetes.io/cluster/demo\":\"owned\"},\"StringLike\":{\"aws:ResourceTag/karpenter.sh/nodepool\":\"*\"}},\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:ec2:us-west-2:*:instance/*\",\"arn:aws:ec2:us-west-2:*:launch-template/*\"],\"Sid\":\"AllowScopedDeletion\"},{\"Action\":\"iam:PassRole\",\"Condition\":{\"StringEquals\":{\"iam:PassedToService\":[\"ec2.amazonaws.com\",\"ec2.amazonaws.com.cn\"]}},\"Effect\":\"Allow\",\"Resource\":\"arn:aws:iam::111122223333:role/demo-us-west-2-eks-node\",\"Sid\":\"AllowPassingInstanceRole\"},{\"Action\":\"eks:DescribeCluster\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:eks:us-west-2:111122223333:cluster/demo\",\"Sid\":\"AllowAPIServerEndpointDiscovery\"},{\"Action\":[\"sqs:DeleteMessage\",\"sqs:GetQueueUrl\",\"sqs:ReceiveMessage\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:sqs:us-west-2:111122223333:demo-karpenter\",\"Sid\":\"AllowInterruptionQueueActions\"},{\"Action\":[\"ec2:DescribeCapacityReservations\",\"ec2:DescribeImages\",\"ec2:DescribeInstances\",\"ec2:DescribeInstanceStatus\",\"ec2:DescribeInstanceTypeOfferings\",\"ec2:DescribeInstanceTypes\",\"ec2:DescribeLaunchTemplates\",\"ec2:DescribePlacementGroups\",\"ec2:DescribeSecurityGroups\",\"ec2:DescribeSpotPriceHistory\",\"ec2:DescribeSubnets\"],\"Condition\":{\"StringEquals\":{\"aws:RequestedRegion\":\"us-west-2\"}},\"Effect\":\"Allow\",\"Resource\":\"*\",\"Sid\":\"AllowRegionalReadActions\"},{\"Action\":\"ssm:GetParameter\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:ssm:us-west-2::parameter/aws/service/*\",\"Sid\":\"AllowSSMReadActions\"},{\"Action\":\"pricing:GetProducts\",\"Effect\":\"Allow\",\"Resource\":\"*\",\"Sid\":\"AllowPricingReadActions\"},{\"Action\":\"iam:ListInstanceProfiles\",\"Effect\":\"Allow\",\"Resource\":\"*\",\"Sid\":\"AllowUnscopedInstanceProfileListAction\"},{\"Action\":\"iam:GetInstanceProfile\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:iam::111122223333:instance-profile/*\",\"Sid\":\"AllowInstanceProfileReadActions\"}],\"Version\":\"2012-10-17\"}",
+  "Queue": {
+   "MessageRetentionPeriod": "300",
+   "Policy": "{\"Id\":\"EC2InterruptionPolicy\",\"Statement\":[{\"Action\":\"sqs:SendMessage\",\"Effect\":\"Allow\",\"Principal\":{\"Service\":[\"events.amazonaws.com\",\"sqs.amazonaws.com\"]},\"Resource\":\"arn:aws:sqs:us-west-2:111122223333:demo-karpenter\"},{\"Action\":\"sqs:*\",\"Condition\":{\"Bool\":{\"aws:SecureTransport\":\"false\"}},\"Effect\":\"Deny\",\"Principal\":\"*\",\"Resource\":\"arn:aws:sqs:us-west-2:111122223333:demo-karpenter\",\"Sid\":\"DenyHTTP\"}],\"Version\":\"2012-10-17\"}",
+   "SqsManagedSseEnabled": "true"
+  },
+  "Rules": {
+   "demo-karpenter-capacity-reservation": "{\"detail-type\":[\"EC2 Capacity Reservation Instance Interruption Warning\"],\"source\":[\"aws.ec2\"]}",
+   "demo-karpenter-health": "{\"detail-type\":[\"AWS Health Event\"],\"source\":[\"aws.health\"]}",
+   "demo-karpenter-rebalance": "{\"detail-type\":[\"EC2 Instance Rebalance Recommendation\"],\"source\":[\"aws.ec2\"]}",
+   "demo-karpenter-spot": "{\"detail-type\":[\"EC2 Spot Instance Interruption Warning\"],\"source\":[\"aws.ec2\"]}",
+   "demo-karpenter-state-change": "{\"detail-type\":[\"EC2 Instance State-change Notification\"],\"source\":[\"aws.ec2\"]}"
+  },
+  "Objects": {
+   "/api/v1/namespaces/kube-system/serviceaccounts/karpenter": {
+    "apiVersion": "v1",
+    "automountServiceAccountToken": false,
+    "kind": "ServiceAccount",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter",
+     "namespace": "kube-system",
+     "resourceVersion": "7",
+     "uid": "uid-karpenter"
+    },
+    "status": {}
+   },
+   "/api/v1/namespaces/kube-system/services/karpenter": {
+    "apiVersion": "v1",
+    "kind": "Service",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter",
+     "namespace": "kube-system",
+     "resourceVersion": "17",
+     "uid": "uid-karpenter"
+    },
+    "spec": {
+     "ports": [
+      {
+       "name": "http-metrics",
+       "port": 8080,
+       "protocol": "TCP",
+       "targetPort": "http-metrics"
+      }
+     ],
+     "selector": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/name": "karpenter"
+     },
+     "type": "ClusterIP"
+    },
+    "status": {}
+   },
+   "/apis/apiextensions.k8s.io/v1/customresourcedefinitions/capacitybuffers.autoscaling.x-k8s.io": "sha256:513b09eb8820cb07a01e9a825463744d36129a6d2fb48da0e8b55df54d958e95",
+   "/apis/apiextensions.k8s.io/v1/customresourcedefinitions/ec2nodeclasses.karpenter.k8s.aws": "sha256:8657cdc0ccc631120296874cd271e8b2e86e302496c1a1631092448f077f6e18",
+   "/apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodeclaims.karpenter.sh": "sha256:32b17064e3afc3d833893aa2dcea2ac2d23626881d223507ef3a57c78168aa06",
+   "/apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodeoverlays.karpenter.sh": "sha256:6dd1273a2dbed1e09c06933f07e471cff2498630c48ffb0f8f5485800ac84d3e",
+   "/apis/apiextensions.k8s.io/v1/customresourcedefinitions/nodepools.karpenter.sh": "sha256:9a9b4b1e12159814abf427cf876f5169238d21ad2e1a6063af3e8aa936452e9f",
+   "/apis/apps/v1/namespaces/kube-system/deployments/karpenter": {
+    "apiVersion": "apps/v1",
+    "kind": "Deployment",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter",
+     "namespace": "kube-system",
+     "resourceVersion": "18",
+     "uid": "uid-karpenter"
+    },
+    "spec": {
+     "replicas": 2,
+     "revisionHistoryLimit": 10,
+     "selector": {
+      "matchLabels": {
+       "app.kubernetes.io/instance": "karpenter",
+       "app.kubernetes.io/name": "karpenter"
+      }
+     },
+     "strategy": {
+      "rollingUpdate": {
+       "maxUnavailable": 1
+      }
+     },
+     "template": {
+      "metadata": {
+       "annotations": null,
+       "labels": {
+        "app.kubernetes.io/instance": "karpenter",
+        "app.kubernetes.io/name": "karpenter"
+       }
+      },
+      "spec": {
+       "affinity": {
+        "nodeAffinity": {
+         "requiredDuringSchedulingIgnoredDuringExecution": {
+          "nodeSelectorTerms": [
+           {
+            "matchExpressions": [
+             {
+              "key": "karpenter.sh/nodepool",
+              "operator": "DoesNotExist"
+             }
+            ]
+           }
+          ]
+         }
+        },
+        "podAntiAffinity": {
+         "requiredDuringSchedulingIgnoredDuringExecution": [
+          {
+           "labelSelector": {
+            "matchLabels": {
+             "app.kubernetes.io/instance": "karpenter",
+             "app.kubernetes.io/name": "karpenter"
+            }
+           },
+           "topologyKey": "kubernetes.io/hostname"
+          }
+         ]
+        }
+       },
+       "automountServiceAccountToken": true,
+       "containers": [
+        {
+         "env": [
+          {
+           "name": "KUBERNETES_MIN_VERSION",
+           "value": "1.19.0-0"
+          },
+          {
+           "name": "KARPENTER_SERVICE",
+           "value": "karpenter"
+          },
+          {
+           "name": "LOG_LEVEL",
+           "value": "info"
+          },
+          {
+           "name": "LOG_OUTPUT_PATHS",
+           "value": "stdout"
+          },
+          {
+           "name": "LOG_ERROR_OUTPUT_PATHS",
+           "value": "stderr"
+          },
+          {
+           "name": "METRICS_PORT",
+           "value": "8080"
+          },
+          {
+           "name": "HEALTH_PROBE_PORT",
+           "value": "8081"
+          },
+          {
+           "name": "SYSTEM_NAMESPACE",
+           "valueFrom": {
+            "fieldRef": {
+             "fieldPath": "metadata.namespace"
+            }
+           }
+          },
+          {
+           "name": "CPU_REQUESTS",
+           "valueFrom": {
+            "resourceFieldRef": {
+             "containerName": "controller",
+             "divisor": "1m",
+             "resource": "requests.cpu"
+            }
+           }
+          },
+          {
+           "name": "MEMORY_LIMIT",
+           "valueFrom": {
+            "resourceFieldRef": {
+             "containerName": "controller",
+             "divisor": "0",
+             "resource": "limits.memory"
+            }
+           }
+          },
+          {
+           "name": "FEATURE_GATES",
+           "value": "ReservedCapacity=true,SpotToSpotConsolidation=false,NodeRepair=false,NodeOverlay=false,StaticCapacity=false,CapacityBuffer=false,TerminateFirstDrift=false,TerminateFirstRepair=false,PodDeletionCostManagement=false"
+          },
+          {
+           "name": "AWS_FEATURE_GATES",
+           "value": "NodeClassCEL=false,DRANVIDIAGPU=false,DRAEFA=false,RebootForRepair=false"
+          },
+          {
+           "name": "BATCH_MAX_DURATION",
+           "value": "10s"
+          },
+          {
+           "name": "BATCH_IDLE_DURATION",
+           "value": "1s"
+          },
+          {
+           "name": "PREFERENCE_POLICY",
+           "value": "Respect"
+          },
+          {
+           "name": "MIN_VALUES_POLICY",
+           "value": "Strict"
+          },
+          {
+           "name": "CLUSTER_NAME",
+           "value": "demo"
+          },
+          {
+           "name": "CLUSTER_ENDPOINT",
+           "value": "https://FAKE.gr7.us-west-2.eks.amazonaws.com"
+          },
+          {
+           "name": "EKS_CONTROL_PLANE",
+           "value": "true"
+          },
+          {
+           "name": "VM_MEMORY_OVERHEAD_PERCENT",
+           "value": "0.075"
+          },
+          {
+           "name": "INTERRUPTION_QUEUE",
+           "value": "demo-karpenter"
+          },
+          {
+           "name": "RESERVED_ENIS",
+           "value": "0"
+          },
+          {
+           "name": "IGNORE_DRA_REQUESTS",
+           "value": "true"
+          },
+          {
+           "name": "AMI_REFRESH_INTERVAL",
+           "value": "1m"
+          },
+          {
+           "name": "SUBNET_REFRESH_INTERVAL",
+           "value": "1m"
+          },
+          {
+           "name": "SECURITY_GROUP_REFRESH_INTERVAL",
+           "value": "1m"
+          },
+          {
+           "name": "AWS_REGION",
+           "value": "us-west-2"
+          },
+          {
+           "name": "AWS_EC2_METADATA_DISABLED",
+           "value": "true"
+          }
+         ],
+         "image": "public.ecr.aws/karpenter/controller:1.15.2@sha256:4a7dc37f85ad8987ece1cf5df55e607aa17a879a6faa76f5258c5bf182fbdfff",
+         "imagePullPolicy": "IfNotPresent",
+         "livenessProbe": {
+          "httpGet": {
+           "path": "/healthz",
+           "port": "http"
+          },
+          "initialDelaySeconds": 30,
+          "timeoutSeconds": 30
+         },
+         "name": "controller",
+         "ports": [
+          {
+           "containerPort": 8080,
+           "name": "http-metrics",
+           "protocol": "TCP"
+          },
+          {
+           "containerPort": 8081,
+           "name": "http",
+           "protocol": "TCP"
+          }
+         ],
+         "readinessProbe": {
+          "httpGet": {
+           "path": "/readyz",
+           "port": "http"
+          },
+          "initialDelaySeconds": 5,
+          "timeoutSeconds": 30
+         },
+         "resources": {
+          "limits": {
+           "cpu": 1,
+           "memory": "1Gi"
+          },
+          "requests": {
+           "cpu": 1,
+           "memory": "1Gi"
+          }
+         },
+         "securityContext": {
+          "allowPrivilegeEscalation": false,
+          "capabilities": {
+           "drop": [
+            "ALL"
+           ]
+          },
+          "privileged": false,
+          "readOnlyRootFilesystem": true,
+          "runAsGroup": 65532,
+          "runAsNonRoot": true,
+          "runAsUser": 65532
+         }
+        }
+       ],
+       "dnsPolicy": "ClusterFirst",
+       "nodeSelector": {
+        "ate.dev/pool": "system",
+        "kubernetes.io/os": "linux"
+       },
+       "priorityClassName": "system-cluster-critical",
+       "schedulerName": "default-scheduler",
+       "securityContext": {
+        "fsGroup": 65532,
+        "seccompProfile": {
+         "type": "RuntimeDefault"
+        }
+       },
+       "serviceAccountName": "karpenter",
+       "tolerations": [
+        {
+         "key": "CriticalAddonsOnly",
+         "operator": "Exists"
+        }
+       ],
+       "topologySpreadConstraints": [
+        {
+         "labelSelector": {
+          "matchLabels": {
+           "app.kubernetes.io/instance": "karpenter",
+           "app.kubernetes.io/name": "karpenter"
+          }
+         },
+         "maxSkew": 1,
+         "topologyKey": "topology.kubernetes.io/zone",
+         "whenUnsatisfiable": "DoNotSchedule"
+        }
+       ]
+      }
+     }
+    },
+    "status": {
+     "availableReplicas": 2,
+     "conditions": [
+      {
+       "message": "",
+       "reason": "Available",
+       "status": "True",
+       "type": "Available"
+      }
+     ],
+     "observedGeneration": 1
+    }
+   },
+   "/apis/karpenter.k8s.aws/v1/ec2nodeclasses/gvisor": {
+    "apiVersion": "karpenter.k8s.aws/v1",
+    "kind": "EC2NodeClass",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/managed-by": "substrate-eks"
+     },
+     "name": "gvisor",
+     "resourceVersion": "19",
+     "uid": "uid-gvisor"
+    },
+    "spec": {
+     "amiFamily": "AL2023",
+     "amiSelectorTerms": [
+      {
+       "id": "ami-0e1e0000000000086"
+      }
+     ],
+     "blockDeviceMappings": [
+      {
+       "deviceName": "/dev/xvda",
+       "ebs": {
+        "deleteOnTermination": true,
+        "encrypted": true,
+        "volumeSize": "200Gi",
+        "volumeType": "gp3"
+       },
+       "rootVolume": true
+      }
+     ],
+     "instanceProfile": "demo-us-west-2-eks-node",
+     "metadataOptions": {
+      "httpEndpoint": "enabled",
+      "httpProtocolIPv6": "disabled",
+      "httpPutResponseHopLimit": 1,
+      "httpTokens": "required"
+     },
+     "securityGroupSelectorTerms": [
+      {
+       "id": "sg-0016"
+      }
+     ],
+     "subnetSelectorTerms": [
+      {
+       "id": "subnet-0006"
+      },
+      {
+       "id": "subnet-0008"
+      },
+      {
+       "id": "subnet-0010"
+      }
+     ],
+     "tags": {
+      "agent-substrate-on-eks/deployment": "demo.us-west-2",
+      "auto-delete": "no",
+      "project": "agent-substrate"
+     }
+    },
+    "status": {
+     "conditions": [
+      {
+       "message": "",
+       "reason": "Ready",
+       "status": "True",
+       "type": "Ready"
+      }
+     ]
+    }
+   },
+   "/apis/karpenter.sh/v1/nodepools/gvisor": {
+    "apiVersion": "karpenter.sh/v1",
+    "kind": "NodePool",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/managed-by": "substrate-eks"
+     },
+     "name": "gvisor",
+     "resourceVersion": "20",
+     "uid": "uid-gvisor"
+    },
+    "spec": {
+     "disruption": {
+      "consolidateAfter": "5m",
+      "consolidationPolicy": "WhenEmpty"
+     },
+     "limits": {
+      "cpu": "16",
+      "nodes": "2"
+     },
+     "template": {
+      "metadata": {
+       "labels": {
+        "ate.dev/pool": "gvisor"
+       }
+      },
+      "spec": {
+       "expireAfter": "Never",
+       "nodeClassRef": {
+        "group": "karpenter.k8s.aws",
+        "kind": "EC2NodeClass",
+        "name": "gvisor"
+       },
+       "requirements": [
+        {
+         "key": "node.kubernetes.io/instance-type",
+         "operator": "In",
+         "values": [
+          "m8i.2xlarge"
+         ]
+        },
+        {
+         "key": "karpenter.sh/capacity-type",
+         "operator": "In",
+         "values": [
+          "on-demand"
+         ]
+        },
+        {
+         "key": "kubernetes.io/arch",
+         "operator": "In",
+         "values": [
+          "amd64"
+         ]
+        },
+        {
+         "key": "kubernetes.io/os",
+         "operator": "In",
+         "values": [
+          "linux"
+         ]
+        }
+       ],
+       "taints": [
+        {
+         "effect": "NoSchedule",
+         "key": "ate.dev/sandboxClass",
+         "value": "gvisor"
+        }
+       ],
+       "terminationGracePeriod": "15m"
+      }
+     }
+    },
+    "status": {
+     "conditions": [
+      {
+       "message": "",
+       "reason": "Ready",
+       "status": "True",
+       "type": "Ready"
+      }
+     ]
+    }
+   },
+   "/apis/policy/v1/namespaces/kube-system/poddisruptionbudgets/karpenter": {
+    "apiVersion": "policy/v1",
+    "kind": "PodDisruptionBudget",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter",
+     "namespace": "kube-system",
+     "resourceVersion": "6",
+     "uid": "uid-karpenter"
+    },
+    "spec": {
+     "maxUnavailable": 1,
+     "selector": {
+      "matchLabels": {
+       "app.kubernetes.io/instance": "karpenter",
+       "app.kubernetes.io/name": "karpenter"
+      }
+     }
+    },
+    "status": {}
+   },
+   "/apis/rbac.authorization.k8s.io/v1/clusterrolebindings/karpenter": {
+    "apiVersion": "rbac.authorization.k8s.io/v1",
+    "kind": "ClusterRoleBinding",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter",
+     "resourceVersion": "12",
+     "uid": "uid-karpenter"
+    },
+    "roleRef": {
+     "apiGroup": "rbac.authorization.k8s.io",
+     "kind": "ClusterRole",
+     "name": "karpenter"
+    },
+    "status": {},
+    "subjects": [
+     {
+      "kind": "ServiceAccount",
+      "name": "karpenter",
+      "namespace": "kube-system"
+     }
+    ]
+   },
+   "/apis/rbac.authorization.k8s.io/v1/clusterrolebindings/karpenter-core": {
+    "apiVersion": "rbac.authorization.k8s.io/v1",
+    "kind": "ClusterRoleBinding",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter-core",
+     "resourceVersion": "11",
+     "uid": "uid-karpenter-core"
+    },
+    "roleRef": {
+     "apiGroup": "rbac.authorization.k8s.io",
+     "kind": "ClusterRole",
+     "name": "karpenter-core"
+    },
+    "status": {},
+    "subjects": [
+     {
+      "kind": "ServiceAccount",
+      "name": "karpenter",
+      "namespace": "kube-system"
+     }
+    ]
+   },
+   "/apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter": {
+    "apiVersion": "rbac.authorization.k8s.io/v1",
+    "kind": "ClusterRole",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter",
+     "resourceVersion": "10",
+     "uid": "uid-karpenter"
+    },
+    "rules": [
+     {
+      "apiGroups": [
+       "karpenter.k8s.aws"
+      ],
+      "resources": [
+       "ec2nodeclasses"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "karpenter.k8s.aws"
+      ],
+      "resources": [
+       "ec2nodeclasses",
+       "ec2nodeclasses/status"
+      ],
+      "verbs": [
+       "patch",
+       "update"
+      ]
+     }
+    ],
+    "status": {}
+   },
+   "/apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter-admin": {
+    "apiVersion": "rbac.authorization.k8s.io/v1",
+    "kind": "ClusterRole",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2",
+      "rbac.authorization.k8s.io/aggregate-to-admin": "true"
+     },
+     "name": "karpenter-admin",
+     "resourceVersion": "8",
+     "uid": "uid-karpenter-admin"
+    },
+    "rules": [
+     {
+      "apiGroups": [
+       "karpenter.sh"
+      ],
+      "resources": [
+       "nodepools",
+       "nodepools/status",
+       "nodeclaims",
+       "nodeclaims/status"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch",
+       "create",
+       "delete",
+       "patch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "karpenter.k8s.aws"
+      ],
+      "resources": [
+       "ec2nodeclasses"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch",
+       "create",
+       "delete",
+       "patch"
+      ]
+     }
+    ],
+    "status": {}
+   },
+   "/apis/rbac.authorization.k8s.io/v1/clusterroles/karpenter-core": {
+    "apiVersion": "rbac.authorization.k8s.io/v1",
+    "kind": "ClusterRole",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter-core",
+     "resourceVersion": "9",
+     "uid": "uid-karpenter-core"
+    },
+    "rules": [
+     {
+      "apiGroups": [
+       "karpenter.sh"
+      ],
+      "resources": [
+       "nodepools",
+       "nodepools/status",
+       "nodeclaims",
+       "nodeclaims/status",
+       "nodeoverlays",
+       "nodeoverlays/status"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "autoscaling.x-k8s.io"
+      ],
+      "resources": [
+       "capacitybuffers",
+       "capacitybuffers/status"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       ""
+      ],
+      "resources": [
+       "podtemplates"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       ""
+      ],
+      "resources": [
+       "pods",
+       "nodes",
+       "persistentvolumes",
+       "persistentvolumeclaims",
+       "replicationcontrollers",
+       "namespaces"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "storage.k8s.io"
+      ],
+      "resources": [
+       "storageclasses",
+       "csinodes",
+       "volumeattachments"
+      ],
+      "verbs": [
+       "get",
+       "watch",
+       "list"
+      ]
+     },
+     {
+      "apiGroups": [
+       "apps"
+      ],
+      "resources": [
+       "daemonsets",
+       "deployments",
+       "replicasets",
+       "statefulsets"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "autoscaling.k8s.io"
+      ],
+      "resources": [
+       "verticalpodautoscalers"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "policy"
+      ],
+      "resources": [
+       "poddisruptionbudgets"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       ""
+      ],
+      "resources": [
+       "events"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "resource.k8s.io"
+      ],
+      "resources": [
+       "deviceclasses",
+       "resourceclaims",
+       "resourceslices"
+      ],
+      "verbs": [
+       "get",
+       "list",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "karpenter.sh"
+      ],
+      "resources": [
+       "nodeclaims",
+       "nodeclaims/status"
+      ],
+      "verbs": [
+       "create",
+       "delete",
+       "update",
+       "patch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "karpenter.sh"
+      ],
+      "resources": [
+       "nodepools",
+       "nodepools/status",
+       "nodeoverlays/status"
+      ],
+      "verbs": [
+       "update",
+       "patch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "autoscaling.x-k8s.io"
+      ],
+      "resources": [
+       "capacitybuffers/status"
+      ],
+      "verbs": [
+       "update",
+       "patch"
+      ]
+     },
+     {
+      "apiGroups": [
+       ""
+      ],
+      "resources": [
+       "events"
+      ],
+      "verbs": [
+       "create",
+       "patch"
+      ]
+     },
+     {
+      "apiGroups": [
+       ""
+      ],
+      "resources": [
+       "nodes"
+      ],
+      "verbs": [
+       "patch",
+       "delete",
+       "update"
+      ]
+     },
+     {
+      "apiGroups": [
+       ""
+      ],
+      "resources": [
+       "pods/eviction"
+      ],
+      "verbs": [
+       "create"
+      ]
+     },
+     {
+      "apiGroups": [
+       ""
+      ],
+      "resources": [
+       "pods"
+      ],
+      "verbs": [
+       "delete"
+      ]
+     }
+    ],
+    "status": {}
+   },
+   "/apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/rolebindings/karpenter": {
+    "apiVersion": "rbac.authorization.k8s.io/v1",
+    "kind": "RoleBinding",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter",
+     "namespace": "kube-system",
+     "resourceVersion": "15",
+     "uid": "uid-karpenter"
+    },
+    "roleRef": {
+     "apiGroup": "rbac.authorization.k8s.io",
+     "kind": "Role",
+     "name": "karpenter"
+    },
+    "status": {},
+    "subjects": [
+     {
+      "kind": "ServiceAccount",
+      "name": "karpenter",
+      "namespace": "kube-system"
+     }
+    ]
+   },
+   "/apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/rolebindings/karpenter-dns": {
+    "apiVersion": "rbac.authorization.k8s.io/v1",
+    "kind": "RoleBinding",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter-dns",
+     "namespace": "kube-system",
+     "resourceVersion": "16",
+     "uid": "uid-karpenter-dns"
+    },
+    "roleRef": {
+     "apiGroup": "rbac.authorization.k8s.io",
+     "kind": "Role",
+     "name": "karpenter-dns"
+    },
+    "status": {},
+    "subjects": [
+     {
+      "kind": "ServiceAccount",
+      "name": "karpenter",
+      "namespace": "kube-system"
+     }
+    ]
+   },
+   "/apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/roles/karpenter": {
+    "apiVersion": "rbac.authorization.k8s.io/v1",
+    "kind": "Role",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter",
+     "namespace": "kube-system",
+     "resourceVersion": "13",
+     "uid": "uid-karpenter"
+    },
+    "rules": [
+     {
+      "apiGroups": [
+       "coordination.k8s.io"
+      ],
+      "resources": [
+       "leases"
+      ],
+      "verbs": [
+       "get",
+       "watch"
+      ]
+     },
+     {
+      "apiGroups": [
+       "coordination.k8s.io"
+      ],
+      "resourceNames": [
+       "karpenter-leader-election"
+      ],
+      "resources": [
+       "leases"
+      ],
+      "verbs": [
+       "patch",
+       "update"
+      ]
+     },
+     {
+      "apiGroups": [
+       "coordination.k8s.io"
+      ],
+      "resources": [
+       "leases"
+      ],
+      "verbs": [
+       "create"
+      ]
+     }
+    ],
+    "status": {}
+   },
+   "/apis/rbac.authorization.k8s.io/v1/namespaces/kube-system/roles/karpenter-dns": {
+    "apiVersion": "rbac.authorization.k8s.io/v1",
+    "kind": "Role",
+    "metadata": {
+     "creationTimestamp": "2026-11-19T00:00:00Z",
+     "generation": 1,
+     "labels": {
+      "app.kubernetes.io/instance": "karpenter",
+      "app.kubernetes.io/managed-by": "substrate-eks",
+      "app.kubernetes.io/name": "karpenter",
+      "app.kubernetes.io/version": "1.15.2",
+      "helm.sh/chart": "karpenter-1.15.2"
+     },
+     "name": "karpenter-dns",
+     "namespace": "kube-system",
+     "resourceVersion": "14",
+     "uid": "uid-karpenter-dns"
+    },
+    "rules": [
+     {
+      "apiGroups": [
+       ""
+      ],
+      "resourceNames": [
+       "kube-dns"
+      ],
+      "resources": [
+       "services"
+      ],
+      "verbs": [
+       "get"
+      ]
+     }
+    ],
+    "status": {}
+   }
+  }
+ }
+}

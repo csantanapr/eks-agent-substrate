@@ -7,8 +7,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
 	ekstypes "github.com/aws/aws-sdk-go-v2/service/eks/types"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	"github.com/aws/aws-sdk-go-v2/service/servicequotas"
+	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
@@ -94,6 +96,21 @@ type (
 	clusterSSMAPI interface {
 		GetParameter(context.Context, *ssm.GetParameterInput, ...func(*ssm.Options)) (*ssm.GetParameterOutput, error)
 	}
+	// clusterSQSAPI and clusterEventsAPI make Karpenter's interruption
+	// queue and the EventBridge rules that send to it (karpenter.go).
+	clusterSQSAPI interface {
+		queueAPI
+		GetQueueAttributes(context.Context, *sqs.GetQueueAttributesInput, ...func(*sqs.Options)) (*sqs.GetQueueAttributesOutput, error)
+		CreateQueue(context.Context, *sqs.CreateQueueInput, ...func(*sqs.Options)) (*sqs.CreateQueueOutput, error)
+		SetQueueAttributes(context.Context, *sqs.SetQueueAttributesInput, ...func(*sqs.Options)) (*sqs.SetQueueAttributesOutput, error)
+	}
+	clusterEventsAPI interface {
+		DescribeRule(context.Context, *eventbridge.DescribeRuleInput, ...func(*eventbridge.Options)) (*eventbridge.DescribeRuleOutput, error)
+		ListTagsForResource(context.Context, *eventbridge.ListTagsForResourceInput, ...func(*eventbridge.Options)) (*eventbridge.ListTagsForResourceOutput, error)
+		PutRule(context.Context, *eventbridge.PutRuleInput, ...func(*eventbridge.Options)) (*eventbridge.PutRuleOutput, error)
+		ListTargetsByRule(context.Context, *eventbridge.ListTargetsByRuleInput, ...func(*eventbridge.Options)) (*eventbridge.ListTargetsByRuleOutput, error)
+		PutTargets(context.Context, *eventbridge.PutTargetsInput, ...func(*eventbridge.Options)) (*eventbridge.PutTargetsOutput, error)
+	}
 	quotasAPI interface {
 		GetServiceQuota(context.Context, *servicequotas.GetServiceQuotaInput, ...func(*servicequotas.Options)) (*servicequotas.GetServiceQuotaOutput, error)
 		GetAWSDefaultServiceQuota(context.Context, *servicequotas.GetAWSDefaultServiceQuotaInput, ...func(*servicequotas.Options)) (*servicequotas.GetAWSDefaultServiceQuotaOutput, error)
@@ -112,6 +129,11 @@ type ClusterClients struct {
 	// Kube is the Kubernetes API of an ACTIVE cluster, which the wait for
 	// self-managed nodes reads (kubeapi.go).
 	Kube func(context.Context, *ekstypes.Cluster) (nodeLister, error)
+	// SQS, Events and Objects make what KARPENTER=on needs: the queue, the
+	// rules, and the Kubernetes objects of Karpenter and its NodePools.
+	SQS     clusterSQSAPI
+	Events  clusterEventsAPI
+	Objects func(context.Context, *ekstypes.Cluster) (kubeObjects, error)
 }
 
 var newClusterClients = func(ctx context.Context, c Config) (*ClusterClients, error) {
@@ -127,6 +149,11 @@ var newClusterClients = func(ctx context.Context, c Config) (*ClusterClients, er
 		Quotas: servicequotas.NewFromConfig(ac),
 		SSM:    ssm.NewFromConfig(ac),
 		Kube: func(_ context.Context, c *ekstypes.Cluster) (nodeLister, error) {
+			return newKubeClient(c, sts.NewPresignClient(sts.NewFromConfig(ac)))
+		},
+		SQS:    sqs.NewFromConfig(ac),
+		Events: eventbridge.NewFromConfig(ac),
+		Objects: func(_ context.Context, c *ekstypes.Cluster) (kubeObjects, error) {
 			return newKubeClient(c, sts.NewPresignClient(sts.NewFromConfig(ac)))
 		},
 	}, nil

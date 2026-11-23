@@ -69,6 +69,17 @@ type tdFake struct {
 	// (DescribeAutoScalingGroups, and DescribeLaunchTemplates' filter
 	// launch-template-name), one entry per read.
 	names map[string][][]string
+	// KARPENTER=on (karpenter_fake_test.go): the Kubernetes API (nil: none
+	// answers), and the reads of the APIs only a Karpenter deployment needs.
+	kube  kubeObjects
+	reads []string
+	// onTerminate runs after TerminateInstances, with the fake locked: a
+	// test's stand-in for a controller that launches one more.
+	onTerminate func()
+	// onDeleteRolePolicy runs after DeleteRolePolicy, with the fake locked:
+	// a stand-in for a controller whose launch was on its way when its
+	// policy went.
+	onDeleteRolePolicy func()
 }
 
 func newTDFake() *tdFake {
@@ -77,7 +88,8 @@ func newTDFake() *tdFake {
 
 func (f *tdFake) clients() *tdClients {
 	return &tdClients{STS: fsts{}, Tag: (*tfTag)(f), EC2: (*tfEC2)(f), EKS: (*tfEKS)(f), IAM: (*tfIAM)(f),
-		RDS: (*tfRDS)(f), SM: (*tfSM)(f), S3: (*tfS3)(f), ECR: (*tfECR)(f), ASG: (*tfASG)(f)}
+		RDS: (*tfRDS)(f), SM: (*tfSM)(f), S3: (*tfS3)(f), ECR: (*tfECR)(f), ASG: (*tfASG)(f),
+		SQS: (*tfSQS)(f), Events: (*tfEvents)(f), Objects: f.objects}
 }
 
 func (f *tdFake) put(o *tdObj) { f.objs[o.kind+"|"+o.id] = o }
@@ -384,6 +396,9 @@ func (t *tfIAM) DeleteRolePolicy(_ context.Context, in *iam.DeleteRolePolicyInpu
 		return nil, err
 	}
 	o.inline = without(o.inline, aws.ToString(in.PolicyName))
+	if t.f().onDeleteRolePolicy != nil {
+		t.f().onDeleteRolePolicy()
+	}
 	return &iam.DeleteRolePolicyOutput{}, nil
 }
 func (t *tfIAM) ListAttachedRolePolicies(_ context.Context, in *iam.ListAttachedRolePoliciesInput, _ ...func(*iam.Options)) (*iam.ListAttachedRolePoliciesOutput, error) {
@@ -798,6 +813,14 @@ func (t *tfEC2) find(kind string, filters []ec2types.Filter) []*tdObj {
 				v = o.state
 			case name == "nat-gateway-id", name == "instance-id", name == "network-interface-id":
 				v = o.id
+			case name == "instance-state-name":
+				v = o.state
+			case name == "tag-key":
+				for _, k := range fl.Values {
+					if _, ok := o.tags[k]; ok {
+						v = k
+					}
+				}
 			case strings.HasPrefix(name, "tag:"):
 				v = o.tags[strings.TrimPrefix(name, "tag:")]
 			default:
@@ -979,7 +1002,9 @@ func (t *tfEC2) DeleteVpc(_ context.Context, in *ec2.DeleteVpcInput, _ ...func(*
 	id := aws.ToString(in.VpcId)
 	return &ec2.DeleteVpcOutput{}, t.del("DeleteVpc", kVPC, id, "InvalidVpcID.NotFound", func(*tdObj) string {
 		inVPC := func(o *tdObj) bool { return o.vpc == id }
-		if t.any(kSubnet, inVPC) || t.any(kIGW, inVPC) || t.any(kENI, inVPC) || t.any(kInstance, inVPC) ||
+		// A terminated instance (Karpenter's) holds nothing.
+		live := func(o *tdObj) bool { return o.vpc == id && o.state != "terminated" }
+		if t.any(kSubnet, inVPC) || t.any(kIGW, inVPC) || t.any(kENI, inVPC) || t.any(kInstance, live) ||
 			t.any(kSG, func(o *tdObj) bool { return o.vpc == id && !o.isDefault }) ||
 			t.any(kRTB, func(o *tdObj) bool { return o.vpc == id && !o.main }) ||
 			t.any(kNAT, func(o *tdObj) bool { return o.vpc == id && o.state != "deleted" }) {
@@ -1071,8 +1096,12 @@ func (t *tfEC2) DeleteRouteTable(_ context.Context, in *ec2.DeleteRouteTableInpu
 	})
 }
 func (t *tfEC2) DeleteLaunchTemplate(_ context.Context, in *ec2.DeleteLaunchTemplateInput, _ ...func(*ec2.Options)) (*ec2.DeleteLaunchTemplateOutput, error) {
-	return &ec2.DeleteLaunchTemplateOutput{}, t.del("DeleteLaunchTemplate", kLT, aws.ToString(in.LaunchTemplateId), "InvalidLaunchTemplateId.NotFound", func(*tdObj) string {
-		// Test-only rule: a node group or Auto Scaling group still launches from it.
+	return &ec2.DeleteLaunchTemplateOutput{}, t.del("DeleteLaunchTemplate", kLT, aws.ToString(in.LaunchTemplateId), "InvalidLaunchTemplateId.NotFound", func(o *tdObj) string {
+		// Test-only rule: a node group or Auto Scaling group still launches
+		// from it. Karpenter's launch from no group.
+		if _, ok := o.tags[karpenterClassTag]; ok {
+			return ""
+		}
 		if t.any("nodegroup", func(*tdObj) bool { return true }) || t.any("asg", func(*tdObj) bool { return true }) {
 			return "Fake.LaunchTemplateInUse"
 		}

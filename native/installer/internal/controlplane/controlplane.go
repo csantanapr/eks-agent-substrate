@@ -333,6 +333,12 @@ func Deploy(ctx context.Context, w io.Writer, o Options) error {
 			return fmt.Errorf("plugin %s %s; %s has EKS Auto Mode off", p.ID, why, o.Cluster)
 		}
 	}
+	// So is one that cannot run on Karpenter's nodes where a node group it
+	// runs on is a Karpenter NodePool (plugin.KarpenterProblem). The pools
+	// are read only for such a plugin, and a failed read stops the deploy.
+	if err := karpenterRefusal(ctx, w, po, o.Cluster, ids); err != nil {
+		return err
+	}
 	// Before anything changes: an installed control plane keeps its release.
 	if err := SameRelease(ctx, kc, o.Cluster, po.Release); err != nil {
 		return err
@@ -358,8 +364,35 @@ func Deploy(ctx context.Context, w io.Writer, o Options) error {
 	return nil
 }
 
+// karpenterRefusal refuses a plugin of ids with NoKarpenter whose node
+// group is a Karpenter NodePool on the cluster.
+func karpenterRefusal(ctx context.Context, w io.Writer, po plugin.Options, cluster string, ids []string) error {
+	var ps []plugin.Plugin
+	for _, id := range ids {
+		if p, _ := plugin.Get(id); p.NoKarpenter != "" {
+			ps = append(ps, p)
+		}
+	}
+	if len(ps) == 0 {
+		return nil
+	}
+	inv, err := readPools(ctx, w, po)
+	if err != nil {
+		return err
+	}
+	for _, p := range ps {
+		if err := plugin.KarpenterProblem(p, cluster, inv.NodePoolNames()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Seams replaced in tests (with describeCluster and deleteRun in delete.go).
 var (
+	// readPools is the cluster's pool inventory, through the installer's
+	// kubeconfig (po.Kubeconfig).
+	readPools        = plugin.NodePools
 	writeKubeconfig  = awsx.WriteKubeconfig
 	fetchTree        = FetchTree
 	applyOverlay     = eksoverlay.Apply

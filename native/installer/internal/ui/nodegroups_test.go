@@ -234,7 +234,7 @@ func TestCreateClusterStepNamesItsNodeGroups(t *testing.T) {
 		s.NewCluster("fresh")
 		m := sized(New(testDeps(&recorder{}), s))
 		m.jump(state.InstallOrder(s), state.CreateCluster)
-		m.tasks[state.CreateCluster] = newTask(execx.Spec{Label: "create cluster"}, steps.Cluster(""))
+		m.tasks[state.CreateCluster] = newTask(execx.Spec{Label: "create cluster"}, steps.Cluster("", false))
 		if v := stripANSI(m.View()); !strings.Contains(v, want) {
 			t.Errorf("%s: want %q in\n%s", db, want, v)
 		}

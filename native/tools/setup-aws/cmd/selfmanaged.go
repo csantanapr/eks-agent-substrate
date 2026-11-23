@@ -76,11 +76,11 @@ func readInstanceProfile(ctx context.Context, c instanceProfileReader, name stri
 }
 
 // ensureInstanceProfile makes the node role's instance profile with the role
-// in it, for the self-managed groups' launch templates. One that exists is
-// used only with this deployment's owner tag, and gets the role when it
-// holds none.
+// in it, for the self-managed groups' launch templates and the Karpenter
+// NodePools' EC2NodeClasses. One that exists is used only with this
+// deployment's owner tag, and gets the role when it holds none.
 func (r *clusterRun) ensureInstanceProfile(ctx context.Context) error {
-	if !r.selfManaged() || len(r.groups()) == 0 {
+	if !r.needsNodeProfile() {
 		return nil
 	}
 	name, role := r.instanceProfileName(), r.nodeRoleName()
@@ -140,6 +140,19 @@ func (r *clusterRun) ensureNodeAccess(ctx context.Context) error {
 	if !r.selfManaged() || len(r.groups()) == 0 {
 		return nil
 	}
+	return r.nodeAccessEntry(ctx)
+}
+
+// needsNodeProfile reports a run whose nodes launch with the node role's
+// instance profile: self-managed node groups, or Karpenter's NodePools.
+func (r *clusterRun) needsNodeProfile() bool {
+	return (r.selfManaged() && len(r.groups()) > 0) || r.karpenter
+}
+
+// nodeAccessEntry is ensureNodeAccess's work, which the Karpenter phase does
+// too: after the node groups, so a managed group's role already has the
+// entry EKS makes for it, which is kept.
+func (r *clusterRun) nodeAccessEntry(ctx context.Context) error {
 	arn := r.roleARN(r.nodeRoleName())
 	who := r.mask(arn)
 	cluster := aws.String(r.e.names.Cluster)
@@ -148,7 +161,7 @@ func (r *clusterRun) ensureNodeAccess(ctx context.Context) error {
 		switch {
 		case err == nil:
 			if t := aws.ToString(out.AccessEntry.Type); t != accessTypeNode {
-				return fmt.Errorf("the node role %s has an access entry of type %s, and self-managed nodes need %s; %s", who, t, accessTypeNode, recreate)
+				return fmt.Errorf("the node role %s has an access entry of type %s, and %s need %s; %s", who, t, r.nodeKinds(), accessTypeNode, recreate)
 			}
 			slog.Info("node access ok", "principal", who)
 			return nil
@@ -549,6 +562,7 @@ func (r *clusterRun) waitSelfManaged(ctx context.Context) error {
 			return err
 		}
 		slog.Info("nodes Ready", "nodegroup", g.Name, "ready", ready)
+		// Not a nitro NodePool: those are not among r.groups().
 		if g.Name == nodegroups.Nitro {
 			if err := r.waitNitroCapacity(ctx, kube, desired); err != nil {
 				return err

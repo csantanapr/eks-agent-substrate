@@ -21,7 +21,8 @@ func testClusterConfig() clusterConfig {
 }
 
 // clusterTestRun is a `create cluster` run of cluster "demo" in us-west-2
-// against f. The shared Clients get f's IAM too, so ownedRole reads it.
+// against f. The shared Clients get f's IAM and EKS too, so ownedRole and
+// ownedAssociation read them.
 func clusterTestRun(t *testing.T, f *clusterFake, plan bool, edit ...func(*clusterConfig)) *clusterRun {
 	t.Helper()
 	pollEvery = 0
@@ -34,7 +35,9 @@ func clusterTestRun(t *testing.T, f *clusterFake, plan bool, edit ...func(*clust
 	}
 	cfg = Config{Region: "us-west-2", ClusterName: "demo", Tags: "project=agent-substrate auto-delete=no",
 		MinKubernetesMinor: 37, Plan: plan}
-	newClients = func(context.Context, Config) (*Clients, error) { return &Clients{STS: fsts{}, IAM: (*fcIAM)(f)}, nil }
+	newClients = func(context.Context, Config) (*Clients, error) {
+		return &Clients{STS: fsts{}, IAM: (*fcIAM)(f), EKS: (*fcEKS)(f)}, nil
+	}
 	e, err := newEnv(context.Background())
 	if err != nil {
 		t.Fatal(err)

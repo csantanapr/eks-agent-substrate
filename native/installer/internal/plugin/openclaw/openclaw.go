@@ -376,8 +376,14 @@ func prerequisites(ctx context.Context, w io.Writer, o plugin.Options) error {
 	if s, _ := efs.Out(ctx, o, "-n", "llm-gateway", "get", "service", "llm-gateway", "--ignore-not-found", "-o", "name"); strings.TrimSpace(s) == "" {
 		fmt.Fprintln(w, "WARNING: service llm-gateway/llm-gateway not found; the actors have no model until the LLM gateway is deployed")
 	}
+	// A gvisor pool with a Karpenter NodePool and no node yet gets one for
+	// the worker pods.
 	if n, _ := efs.Out(ctx, o, "get", "nodes", "-l", "ate.dev/pool=gvisor", "-o", "name"); strings.TrimSpace(n) == "" {
-		fmt.Fprintln(w, "WARNING: no nodes labeled ate.dev/pool=gvisor; the worker pods will stay Pending")
+		if _, karpenter := o.PoolArchs["gvisor"]; karpenter {
+			fmt.Fprintln(w, "No node labeled ate.dev/pool=gvisor yet: Karpenter's gvisor NodePool makes one for the worker pods")
+		} else {
+			fmt.Fprintln(w, "WARNING: no nodes labeled ate.dev/pool=gvisor; the worker pods will stay Pending")
+		}
 	}
 	return nil
 }

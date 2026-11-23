@@ -23,7 +23,7 @@ rerun the failed step.
 
 | Step | Command | What it creates |
 |---|---|---|
-| Cluster | `setup-aws create cluster` | A VPC with public and private subnets across two or more Availability Zones and a NAT gateway. The cluster and node IAM roles. An EKS cluster (Auto Mode by default, standard optional) whose public endpoint accepts only `EKS_PUBLIC_ACCESS_CIDRS` (default `auto`: this machine's public address as a /32 on a new cluster, refused when the network reaches the internet from several addresses; then set the variable to your egress ranges, or to `0.0.0.0/0`, since IAM still authenticates every call; an existing cluster keeps its ranges unless the variable is set), checked by connecting to the endpoint once the cluster is active, with an access entry for you and the add-ons. The managed node groups `NODE_GROUPS` names (the wizard derives it from the sandbox classes and plugins: see [Sandbox classes and node groups](#sandbox-classes-and-node-groups); by default `system`, `gvisor` and `microvm`), labeled `ate.dev/pool` and tainted for their sandbox class, each with a launch template (IMDSv2, hop limit 1, encrypted gp3, nested virtualization on `microvm`; with `NODE_AMI_ID`, that AMI and a nodeadm `NodeConfig` that joins the node with its labels and taints). With `NODE_GROUP_TYPE=self-managed`, each group is an Auto Scaling group `<cluster>-<group>` instead, whose template also names the AMI (`NODE_AMI_ID`, or the recommended EKS optimized AL2023 AMI from SSM), the instance profile `<cluster>-<region>-eks-node` and the cluster security group and always carries the `NodeConfig`, with an `EC2_LINUX` access entry for the node role; the run waits for the nodes to be Ready. The `nitro` group (the `nitro` class with `NITRO_COMPUTE=node-group`) runs the Nitro Sandbox AMI `NITRO_AMI_ID` with Nitro Enclaves on, and the run waits until its nodes advertise `eks.amazonaws.com/nitro-sandbox`. `NODE_GROUPS=none` on Auto Mode makes no node group, no launch template and no node IAM role. |
+| Cluster | `setup-aws create cluster` | A VPC with public and private subnets across two or more Availability Zones and a NAT gateway. The cluster and node IAM roles. An EKS cluster (Auto Mode by default, standard optional) whose public endpoint accepts only `EKS_PUBLIC_ACCESS_CIDRS` (default `auto`: this machine's public address as a /32 on a new cluster, refused when the network reaches the internet from several addresses; then set the variable to your egress ranges, or to `0.0.0.0/0`, since IAM still authenticates every call; an existing cluster keeps its ranges unless the variable is set), checked by connecting to the endpoint once the cluster is active, with an access entry for you and the add-ons. The managed node groups `NODE_GROUPS` names (the wizard derives it from the sandbox classes and plugins: see [Sandbox classes and node groups](#sandbox-classes-and-node-groups); by default `system`, `gvisor` and `microvm`), labeled `ate.dev/pool` and tainted for their sandbox class, each with a launch template (IMDSv2, hop limit 1, encrypted gp3, nested virtualization on `microvm`; with `NODE_AMI_ID`, that AMI and a nodeadm `NodeConfig` that joins the node with its labels and taints). With `NODE_GROUP_TYPE=self-managed`, each group is an Auto Scaling group `<cluster>-<group>` instead, whose template also names the AMI (`NODE_AMI_ID`, or the recommended EKS optimized AL2023 AMI from SSM), the instance profile `<cluster>-<region>-eks-node` and the cluster security group and always carries the `NodeConfig`, with an `EC2_LINUX` access entry for the node role; the run waits for the nodes to be Ready. The `nitro` group (the `nitro` class with `NITRO_COMPUTE=node-group`) runs the Nitro Sandbox AMI `NITRO_AMI_ID` with Nitro Enclaves on, and the run waits until its nodes advertise `eks.amazonaws.com/nitro-sandbox`. `NODE_GROUPS=none` on Auto Mode makes no node group, no launch template and no node IAM role. With `KARPENTER=on` (no Auto Mode), `gvisor` is a Karpenter NodePool instead, from no node up to `GVISOR_NODES`, and two more phases follow: Karpenter's IAM role, Pod Identity association, instance profile, access entry, interruption queue and EventBridge rules, then Karpenter 1.15.2 on the `system` group and the pool's EC2NodeClass and NodePool, through the Kubernetes API (see [Karpenter](../README.md#karpenter)). `microvm` and `nitro` stay node groups, unless `KARPENTER_NODE_OVERLAY=on`: then they are NodePools too, each with a NodeOverlay, an alpha Karpenter API that can change, and Karpenter's NodeOverlay feature gate is on (see [NodeOverlay mode](../README.md#nodeoverlay-mode)). |
 | Provision | `setup-aws bootstrap` | S3 buckets for snapshots and microVM assets. EKS Pod Identity roles for ate-api-server and atelet. Private ECR repositories. |
 | Database | `setup-aws create rds` | A private RDS for PostgreSQL instance in the private subnets. Port 5432 is open only to the cluster security group. RDS manages the admin password, and the owner and read-write logins are in Secrets Manager. The schema is created from inside the cluster. With `--database=bundled`, Substrate's bundled PostgreSQL runs in the cluster instead, on an encrypted gp3 EBS volume from the installer's StorageClass. |
 | Control plane | `ate-setup deploy ate-system` | A StorageClass for encrypted gp3 EBS volumes that carry the owner tag and `TAGS` (`substrate-eks-auto-ebs` on Auto Mode, `substrate-eks-ebs` on a standard cluster), the default class on a cluster the installer created. The pinned Substrate release with its published images (the fork's with the `nitro` class or `mode3`), ate-setup's gVisor sandbox class and, with the `microvm` class, its microVM class with the assets staged in S3, and the EKS changes in `deploy/eks`. |
@@ -148,8 +148,10 @@ one), Choose the database, Settings, Choose plugins, Review the plan, then one
 screen per step, and Complete. Nothing changes in AWS before Review.
 
 - **Settings** edits what `config.env` controls for this run: the new
-  cluster's Kubernetes version, Auto Mode and API access ranges (only when
-  the run creates the cluster), the sandbox classes (`SANDBOX_CLASSES`), the
+  cluster's Kubernetes version, Auto Mode, API access ranges and, without
+  Auto Mode, Karpenter and its overlay (only when the run creates the
+  cluster), the sandbox
+  classes (`SANDBOX_CLASSES`), the
   node groups they make (only those; "none" when there are none), `TAGS`,
   the release (`SUBSTRATE_TAG`; with the `nitro` class, the fork's, which
   the screen says) and its image repository (`SUBSTRATE_IMAGE_REPO`), and
@@ -159,7 +161,9 @@ screen per step, and Complete. Nothing changes in AWS before Review.
   `NITRO_COMPUTE=node-group` and says so; turning it off, or Auto Mode on,
   puts back the value it replaced. A value you set yourself stays. It puts
   the value back only within one run: a value a run wrote to
-  `config.local.env` is yours on the next run. `m` picks
+  `config.local.env` is yours on the next run. With
+  `KARPENTER_NODE_OVERLAY=on`, `node-group` is the `nitro` Karpenter
+  NodePool rather than a node group. `m` picks
   the minimal profile, and clears a chosen plugin that would add a node
   group (mode3, or one on `system`), naming it. The right side shows the
   setting's help, taken from the comment above its key in `config.env`, and
@@ -170,10 +174,14 @@ screen per step, and Complete. Nothing changes in AWS before Review.
   with its time and hourly cost. `space` picks one, and the plugins it needs
   with it; dropping one drops the plugins that need it. A plugin that needs
   EKS Auto Mode, or a node group the cluster will not have, is refused with
-  the reason, and one built on the counter demo turns the demo on.
+  the reason, and so is `mode3` where its `microvm` group is a Karpenter
+  NodePool (with `KARPENTER_NODE_OVERLAY=on`); one built on the counter demo
+  turns the demo on.
 - **Review the plan** shows each step's command, its time and its cost an
   hour, the total time, and the cost until teardown at us-west-2 on-demand
-  prices. `y` starts the install; `esc` goes back.
+  prices. A Karpenter NodePool is priced as a range, from $0 with no node
+  to its node limit, and Review says when Karpenter runs with its alpha
+  NodeOverlay. `y` starts the install; `esc` goes back.
   ![Review the plan](installer/docs/review.png)
 
 When the install starts, the wizard writes the Settings answers to
@@ -245,6 +253,8 @@ outside it):
 | `mode3` plugin (Kata, kata-clh) | `microvm`, even without the `microvm` class |
 | `nitro` class | none: its `ate-isolated` NodePool is Auto Mode's |
 | `nitro` class with `NITRO_COMPUTE=node-group` | `nitro` (`NODE_GROUPS` with `nitro`; Nitro Enclaves on, `NITRO_AMI_ID`) |
+| `gvisor` with `KARPENTER=on` (no Auto Mode) | the same `NODE_GROUPS`, but setup-aws makes `gvisor` as a Karpenter NodePool; `system`, `microvm` and `nitro` stay node groups, and `mode3` runs on `microvm` as before |
+| `KARPENTER_NODE_OVERLAY=on` too (alpha) | the same `NODE_GROUPS`, but setup-aws makes `gvisor`, `microvm` and `nitro` as Karpenter NodePools, the last two with a NodeOverlay each; only `system` is a node group, and `mode3` is refused |
 | `system`, without Auto Mode | always (required) |
 | `system`, Auto Mode with RDS | when a `gvisor`, `microvm` or `nitro` group is created, which the control plane is cordoned onto |
 | `system`, Auto Mode with the bundled PostgreSQL | only for a plugin that runs on it (`NODE_GROUPS=gvisor` for the `gvisor` class alone) |
@@ -272,8 +282,16 @@ plane is cordoned onto the `system` group only with RDS on Auto Mode and only
 when the cluster has `system` nodes; with RDS and no `system` group the
 bootstrap Job runs on Auto Mode nodes, and the bundled PostgreSQL is never
 cordoned. On a cluster you connect nothing is created: the probe reads the
-`ate.dev/pool` labels of its nodes, and a class or plugin whose nodes are
-missing is refused, naming them.
+`ate.dev/pool` labels of its nodes and, when the cluster has the
+`nodepools.karpenter.sh` CRD, of the NodePools labeled
+`app.kubernetes.io/managed-by=substrate-eks` (a pool can have no node yet),
+and a class or plugin whose nodes are missing is refused, naming them.
+`--plugin-action`, `--deploy-demo` and `--verify` read the same, and build
+an image for a pool with no node for the architecture its NodePool requires.
+So the installer's identity needs to read the nodes, those two CRDs and the
+NodePools on every cluster; a failed read stops them. Where `microvm` is a
+Karpenter NodePool, `mode3` is refused, by these steps and by
+`--deploy-control-plane`.
 
 The minimal profile (Auto Mode, bundled PostgreSQL, `nitro` only) is `m` on
 Settings, or:
@@ -431,8 +449,9 @@ would keep the VPC's subnets. Then it removes Substrate from the cluster
 with `ate-setup delete ate-system`, so its volumes and claims are released,
 and deletes in reverse order everything the installer created: Pod Identity
 associations and roles, the RDS instance and its logins, the S3 buckets, the
-ECR repositories, the node groups, the cluster, and the launch template, VPC
-and network. It deletes only resources that carry this deployment's owner
+ECR repositories, Karpenter's NodePools, nodes, NodeOverlays and AWS
+resources (`KARPENTER=on`), the node groups, the cluster, and the launch
+template, VPC and network. It deletes only resources that carry this deployment's owner
 tag. Every network interface in a VPC this installer created is tagged and
 treated as the deployment's own: `create cluster`, `bootstrap`, `create rds`
 and the `efs`, `s3files` and `db-rotation` plugins give each interface there

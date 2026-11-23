@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -139,22 +140,35 @@ func kubeTransient(err error) bool {
 	return errors.As(err, &ke) && (ke.Status == 0 || ke.Status == http.StatusTooManyRequests || ke.Status >= 500)
 }
 
-// Nodes lists the nodes that match labelSelector. Any answer but 200 is a
-// kubeError that names the status; the token is never part of one.
-func (k *kubeClient) Nodes(ctx context.Context, labelSelector string) ([]kubeNode, error) {
+// request sends one request to the Kubernetes API with a new EKS token and
+// returns the answer's status and body, whatever the status. A request that
+// gets no whole answer is a kubeError with Status 0, or -1 when the server's
+// certificate fails verification; what names the request in the error. The
+// token is never part of an error.
+func (k *kubeClient) request(ctx context.Context, method, path string, query url.Values, contentType string, body []byte, what string) (int, []byte, error) {
 	token, err := eksToken(ctx, k.sts, k.cluster)
 	if err != nil {
-		return nil, err
+		return 0, nil, err
 	}
-	u := k.endpoint + "/api/v1/nodes?" + url.Values{"labelSelector": {labelSelector}}.Encode()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	u := k.endpoint + path
+	if len(query) > 0 {
+		u += "?" + query.Encode()
+	}
+	var rd io.Reader
+	if body != nil {
+		rd = bytes.NewReader(body)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, u, rd)
 	if err != nil {
-		return nil, err
+		return 0, nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/json")
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
 	failed := func(status int, err error) error {
-		return &kubeError{Status: status, err: fmt.Errorf("list the nodes of cluster %s: %w", k.cluster, err)}
+		return &kubeError{Status: status, err: fmt.Errorf("%s of cluster %s: %w", what, k.cluster, err)}
 	}
 	resp, err := k.http.Do(req)
 	if err != nil {
@@ -165,17 +179,27 @@ func (k *kubeClient) Nodes(ctx context.Context, labelSelector string) ([]kubeNod
 		// A certificate the cluster CA does not sign (a wrong CA, or a
 		// TLS-inspecting proxy) fails the same way on every try.
 		if certificateError(err) {
-			return nil, failed(-1, err)
+			return 0, nil, failed(-1, err)
 		}
-		return nil, failed(0, err)
+		return 0, nil, failed(0, err)
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
+	b, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
 	if err != nil {
-		return nil, failed(0, err)
+		return 0, nil, failed(0, err)
 	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, failed(resp.StatusCode, errors.New("the Kubernetes API answered "+resp.Status))
+	return resp.StatusCode, b, nil
+}
+
+// Nodes lists the nodes that match labelSelector. Any answer but 200 is a
+// kubeError that names the status; the token is never part of one.
+func (k *kubeClient) Nodes(ctx context.Context, labelSelector string) ([]kubeNode, error) {
+	status, body, err := k.request(ctx, http.MethodGet, "/api/v1/nodes", url.Values{"labelSelector": {labelSelector}}, "", nil, "list the nodes")
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, &kubeError{Status: status, err: fmt.Errorf("list the nodes of cluster %s: the Kubernetes API answered %d %s", k.cluster, status, http.StatusText(status))}
 	}
 	var list nodeList
 	if err := json.Unmarshal(body, &list); err != nil {
@@ -192,4 +216,267 @@ func (k *kubeClient) Nodes(ctx context.Context, labelSelector string) ([]kubeNod
 		out = append(out, n)
 	}
 	return out, nil
+}
+
+// setup-aws also applies the objects of KARPENTER=on (karpenter_kube.go)
+// and deletes some of them in teardown: Karpenter's chart, its NodePools,
+// EC2NodeClasses and NodeOverlays. It reads and writes only the kinds of kubeKinds, through
+// server-side apply, as kubectl apply --server-side does, with its own field
+// manager.
+//
+//	https://kubernetes.io/docs/reference/using-api/server-side-apply/
+
+// kubeKind is one kind of object the client knows: its API version, kind,
+// resource (the URL's plural) and scope.
+type kubeKind struct {
+	APIVersion, Kind, Resource string
+	Namespaced                 bool
+}
+
+var (
+	kindCRD                = kubeKind{"apiextensions.k8s.io/v1", "CustomResourceDefinition", "customresourcedefinitions", false}
+	kindServiceAccount     = kubeKind{"v1", "ServiceAccount", "serviceaccounts", true}
+	kindService            = kubeKind{"v1", "Service", "services", true}
+	kindClusterRole        = kubeKind{"rbac.authorization.k8s.io/v1", "ClusterRole", "clusterroles", false}
+	kindClusterRoleBinding = kubeKind{"rbac.authorization.k8s.io/v1", "ClusterRoleBinding", "clusterrolebindings", false}
+	kindRole               = kubeKind{"rbac.authorization.k8s.io/v1", "Role", "roles", true}
+	kindRoleBinding        = kubeKind{"rbac.authorization.k8s.io/v1", "RoleBinding", "rolebindings", true}
+	kindPDB                = kubeKind{"policy/v1", "PodDisruptionBudget", "poddisruptionbudgets", true}
+	kindDeployment         = kubeKind{"apps/v1", "Deployment", "deployments", true}
+	// kindPod is never applied: the controller's Pods are read, and those
+	// without credentials deleted, while its Deployment is not available.
+	kindPod          = kubeKind{"v1", "Pod", "pods", true}
+	kindNodePool     = kubeKind{"karpenter.sh/v1", "NodePool", "nodepools", false}
+	kindNodeClaim    = kubeKind{"karpenter.sh/v1", "NodeClaim", "nodeclaims", false}
+	kindEC2NodeClass = kubeKind{"karpenter.k8s.aws/v1", "EC2NodeClass", "ec2nodeclasses", false}
+
+	// kubeKinds are the kinds the client reads and writes; any other is an
+	// error.
+	kubeKinds = []kubeKind{kindCRD, kindServiceAccount, kindService, kindClusterRole, kindClusterRoleBinding,
+		kindRole, kindRoleBinding, kindPDB, kindDeployment, kindPod, kindNodePool, kindNodeClaim, kindEC2NodeClass, kindNodeOverlay}
+)
+
+func (k kubeKind) String() string { return k.Kind }
+
+// path is the URL path of the kind's objects in namespace ns (ignored for a
+// cluster-scoped kind), or of object name when it is not empty.
+func (k kubeKind) path(ns, name string) string {
+	p := "/apis/" + k.APIVersion
+	if !strings.Contains(k.APIVersion, "/") {
+		p = "/api/" + k.APIVersion
+	}
+	if k.Namespaced {
+		p += "/namespaces/" + ns
+	}
+	p += "/" + k.Resource
+	if name != "" {
+		p += "/" + name
+	}
+	return p
+}
+
+// kubeObject is one object as JSON decodes it.
+type kubeObject map[string]any
+
+// field is the value at path, or nil.
+func (o kubeObject) field(path ...string) any {
+	var v any = map[string]any(o)
+	for _, p := range path {
+		m, ok := v.(map[string]any)
+		if !ok {
+			return nil
+		}
+		v = m[p]
+	}
+	return v
+}
+
+// str is the string at path, or "".
+func (o kubeObject) str(path ...string) string {
+	s, _ := o.field(path...).(string)
+	return s
+}
+
+func (o kubeObject) name() string      { return o.str("metadata", "name") }
+func (o kubeObject) namespace() string { return o.str("metadata", "namespace") }
+
+// kind is the object's entry in kubeKinds.
+func (o kubeObject) kind() (kubeKind, error) {
+	for _, k := range kubeKinds {
+		if k.APIVersion == o.str("apiVersion") && k.Kind == o.str("kind") {
+			return k, nil
+		}
+	}
+	return kubeKind{}, fmt.Errorf("internal: setup-aws does not apply %s %s", o.str("apiVersion"), o.str("kind"))
+}
+
+// label is the object's label key, or "".
+func (o kubeObject) label(key string) string { return o.str("metadata", "labels", key) }
+
+// setLabel sets label key, making the labels when there are none.
+func (o kubeObject) setLabel(key, value string) {
+	md, _ := o["metadata"].(map[string]any)
+	if md == nil {
+		md = map[string]any{}
+		o["metadata"] = md
+	}
+	labels, _ := md["labels"].(map[string]any)
+	if labels == nil {
+		labels = map[string]any{}
+		md["labels"] = labels
+	}
+	labels[key] = value
+}
+
+// kubeCondition is one of status.conditions.
+type kubeCondition struct{ Type, Status, Reason, Message string }
+
+func (o kubeObject) conditions() []kubeCondition {
+	list, _ := o.field("status", "conditions").([]any)
+	var out []kubeCondition
+	for _, c := range list {
+		m, _ := c.(map[string]any)
+		str := func(k string) string { s, _ := m[k].(string); return s }
+		out = append(out, kubeCondition{str("type"), str("status"), str("reason"), str("message")})
+	}
+	return out
+}
+
+// condition is the condition of type t, and whether there is one.
+func (o kubeObject) condition(t string) (kubeCondition, bool) {
+	for _, c := range o.conditions() {
+		if c.Type == t {
+			return c, true
+		}
+	}
+	return kubeCondition{}, false
+}
+
+// kubeObjects reads and writes objects of kubeKinds. Get returns nil for an
+// object that does not exist, or whose kind the cluster does not serve (its
+// CRD is not there); Delete returns nil for one that is gone; List fails
+// with a kubeError of Status 404 (kubeNotFound) when the kind is not served.
+// Any other answer but success is a kubeError that names the status.
+type kubeObjects interface {
+	Apply(ctx context.Context, obj kubeObject, dryRun bool) (kubeObject, error)
+	Get(ctx context.Context, k kubeKind, namespace, name string) (kubeObject, error)
+	List(ctx context.Context, k kubeKind, namespace, labelSelector string) ([]kubeObject, error)
+	Delete(ctx context.Context, k kubeKind, namespace, name string) error
+}
+
+// fieldManager owns the fields setup-aws applies.
+const fieldManager = "setup-aws"
+
+// kubeNotFound reports a 404 from the Kubernetes API.
+func kubeNotFound(err error) bool {
+	var ke *kubeError
+	return errors.As(err, &ke) && ke.Status == http.StatusNotFound
+}
+
+// answered is the kubeError of an answer that is not a success: its status,
+// and the message of the Status the API sends with it.
+func (k *kubeClient) answered(status int, body []byte, what string) error {
+	msg := fmt.Sprintf("the Kubernetes API answered %d %s", status, http.StatusText(status))
+	var st struct {
+		Message string `json:"message"`
+	}
+	if json.Unmarshal(body, &st) == nil && st.Message != "" {
+		m := st.Message
+		if len(m) > 400 {
+			m = m[:400] + "..."
+		}
+		msg += ": " + m
+	}
+	return &kubeError{Status: status, err: fmt.Errorf("%s of cluster %s: %s", what, k.cluster, msg)}
+}
+
+// Apply server-side applies obj, with force, so setup-aws takes the fields
+// it sets from any other manager, and returns the object as the API stores
+// it. dryRun asks the API what it would store, and stores nothing.
+func (k *kubeClient) Apply(ctx context.Context, obj kubeObject, dryRun bool) (kubeObject, error) {
+	kind, err := obj.kind()
+	if err != nil {
+		return nil, err
+	}
+	body, err := json.Marshal(obj)
+	if err != nil {
+		return nil, err
+	}
+	q := url.Values{"fieldManager": {fieldManager}, "force": {"true"}}
+	if dryRun {
+		q.Set("dryRun", "All")
+	}
+	what := "apply " + kind.Kind + " " + obj.name()
+	status, resp, err := k.request(ctx, http.MethodPatch, kind.path(obj.namespace(), obj.name()), q, "application/apply-patch+yaml", body, what)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK && status != http.StatusCreated {
+		return nil, k.answered(status, resp, what)
+	}
+	var out kubeObject
+	if err := json.Unmarshal(resp, &out); err != nil {
+		return nil, fmt.Errorf("%s of cluster %s: %w", what, k.cluster, err)
+	}
+	return out, nil
+}
+
+// Get reads object name of kind k.
+func (k *kubeClient) Get(ctx context.Context, kind kubeKind, ns, name string) (kubeObject, error) {
+	what := "read " + kind.Kind + " " + name
+	status, resp, err := k.request(ctx, http.MethodGet, kind.path(ns, name), nil, "", nil, what)
+	if err != nil {
+		return nil, err
+	}
+	switch status {
+	case http.StatusOK:
+	case http.StatusNotFound:
+		return nil, nil
+	default:
+		return nil, k.answered(status, resp, what)
+	}
+	var out kubeObject
+	if err := json.Unmarshal(resp, &out); err != nil {
+		return nil, fmt.Errorf("%s of cluster %s: %w", what, k.cluster, err)
+	}
+	return out, nil
+}
+
+// List reads the objects of kind k that match labelSelector, in namespace
+// ns for a namespaced kind (ignored for a cluster-scoped one).
+func (k *kubeClient) List(ctx context.Context, kind kubeKind, ns, labelSelector string) ([]kubeObject, error) {
+	what := "list the " + kind.Resource
+	var q url.Values
+	if labelSelector != "" {
+		q = url.Values{"labelSelector": {labelSelector}}
+	}
+	status, resp, err := k.request(ctx, http.MethodGet, kind.path(ns, ""), q, "", nil, what)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, k.answered(status, resp, what)
+	}
+	var list struct {
+		Items []kubeObject `json:"items"`
+	}
+	if err := json.Unmarshal(resp, &list); err != nil {
+		return nil, fmt.Errorf("%s of cluster %s: %w", what, k.cluster, err)
+	}
+	return list.Items, nil
+}
+
+// Delete asks the API to delete object name of kind k. The object can stay
+// a while after: its finalizers run first.
+func (k *kubeClient) Delete(ctx context.Context, kind kubeKind, ns, name string) error {
+	what := "delete " + kind.Kind + " " + name
+	status, resp, err := k.request(ctx, http.MethodDelete, kind.path(ns, name), nil, "", nil, what)
+	if err != nil {
+		return err
+	}
+	switch status {
+	case http.StatusOK, http.StatusAccepted, http.StatusNotFound:
+		return nil
+	}
+	return k.answered(status, resp, what)
 }
