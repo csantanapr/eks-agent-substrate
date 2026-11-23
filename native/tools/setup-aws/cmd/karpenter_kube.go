@@ -483,7 +483,8 @@ func describe(o kubeObject) string {
 // object first and refuses one without the ownership label before it
 // applies anything; then it applies the CRDs and waits until they are
 // Established, the rest of the chart and waits until the controller is
-// available, then the EC2NodeClasses and NodePools and waits until each is
+// available (restarting its Pods made before their EKS Pod Identity
+// credentials), then the EC2NodeClasses and NodePools and waits until each is
 // Ready. It does not wait for nodes: a pool starts with none. An existing
 // EC2NodeClass keeps its AMI (keepPoolImages). An object that exists is
 // applied only when a server-side dry run shows it would change, so a rerun
@@ -633,7 +634,34 @@ func (r *clusterRun) applyKarpenter(ctx context.Context) error {
 		return err
 	}
 	if !r.plan() {
-		if err := waitKube(ctx, kube, kindDeployment, karpenterNamespace, "karpenter", karpenterReadyTimeout, deploymentAvailable); err != nil {
+		// EKS gives Pod Identity credentials only to a Pod made after the
+		// association takes effect, seconds after this run made it: while
+		// the controller is not available, each read of the Deployment
+		// restarts the controller Pods made without them, up to
+		// karpenterRestarts times.
+		restarts := 0
+		var restartErr error
+		available := func(o kubeObject) (bool, string) {
+			ok, why := deploymentAvailable(o)
+			if ok || restarts == karpenterRestarts {
+				return ok, why
+			}
+			n, err := r.restartWithoutCredentials(ctx, kube)
+			if err != nil {
+				// Ends the wait: the failed read or delete is the result.
+				restartErr = err
+				return true, ""
+			}
+			if n > 0 {
+				restarts++
+			}
+			return false, why
+		}
+		err := waitKube(ctx, kube, kindDeployment, karpenterNamespace, "karpenter", karpenterReadyTimeout, available)
+		if restartErr != nil {
+			return restartErr
+		}
+		if err != nil {
 			if why := controllerWithoutCredentials(ctx, kube); why != "" {
 				return fmt.Errorf("%w; %s", err, why)
 			}
@@ -668,6 +696,60 @@ const (
 	podIdentityCredentials = "AWS_CONTAINER_CREDENTIALS_FULL_URI"
 )
 
+// karpenterRestarts bounds how many times the Deployment wait restarts the
+// controller Pods made without credentials, one read apart (pollEvery), as
+// the plugins' EnsurePodIdentity does: the association needs seconds, and
+// one that never takes effect must not keep the step deleting Pods.
+const karpenterRestarts = 3
+
+// restartWithoutCredentials deletes each controller Pod that has no EKS Pod
+// Identity credentials and is not being deleted already, so its ReplicaSet
+// makes a new one, which EKS gives them once the association has taken
+// effect. It says how many it deleted. Each delete is counted as a change:
+// the run changes the cluster, as on a rerun that fixes Pods an earlier run
+// left without credentials.
+func (r *clusterRun) restartWithoutCredentials(ctx context.Context, kube kubeObjects) (int, error) {
+	pods, err := kube.List(ctx, kindPod, karpenterNamespace, karpenterPodSelector)
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, p := range pods {
+		if p.field("metadata", "deletionTimestamp") != nil || !withoutCredentials(p) {
+			continue
+		}
+		name := p.name()
+		what := "restart Kubernetes Pod " + karpenterNamespace + "/" + name + ": it has no EKS Pod Identity credentials"
+		if err := r.change(what, func() error { return kube.Delete(ctx, kindPod, karpenterNamespace, name) }); err != nil {
+			return n, err
+		}
+		n++
+	}
+	return n, nil
+}
+
+// withoutCredentials reports a controller Pod whose controller container
+// has no podIdentityCredentials.
+func withoutCredentials(p kubeObject) bool {
+	containers, _ := p.field("spec", "containers").([]any)
+	for _, c := range containers {
+		cm, _ := c.(map[string]any)
+		if cm["name"] != "controller" {
+			continue
+		}
+		envs, _ := cm["env"].([]any)
+		found := false
+		for _, e := range envs {
+			em, _ := e.(map[string]any)
+			found = found || em["name"] == podIdentityCredentials
+		}
+		if !found {
+			return true
+		}
+	}
+	return false
+}
+
 // controllerWithoutCredentials says why the controller is not available
 // when one of its Pods has no EKS Pod Identity credentials: EKS gives them
 // only to a Pod made after the association, and a restart keeps the Pod.
@@ -678,23 +760,10 @@ func controllerWithoutCredentials(ctx context.Context, kube kubeObjects) string 
 		return ""
 	}
 	for _, p := range pods {
-		containers, _ := p.field("spec", "containers").([]any)
-		for _, c := range containers {
-			cm, _ := c.(map[string]any)
-			if cm["name"] != "controller" {
-				continue
-			}
-			envs, _ := cm["env"].([]any)
-			found := false
-			for _, e := range envs {
-				em, _ := e.(map[string]any)
-				found = found || em["name"] == podIdentityCredentials
-			}
-			if !found {
-				return fmt.Sprintf("controller Pod %s has no EKS Pod Identity credentials (no %s): it was made before the association of %s/%s took effect. "+
-					"Delete the controller Pods so the Deployment makes new ones (kubectl -n %s delete pod -l %s), then run create cluster again",
-					p.name(), podIdentityCredentials, karpenterNamespace, karpenterServiceAccount, karpenterNamespace, karpenterPodSelector)
-			}
+		if withoutCredentials(p) {
+			return fmt.Sprintf("controller Pod %s has no EKS Pod Identity credentials (no %s): EKS gives them only to a Pod made after the association of %s/%s takes effect, "+
+				"and create cluster restarts such Pods up to %d times. Run create cluster again; if the new Pods have none either, check that association",
+				p.name(), podIdentityCredentials, karpenterNamespace, karpenterServiceAccount, karpenterRestarts)
 		}
 	}
 	return ""

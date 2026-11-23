@@ -671,9 +671,10 @@ and reused only with the owner tag:
   `access` is the Karpenter reference policy for this cluster, without the
   statements that make, tag or change instance profiles (the nodes use the
   installer's) and without ZonalShift. EKS gives credentials only to a Pod
-  made after the association takes effect: when the controller is not
-  available and one of its Pods has none, `create cluster` says so, and how
-  to make new Pods;
+  made after the association takes effect: while the controller is not
+  available, `create cluster` deletes each controller Pod that has none, so
+  the Deployment makes a new one, up to three times, and if one still has
+  none it stops and says so;
 - the instance profile `<cluster>-<region>-eks-node` with the node role, and
   an `EC2_LINUX` access entry for the node role. With managed node groups,
   `create cluster` keeps the one EKS makes for them;

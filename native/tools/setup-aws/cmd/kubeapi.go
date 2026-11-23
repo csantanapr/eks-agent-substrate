@@ -243,7 +243,8 @@ var (
 	kindRoleBinding        = kubeKind{"rbac.authorization.k8s.io/v1", "RoleBinding", "rolebindings", true}
 	kindPDB                = kubeKind{"policy/v1", "PodDisruptionBudget", "poddisruptionbudgets", true}
 	kindDeployment         = kubeKind{"apps/v1", "Deployment", "deployments", true}
-	// kindPod is only read: why the controller Deployment is not available.
+	// kindPod is never applied: the controller's Pods are read, and those
+	// without credentials deleted, while its Deployment is not available.
 	kindPod          = kubeKind{"v1", "Pod", "pods", true}
 	kindNodePool     = kubeKind{"karpenter.sh/v1", "NodePool", "nodepools", false}
 	kindNodeClaim    = kubeKind{"karpenter.sh/v1", "NodeClaim", "nodeclaims", false}

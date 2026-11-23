@@ -777,34 +777,219 @@ func TestCreateClusterKarpenterWaitsSayWhy(t *testing.T) {
 	if !strings.Contains(err.Error(), "the controller logs say why") {
 		t.Errorf("no pointer to the logs: %v", err)
 	}
-	// A controller Pod made before the association took effect has no
-	// credentials, and stays so: the error says so, and how to fix it.
+	// Pods with credentials, and another Pod without them that is not the
+	// controller's: the error points at the logs, and nothing is deleted.
 	f = karpenterFake(t)
 	f.objects.notAvailable = true
-	pod := func(name string, env ...string) kubeObject {
-		var envs []any
-		for _, e := range env {
-			envs = append(envs, map[string]any{"name": e, "value": "x"})
-		}
-		return kubeObject{"apiVersion": "v1", "kind": "Pod", "metadata": map[string]any{"name": name, "namespace": "kube-system",
-			"labels": map[string]any{"app.kubernetes.io/name": "karpenter", "app.kubernetes.io/instance": "karpenter"}},
-			"spec": map[string]any{"containers": []any{map[string]any{"name": "controller", "env": envs}}}}
-	}
-	f.objects.put(pod("karpenter-a", "AWS_REGION", podIdentityCredentials))
-	f.objects.put(pod("karpenter-b", "AWS_REGION"))
-	err = clusterTestRun(t, f, false, withKarpenter).run(context.Background())
-	if err == nil || !strings.Contains(err.Error(), "controller Pod karpenter-b has no EKS Pod Identity credentials") ||
-		!strings.Contains(err.Error(), "kubectl -n kube-system delete pod -l "+karpenterPodSelector) {
-		t.Errorf("a controller Pod without credentials: %v", err)
-	}
-	f = karpenterFake(t)
-	f.objects.notAvailable = true
-	f.objects.put(pod("karpenter-a", "AWS_REGION", podIdentityCredentials))
-	f.objects.put(pod("other", "AWS_REGION"))
+	f.objects.put(karpenterPod("karpenter-a", "AWS_REGION", podIdentityCredentials))
+	f.objects.put(karpenterPod("other", "AWS_REGION"))
 	f.objects.get(kindPod, "kube-system", "other")["metadata"].(map[string]any)["labels"] = map[string]any{"app": "other"}
 	err = clusterTestRun(t, f, false, withKarpenter).run(context.Background())
 	if err == nil || strings.Contains(err.Error(), "no EKS Pod Identity credentials") || !strings.Contains(err.Error(), "the controller logs say why") {
 		t.Errorf("Pods with credentials (and another Pod without): %v", err)
+	}
+	if d := podDeletes(f.objects); len(d) != 0 {
+		t.Errorf("Pods with credentials (and another Pod without): deleted %v", d)
+	}
+}
+
+// karpenterPod is a controller Pod, with the chart's labels, whose
+// controller container has the variables env.
+func karpenterPod(name string, env ...string) kubeObject {
+	var envs []any
+	for _, e := range env {
+		envs = append(envs, map[string]any{"name": e, "value": "x"})
+	}
+	return kubeObject{"apiVersion": "v1", "kind": "Pod", "metadata": map[string]any{"name": name, "namespace": "kube-system",
+		"labels": map[string]any{"app.kubernetes.io/name": "karpenter", "app.kubernetes.io/instance": "karpenter"}},
+		"spec": map[string]any{"containers": []any{map[string]any{"name": "controller", "env": envs}}}}
+}
+
+// staleController leaves the controller as a run that applied the chart
+// before the association took effect does: Pods a and b without
+// credentials, the Deployment not available.
+func staleController(k *kubeFake) {
+	k.put(karpenterPod("karpenter-a", "AWS_REGION"))
+	k.put(karpenterPod("karpenter-b", "AWS_REGION"))
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if d := k.objs[kindDeployment.path("kube-system", "karpenter")]; d != nil {
+		d["status"] = map[string]any{"observedGeneration": d.field("metadata", "generation"), "availableReplicas": 0.0,
+			"conditions": []any{map[string]any{"type": "Available", "status": "False", "reason": "MinimumReplicasUnavailable",
+				"message": "Deployment does not have minimum availability."}}}
+	}
+}
+
+// remakePods stands in for the controller's ReplicaSet and EKS Pod
+// Identity's webhook: each deleted controller Pod is made again as
+// <name>x, with credentials when creds, and once no controller Pod lacks
+// them (one being deleted aside) the Deployment is available.
+func remakePods(k *kubeFake, creds bool) {
+	k.onDelete = func(kind kubeKind, name string) {
+		if kind != kindPod {
+			return
+		}
+		env := []string{"AWS_REGION"}
+		if creds {
+			env = append(env, podIdentityCredentials)
+		}
+		k.objs[kindPod.path("kube-system", name+"x")] = karpenterPod(name+"x", env...)
+		for p, o := range k.objs {
+			if kk, _, n, _ := route(p); kk == kindPod && n != "" && o.field("metadata", "deletionTimestamp") == nil && withoutCredentials(o) {
+				return
+			}
+		}
+		d := k.objs[kindDeployment.path("kube-system", "karpenter")]
+		d["status"] = map[string]any{"observedGeneration": d.field("metadata", "generation"), "availableReplicas": d.field("spec", "replicas"),
+			"conditions": []any{map[string]any{"type": "Available", "status": "True"}}}
+	}
+}
+
+// podDeletes are the fake's DELETE requests of Pods.
+func podDeletes(k *kubeFake) []string {
+	var out []string
+	for _, w := range k.writes() {
+		if strings.HasPrefix(w, "DELETE "+kindPod.path("kube-system", "")) {
+			out = append(out, w)
+		}
+	}
+	return out
+}
+
+// A controller Pod made before the association took effect has no
+// credentials, and never gets them. While the controller is not available,
+// create cluster deletes each such Pod, so the ReplicaSet makes a new one
+// that EKS gives them: on a fresh cluster, whose Pods the ReplicaSet makes
+// right after the chart, and on a rerun over Pods an earlier run left so.
+// Each restart is a change, logged.
+func TestCreateClusterKarpenterRestartsPodsWithoutCredentials(t *testing.T) {
+	shortKarpenterWaits(t)
+	// Long enough for the restarts, however slow the machine.
+	karpenterReadyTimeout = time.Second
+	restarted := []string{
+		"restart Kubernetes Pod kube-system/karpenter-a: it has no EKS Pod Identity credentials",
+		"restart Kubernetes Pod kube-system/karpenter-b: it has no EKS Pod Identity credentials",
+	}
+	deletes := []string{"DELETE " + kindPod.path("kube-system", "karpenter-a"), "DELETE " + kindPod.path("kube-system", "karpenter-b")}
+
+	// Fresh: the Pods appear once the Deployment exists, without credentials.
+	f := karpenterFake(t)
+	f.objects.notAvailable = true
+	remakePods(f.objects, true)
+	deploy, made := kindDeployment.path("kube-system", "karpenter"), false
+	f.objects.onGet = func(path string) {
+		if path == deploy && f.objects.objs[deploy] != nil && !made {
+			made = true
+			for _, n := range []string{"karpenter-a", "karpenter-b"} {
+				f.objects.objs[kindPod.path("kube-system", n)] = karpenterPod(n, "AWS_REGION")
+			}
+		}
+	}
+	logs := captureLog(t)
+	r := clusterTestRun(t, f, false, withKarpenter)
+	if err := r.run(context.Background()); err != nil {
+		t.Fatalf("fresh: %v", err)
+	}
+	if d := podDeletes(f.objects); !made || !slices.Equal(d, deletes) {
+		t.Errorf("fresh: Pods made %v, deleted %v", made, d)
+	}
+	for _, w := range restarted {
+		if !slices.Contains(r.changes, w) || strings.Count(logs.String(), w) != 1 {
+			t.Errorf("fresh: %q in changes %v, logged %d times", w, r.changes, strings.Count(logs.String(), w))
+		}
+	}
+	if f.objects.get(kindNodePool, "", "gvisor") == nil {
+		t.Error("fresh: the NodePool is not applied")
+	}
+
+	// Rerun over Pods an earlier run left without credentials: the restarts
+	// are all it changes. A Pod being deleted already is left to go.
+	f = karpenterFake(t)
+	if err := clusterTestRun(t, f, false, withKarpenter).run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	staleController(f.objects)
+	old := karpenterPod("karpenter-0", "AWS_REGION")
+	old["metadata"].(map[string]any)["deletionTimestamp"] = "2026-11-19T00:00:00Z"
+	f.objects.put(old)
+	f.objects.finalizing[kindPod.path("kube-system", "karpenter-0")] = 1000
+	remakePods(f.objects, true)
+	f.objects.calls = nil
+	r = clusterTestRun(t, f, false, withKarpenter)
+	if err := r.run(context.Background()); err != nil {
+		t.Fatalf("rerun: %v", err)
+	}
+	if d := podDeletes(f.objects); !slices.Equal(d, deletes) || !slices.Equal(r.changes, restarted) {
+		t.Errorf("rerun: deleted %v, changes %v", d, r.changes)
+	}
+	if ax := f.objects.get(kindPod, "kube-system", "karpenter-ax"); ax == nil || withoutCredentials(ax) || f.objects.get(kindPod, "kube-system", "karpenter-a") != nil {
+		t.Error("rerun: the Pods are not the new ones with credentials")
+	}
+}
+
+// Pods that never get credentials (an association that does not take
+// effect) are restarted karpenterRestarts times, no more, and create
+// cluster stops with why; the pools are not applied.
+func TestCreateClusterKarpenterPodsNeverGetCredentials(t *testing.T) {
+	shortKarpenterWaits(t)
+	// Long enough for every restart, however slow the machine.
+	karpenterReadyTimeout = time.Second
+	f := karpenterFake(t)
+	f.objects.notAvailable = true
+	staleController(f.objects)
+	remakePods(f.objects, false)
+	err := clusterTestRun(t, f, false, withKarpenter).run(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "Deployment karpenter") || !strings.Contains(err.Error(), "has no EKS Pod Identity credentials") ||
+		!strings.Contains(err.Error(), "restarts such Pods up to 3 times") || strings.Contains(err.Error(), "kubectl") {
+		t.Errorf("Pods without credentials after the restarts: %v", err)
+	}
+	if d := podDeletes(f.objects); len(d) != 2*karpenterRestarts {
+		t.Errorf("%d Pod deletes, want %d: %v", len(d), 2*karpenterRestarts, d)
+	}
+	if f.objects.get(kindNodePool, "", "gvisor") != nil {
+		t.Error("the NodePool is applied")
+	}
+}
+
+// --plan restarts no Pod: it writes nothing, and does not wait.
+func TestCreateClusterKarpenterPlanRestartsNoPod(t *testing.T) {
+	f := karpenterFake(t)
+	if err := clusterTestRun(t, f, false, withKarpenter).run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	staleController(f.objects)
+	remakePods(f.objects, true)
+	f.objects.calls = nil
+	if err := clusterTestRun(t, f, true, withKarpenter).run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if w := f.objects.writes(); len(w) != 0 || f.objects.get(kindPod, "kube-system", "karpenter-a") == nil {
+		t.Errorf("--plan wrote %v", w)
+	}
+}
+
+// A failed read or delete of the controller Pods stops the step: it is
+// never taken for Pods that have credentials.
+func TestCreateClusterKarpenterPodReadOrDeleteFails(t *testing.T) {
+	shortKarpenterWaits(t)
+	for _, call := range []string{"GET " + kindPod.path("kube-system", ""), "DELETE " + kindPod.path("kube-system", "karpenter-a")} {
+		f := karpenterFake(t)
+		f.objects.notAvailable = true
+		staleController(f.objects)
+		remakePods(f.objects, true)
+		f.objects.deny[call] = 403
+		err := clusterTestRun(t, f, false, withKarpenter).run(context.Background())
+		want := "list the pods"
+		if strings.HasPrefix(call, "DELETE") {
+			want = "delete Pod karpenter-a"
+		}
+		if err == nil || !strings.Contains(err.Error(), want) || !strings.Contains(err.Error(), "403 Forbidden") ||
+			strings.Contains(err.Error(), "111122223333") || f.objects.get(kindNodePool, "", "gvisor") != nil {
+			t.Errorf("%s refused: %v", call, err)
+		}
+		if d := podDeletes(f.objects); len(d) > 1 {
+			t.Errorf("%s refused: deleted %v", call, d)
+		}
 	}
 }
 
