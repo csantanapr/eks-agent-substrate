@@ -1,6 +1,11 @@
 package ui
 
 import (
+	"context"
+	"fmt"
+	"io"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -74,6 +79,81 @@ func TestReviewRefusesAPluginRecordedWithAnotherNitroCompute(t *testing.T) {
 		if !strings.Contains(v, "Nothing can start: "+tc.refused[:40]) || m.m.Current() != state.Review || len(r.ran()) != 0 ||
 			!strings.Contains(m.notice, "nothing started: "+tc.refused) {
 			t.Errorf("%s: at %s, ran %q, notice %q:\n%s", tc.name, m.m.Current().Title(), r.ran(), m.notice, v)
+		}
+	}
+}
+
+// Issue #25: Review (nitroRecordErr) and the control plane step's record
+// check (plugin.CheckNitroRecord, whose rule Run's deploy shares) judge the
+// same record and run by one rule (plugin.Record.NitroConflict): both refuse
+// or both pass, and both name the same recorded value. The cases are the
+// ones the review of #22 traced: the run's default, a pending plugin, an
+// unknown recorded value, class and required plugins, a plugin with no
+// recorded value, and one that does not follow NITRO_COMPUTE. The plugin
+// package reads the ConfigMap Review's record is parsed from, through a
+// fake kubectl. An unknown recorded value gets the same refusal, byte for
+// byte, from both.
+func TestReviewAndThePluginPackageAgreeOnTheRecordedNitroCompute(t *testing.T) {
+	exec := plugin.Exec
+	t.Cleanup(func() { plugin.Exec = exec })
+	named := regexp.MustCompile(`NITRO_COMPUTE=(\S+) \(recorded in |nitro-compute="([^"]*)"`)
+	// name is the recorded value err names: "" for no refusal.
+	name := func(err error) string {
+		if err == nil {
+			return ""
+		}
+		if g := named.FindStringSubmatch(err.Error()); g != nil {
+			return g[1] + g[2]
+		}
+		return "no recorded value in " + err.Error()
+	}
+	for _, tc := range []struct {
+		name, data, classes, run string
+		plugins                  []string
+		names                    string
+	}{
+		{"the run's default, another mode", `"plugins":"mode3-iso","nitro-compute":"node-group"`, "gvisor,nitro", "", nil, plugin.NitroNodeGroup},
+		{"the run's default, the recorded mode", `"plugins":"mode3-iso","nitro-compute":"auto-mode"`, "gvisor,nitro", "", nil, ""},
+		{"another mode", `"plugins":"mode3-iso","nitro-compute":"auto-mode"`, "gvisor,nitro", plugin.NitroNodeGroup, nil, plugin.NitroAutoMode},
+		{"the recorded mode", `"plugins":"mode3-iso","nitro-compute":"node-group"`, "gvisor,nitro", plugin.NitroNodeGroup, nil, ""},
+		{"a pending plugin", `"plugins":"t-efs","pending":"mode3-iso","nitro-compute":"node-group"`, "gvisor,nitro", plugin.NitroAutoMode, nil, plugin.NitroNodeGroup},
+		{"a pending plugin, the recorded mode", `"plugins":"","pending":"mode3-iso","nitro-compute":"node-group"`, "gvisor,nitro", plugin.NitroNodeGroup, nil, ""},
+		{"an unknown mode", `"plugins":"mode3-iso","nitro-compute":"future-mode"`, "gvisor,nitro", plugin.NitroNodeGroup, nil, "future-mode"},
+		{"an unknown mode, pending", `"plugins":"","pending":"mode3-iso","nitro-compute":"future-mode"`, "gvisor,nitro", "", nil, "future-mode"},
+		{"chosen as a plugin, not by its class", `"plugins":"mode3-iso","nitro-compute":"auto-mode"`, "gvisor", plugin.NitroNodeGroup, []string{"mode3-iso"}, plugin.NitroAutoMode},
+		{"a class plugin beside a required one", `"plugins":"mode3-iso,t-efs","nitro-compute":"node-group"`, "gvisor,nitro", plugin.NitroAutoMode, []string{"t-s3files"}, plugin.NitroNodeGroup},
+		{"a required plugin in a record with a mode", `"plugins":"t-efs,t-s3files","nitro-compute":"node-group"`, "gvisor", plugin.NitroAutoMode, []string{"t-s3files"}, ""},
+		{"no recorded value", `"plugins":"mode3-iso"`, "gvisor,nitro", plugin.NitroNodeGroup, nil, ""},
+		{"not in the record", `"plugins":"t-efs","nitro-compute":"node-group"`, "gvisor,nitro", plugin.NitroAutoMode, nil, ""},
+		{"a plugin that does not follow NITRO_COMPUTE", `"plugins":"t-efs","nitro-compute":"node-group"`, "gvisor", plugin.NitroAutoMode, []string{"t-efs"}, ""},
+		{"no record", "", "gvisor,nitro", plugin.NitroNodeGroup, nil, ""},
+	} {
+		js := ""
+		if tc.data != "" {
+			js = `{"metadata":{"name":"substrate-eks-plugins","namespace":"kube-system","resourceVersion":"7"},"data":{` + tc.data + `}}`
+		}
+		rec, err := plugin.ParseRecordJSON([]byte(js))
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		read := append([]string{"kubectl", "--kubeconfig", "/kc"}, plugin.RecordArgs...)
+		plugin.Exec = func(_ context.Context, _ io.Writer, c plugin.Cmd) error {
+			if !slices.Equal(c.Argv, read) {
+				return fmt.Errorf("not the record read: %q", c.Argv)
+			}
+			_, err := io.WriteString(c.Stdout, js)
+			return err
+		}
+		s := newSetup("new")
+		s.SandboxClasses, s.Plugins, s.NewClusterConfig.NitroCompute, s.ClusterRecord = tc.classes, tc.plugins, tc.run, rec
+		review := Model{s: s}.nitroRecordErr()
+		cp := plugin.CheckNitroRecord(context.Background(), io.Discard, plugin.Options{Kubeconfig: "/kc", NitroCompute: tc.run}, s.InstallPlugins())
+		if name(review) != tc.names || name(cp) != tc.names {
+			t.Errorf("%s: want both to name %q (\"\" for no refusal):\nReview: %v\nplugin: %v", tc.name, tc.names, review, cp)
+			continue
+		}
+		if plugin.CheckNitroCompute(tc.names) != nil && tc.names != "" && review.Error() != cp.Error() {
+			t.Errorf("%s: an unknown mode, refused in other words:\nReview: %v\nplugin: %v", tc.name, review, cp)
 		}
 	}
 }

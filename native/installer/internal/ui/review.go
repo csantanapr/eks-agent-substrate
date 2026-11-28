@@ -191,24 +191,21 @@ func (m Model) settingsErr() error {
 // (plugin.CheckNitroRecord) made on Review, from the record the probe read
 // on a record-only cluster (Setup.ClusterRecord, issue #22): a chosen plugin
 // that follows NITRO_COMPUTE and was deployed with another one than the
-// run's, or with one this installer does not know, is refused with the same
-// ways out. That step runs after Provision and RDS, so the install is
-// stopped here instead. A plugin the record holds no NITRO_COMPUTE for is
-// not refused. shortcut: the text mirrors the plugin package's, which it
-// cannot call without kubectl; reuse it if that package exports a check of
-// a Record.
+// run's, or with one this installer does not know, is refused by the same
+// rule (plugin.Record.NitroConflict), with the ways out a wizard run has.
+// That step runs after Provision and RDS, so the install is stopped here
+// instead. A plugin the record holds no NITRO_COMPUTE for is not refused.
 func (m Model) nitroRecordErr() error {
 	s := m.s
 	run := cmp.Or(s.NewClusterConfig.NitroCompute, plugin.NitroAutoMode)
 	where := plugin.RecordNamespace + "/" + plugin.RecordName
 	for _, p := range resolved(s.InstallPlugins()) {
-		rec := s.ClusterRecord.NitroComputeOf(p)
-		if rec == "" || rec == run {
-			continue
+		rec, err := s.ClusterRecord.NitroConflict(p, run)
+		if err != nil {
+			return err
 		}
-		if plugin.CheckNitroCompute(rec) != nil {
-			return fmt.Errorf("plugin %s: %s records %s=%q, which is not %s: this installer cannot deploy, check or remove it",
-				p.ID, where, plugin.NitroComputeKey, rec, strings.Join(plugin.NitroComputes, " or "))
+		if rec == "" {
+			continue
 		}
 		return fmt.Errorf("plugin %s was deployed with NITRO_COMPUTE=%s (recorded in %s), not %s: run the wizard with --nitro-compute %s, "+
 			"or remove it first with substrate-eks --plugin-action remove --plugins %s --cluster %s --region %s (which removes it with NITRO_COMPUTE=%s), "+

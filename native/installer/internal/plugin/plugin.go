@@ -732,6 +732,21 @@ func (r Record) NitroComputeOf(p Plugin) string {
 	return r.NitroCompute
 }
 
+// NitroConflict is the rule by which a deploy of p, with run (the run's
+// NITRO_COMPUTE, its default applied), is refused against r: recorded is
+// the NITRO_COMPUTE r records for p (NitroComputeOf) when it is not run,
+// else "". err refuses recorded when this installer does not know it (a
+// newer installer wrote it); otherwise a caller refuses a recorded value
+// with its own ways out. Run's deploy, the control plane step's record
+// check and Review use it.
+func (r Record) NitroConflict(p Plugin, run string) (recorded string, err error) {
+	m := r.NitroComputeOf(p)
+	if m == "" || m == run {
+		return "", nil
+	}
+	return m, checkRecorded(p, m)
+}
+
 // Manifest is the ConfigMap that holds r. It always has RecordKey, and the
 // other keys only when they hold something, so with only Plugins it is the
 // ConfigMap older installers write, byte for byte. It has no
