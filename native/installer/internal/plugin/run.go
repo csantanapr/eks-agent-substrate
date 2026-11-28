@@ -317,18 +317,15 @@ func writePending(ctx context.Context, w io.Writer, o Options, r Record) error {
 }
 
 // checkRecordedNitroCompute refuses to deploy p, a plugin that follows
-// NITRO_COMPUTE, with another NITRO_COMPUTE than the one rec holds for it:
-// the objects of the first would stay behind, and the record could name
-// only one of them for the removal. The second way out is the whole
-// sequence: a plugin with control plane needs (mode3-iso, the fork's
-// release) is refused once the removal took it out of the record, until a
-// control plane deploy records it again.
+// NITRO_COMPUTE, with another NITRO_COMPUTE than the one rec holds for it
+// (Record.NitroConflict): the objects of the first would stay behind, and
+// the record could name only one of them for the removal. The second way
+// out is the whole sequence: a plugin with control plane needs (mode3-iso,
+// the fork's release) is refused once the removal took it out of the
+// record, until a control plane deploy records it again.
 func checkRecordedNitroCompute(rec Record, p Plugin, o Options) error {
-	m := rec.NitroComputeOf(p)
-	if m == "" || m == o.nitroCompute() {
-		return nil
-	}
-	if err := checkRecorded(p, m); err != nil {
+	m, err := rec.NitroConflict(p, o.nitroCompute())
+	if err != nil || m == "" {
 		return err
 	}
 	again := ","
